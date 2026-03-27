@@ -130,15 +130,31 @@ select option { background: #1a3a2a; }
     <div style="font-size:0.65rem;color:rgba(240,213,140,0.4);letter-spacing:0.12em;text-transform:uppercase;margin-bottom:2rem">Royal Golf Club · Copenhagen</div>
     <!-- Login panel -->
     <div id="lockLoginPanel">
-      <div class="fgi" style="text-align:left;margin-bottom:1rem"><label>Password</label><input type="password" id="appPwdInput" placeholder="••••••" maxlength="40" onkeydown="if(event.key==='Enter')submitAppPwd()"></div>
-      <div id="appPwdError" style="color:#f08080;font-size:0.78rem;margin-bottom:0.75rem;display:none">Incorrect password.</div>
-      <button class="btn btn-primary" style="width:100%" onclick="submitAppPwd()">Enter</button>
+      <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:1rem;text-align:left">
+        <div class="fgi"><label>Email</label><input type="email" id="loginEmail" placeholder="your@email.com" maxlength="100" onkeydown="if(event.key==='Enter')submitEmailPin()"></div>
+        <div class="fgi"><label>PIN</label><input type="password" id="loginPin" placeholder="••••" maxlength="4" inputmode="numeric" pattern="[0-9]*" onkeydown="if(event.key==='Enter')submitEmailPin()"></div>
+        <div id="loginError" style="color:#f08080;font-size:0.78rem;display:none"></div>
+      </div>
+      <button class="btn btn-primary" style="width:100%" onclick="submitEmailPin()">Enter</button>
       <div style="margin-top:1.25rem;font-size:0.8rem;color:rgba(240,213,140,0.5)">New here? <span onclick="showLockSignup()" style="color:var(--gold-l);cursor:pointer;text-decoration:underline">Sign up</span></div>
+    </div>
+    <!-- First-time PIN set panel (existing player, no PIN yet) -->
+    <div id="lockSetPinPanel" style="display:none">
+      <div id="lockSetPinName" style="font-family:'Playfair Display',serif;font-size:1rem;color:var(--gold-l);margin-bottom:0.5rem"></div>
+      <div style="font-size:0.82rem;color:rgba(255,255,255,0.45);margin-bottom:1rem;text-align:left">No PIN set yet. Choose a 4-digit PIN to secure your account.</div>
+      <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:1rem;text-align:left">
+        <div class="fgi"><label>Choose a PIN</label><input type="password" id="lockSetPinInput" placeholder="••••" maxlength="4" inputmode="numeric" pattern="[0-9]*"></div>
+        <div class="fgi"><label>Confirm PIN</label><input type="password" id="lockSetPinConfirm" placeholder="••••" maxlength="4" inputmode="numeric" pattern="[0-9]*"></div>
+        <div id="lockSetPinError" style="color:#f08080;font-size:0.78rem;display:none"></div>
+      </div>
+      <button class="btn btn-primary" style="width:100%" onclick="submitLockSetPin()">Set PIN & Enter</button>
+      <div style="margin-top:1.25rem;font-size:0.8rem;color:rgba(240,213,140,0.5)"><span onclick="showLockLogin()" style="color:var(--gold-l);cursor:pointer;text-decoration:underline">← Back</span></div>
     </div>
     <!-- Sign-up panel -->
     <div id="lockSignupPanel" style="display:none">
       <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:1rem;text-align:left">
         <div class="fgi"><label>Full Name</label><input type="text" id="signupName" placeholder="e.g. Anders Nielsen" maxlength="60"></div>
+        <div class="fgi"><label>Email</label><input type="email" id="signupEmail" placeholder="your@email.com" maxlength="100"></div>
         <div class="fgi"><label>Handicap Index</label><input type="number" id="signupHcp" placeholder="e.g. 14.2" step="0.1" min="-10" max="54"></div>
         <div class="fgi"><label>Choose a 4-digit PIN</label><input type="password" id="signupPin" placeholder="••••" maxlength="4" inputmode="numeric" pattern="[0-9]*"></div>
         <div class="fgi"><label>Confirm PIN</label><input type="password" id="signupPinConfirm" placeholder="••••" maxlength="4" inputmode="numeric" pattern="[0-9]*"></div>
@@ -285,7 +301,6 @@ select option { background: #1a3a2a; }
     <div class="info-box" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
       <span>Admin view — handicaps, bulk entry, edit rounds.</span>
       <button class="btn btn-ghost btn-sm" onclick="document.getElementById('changePinModal').style.display='flex'">Change Admin PIN</button>
-      <button class="btn btn-ghost btn-sm" onclick="document.getElementById('changeAppPwdModal').style.display='flex'">Change App Password</button>
     </div>
     <div class="panel" id="pendingApprovalsPanel" style="display:none">
       <div class="ph"><span class="pt">Pending Approvals</span><span id="pendingBadge" style="font-size:0.75rem;color:var(--gold-l)"></span></div>
@@ -351,15 +366,14 @@ select option { background: #1a3a2a; }
   </div>
 </div></div>
 
-<div class="modal-bg" id="changeAppPwdModal" style="display:none"><div class="modal modal-sm">
-  <h3>Change App Password</h3>
+<div class="modal-bg" id="editEmailModal" style="display:none"><div class="modal modal-sm">
+  <h3 id="editEmailTitle">Set Email</h3>
   <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:1rem">
-    <div class="fgi"><label>New Password</label><input type="password" id="newAppPwdVal" placeholder="Choose a password" maxlength="40"></div>
-    <div class="fgi"><label>Confirm Password</label><input type="password" id="newAppPwdConfirm" placeholder="Repeat password" maxlength="40"></div>
+    <div class="fgi"><label>Email Address</label><input type="email" id="editEmailVal" placeholder="player@email.com" maxlength="100"></div>
   </div>
   <div style="display:flex;gap:9px;justify-content:flex-end">
-    <button class="btn btn-ghost btn-sm" onclick="closeModal('changeAppPwdModal')">Cancel</button>
-    <button class="btn btn-primary btn-sm" onclick="saveNewAppPwd()">Save</button>
+    <button class="btn btn-ghost btn-sm" onclick="closeModal('editEmailModal')">Cancel</button>
+    <button class="btn btn-primary btn-sm" onclick="savePlayerEmail()">Save</button>
   </div>
 </div></div>
 
@@ -504,15 +518,56 @@ function adminPlayer(){return players.find(p=>p.is_admin)||players[0];}
 function isAdmin(){const ap=adminPlayer();return ap&&activeId===ap.id;}
 function updateAdminUI(){const a=isAdmin();document.getElementById('adminTab').style.display=a?'inline-block':'none';document.getElementById('adminBadge').style.display=a?'inline-flex':'none';const ab=document.getElementById('addPlayerBtn');if(ab)ab.style.display=a?'inline-block':'none';}
 
-// ── App Password ──────────────────────────────────────────────────────────────
-const APP_PWD_KEY='sl_app_pwd';const DEFAULT_APP_PWD='royal';
-function getAppPwd(){return localStorage.getItem(APP_PWD_KEY)||DEFAULT_APP_PWD;}
-function submitAppPwd(){const entered=document.getElementById('appPwdInput').value;if(entered===getAppPwd()){sessionStorage.setItem('app_auth','1');document.getElementById('lockScreen').style.display='none';init().then(()=>showPicker());}else{document.getElementById('appPwdError').style.display='block';document.getElementById('appPwdInput').value='';document.getElementById('appPwdInput').focus();}}
-function saveNewAppPwd(){const v1=document.getElementById('newAppPwdVal').value.trim();const v2=document.getElementById('newAppPwdConfirm').value.trim();if(!v1){alert('Enter a password.');return;}if(v1!==v2){alert('Passwords do not match.');return;}localStorage.setItem(APP_PWD_KEY,v1);toast('App password updated ✓');closeModal('changeAppPwdModal');}
+// ── Email + PIN Login ─────────────────────────────────────────────────────────
+let lockLoginPlayer=null;
+function showLockLogin(){lockLoginPlayer=null;document.getElementById('lockLoginPanel').style.display='block';document.getElementById('lockSetPinPanel').style.display='none';document.getElementById('lockSignupPanel').style.display='none';document.getElementById('lockPayPanel').style.display='none';document.getElementById('loginError').style.display='none';setTimeout(()=>document.getElementById('loginEmail').focus(),50);}
+async function submitEmailPin(){
+  const email=document.getElementById('loginEmail').value.trim().toLowerCase();
+  const pin=document.getElementById('loginPin').value.trim();
+  const err=document.getElementById('loginError');
+  if(!email||!pin){err.textContent='Please enter your email and PIN.';err.style.display='block';return;}
+  err.style.display='none';
+  try{
+    const results=await sbGet('players',`email=eq.${encodeURIComponent(email)}&approved=eq.true`);
+    if(!results.length){err.textContent='No account found with that email.';err.style.display='block';return;}
+    const p=results[0];
+    if(!p.pin){
+      lockLoginPlayer=p;
+      document.getElementById('lockSetPinName').textContent=p.name;
+      document.getElementById('lockSetPinInput').value='';document.getElementById('lockSetPinConfirm').value='';document.getElementById('lockSetPinError').style.display='none';
+      document.getElementById('lockLoginPanel').style.display='none';
+      document.getElementById('lockSetPinPanel').style.display='block';
+      setTimeout(()=>document.getElementById('lockSetPinInput').focus(),50);
+    } else if(pin===p.pin){
+      await loginAs(p);
+    } else {
+      err.textContent='Incorrect PIN.';err.style.display='block';
+      document.getElementById('loginPin').value='';document.getElementById('loginPin').focus();
+    }
+  }catch(e){err.textContent='Error: '+e.message;err.style.display='block';}
+}
+async function submitLockSetPin(){
+  const v1=document.getElementById('lockSetPinInput').value.trim();
+  const v2=document.getElementById('lockSetPinConfirm').value.trim();
+  const err=document.getElementById('lockSetPinError');
+  if(!v1||v1.length<4){err.textContent='PIN must be 4 digits.';err.style.display='block';return;}
+  if(v1!==v2){err.textContent='PINs do not match.';err.style.display='block';return;}
+  try{
+    await sbUpdate('players',lockLoginPlayer.id,{pin:v1});
+    lockLoginPlayer.pin=v1;
+    await loginAs(lockLoginPlayer);toast('PIN set ✓');
+  }catch(e){err.textContent='Error: '+e.message;err.style.display='block';}
+}
+async function loginAs(p){
+  localStorage.setItem('sl_active_player',p.id);
+  sessionStorage.setItem('sl_session_player',p.id);
+  document.getElementById('lockScreen').style.display='none';
+  await init();
+}
 
 // ── Sign-up ───────────────────────────────────────────────────────────────────
 function showLockLogin(){document.getElementById('lockLoginPanel').style.display='block';document.getElementById('lockSignupPanel').style.display='none';document.getElementById('lockPayPanel').style.display='none';setTimeout(()=>document.getElementById('appPwdInput').focus(),50);}
-function showLockSignup(){document.getElementById('lockLoginPanel').style.display='none';document.getElementById('lockSignupPanel').style.display='block';document.getElementById('lockPayPanel').style.display='none';document.getElementById('signupName').value='';document.getElementById('signupHcp').value='';document.getElementById('signupPin').value='';document.getElementById('signupPinConfirm').value='';document.getElementById('signupError').style.display='none';setTimeout(()=>document.getElementById('signupName').focus(),50);}
+function showLockSignup(){document.getElementById('lockLoginPanel').style.display='none';document.getElementById('lockSetPinPanel').style.display='none';document.getElementById('lockSignupPanel').style.display='block';document.getElementById('lockPayPanel').style.display='none';document.getElementById('signupName').value='';document.getElementById('signupEmail').value='';document.getElementById('signupHcp').value='';document.getElementById('signupPin').value='';document.getElementById('signupPinConfirm').value='';document.getElementById('signupError').style.display='none';setTimeout(()=>document.getElementById('signupName').focus(),50);}
 function showSignup(){showLockSignup();}
 async function submitSignup(){
   const name=document.getElementById('signupName').value.trim();
@@ -520,12 +575,14 @@ async function submitSignup(){
   const pin=document.getElementById('signupPin').value.trim();
   const pinConfirm=document.getElementById('signupPinConfirm').value.trim();
   const err=document.getElementById('signupError');
+  const email=document.getElementById('signupEmail').value.trim().toLowerCase();
   if(!name){err.textContent='Please enter your name.';err.style.display='block';return;}
+  if(!email||!email.includes('@')){err.textContent='Please enter a valid email.';err.style.display='block';return;}
   if(!pin||pin.length<4){err.textContent='PIN must be 4 digits.';err.style.display='block';return;}
   if(pin!==pinConfirm){err.textContent='PINs do not match.';err.style.display='block';return;}
   const hcpVal=hcpRaw?parseFloat(hcpRaw):null;
   const nextColor=Math.floor(Math.random()*COLORS.length);
-  const payload={id:Date.now(),name,color:nextColor,handicap:hcpVal,hcp_history:hcpVal!=null?[{date:today(),value:hcpVal,note:'Sign-up entry'}]:[],approved:false,pin};
+  const payload={id:Date.now(),name,email,color:nextColor,handicap:hcpVal,hcp_history:hcpVal!=null?[{date:today(),value:hcpVal,note:'Sign-up entry'}]:[],approved:false,pin};
   err.style.display='none';
   try{
     await sbInsert('players',payload);
@@ -1151,6 +1208,9 @@ async function saveFirstPin(){
     closeModal('pinModal');setPlayer(pendingPinId);toast('PIN set ✓');
   }catch(e){err.textContent='Error: '+e.message;err.style.display='block';}
 }
+let editingEmailPlayerId=null;
+function openEditEmail(id){editingEmailPlayerId=id;const p=players.find(x=>x.id===id);if(!p)return;document.getElementById('editEmailTitle').textContent='Edit Email — '+p.name;document.getElementById('editEmailVal').value=p.email||'';document.getElementById('editEmailModal').style.display='flex';setTimeout(()=>document.getElementById('editEmailVal').focus(),50);}
+async function savePlayerEmail(){const val=document.getElementById('editEmailVal').value.trim().toLowerCase();if(!val||!val.includes('@')){alert('Enter a valid email.');return;}const p=players.find(x=>x.id===editingEmailPlayerId);if(!p)return;setLoading(true,'Saving…');try{await sbUpdate('players',p.id,{email:val});p.email=val;toast('Email updated ✓');closeModal('editEmailModal');renderAdmin();}catch(e){alert('Error: '+e.message);}finally{setLoading(false);}}
 async function resetPlayerPin(id){
   if(!confirm('Reset this player\'s PIN? They will be asked to set a new one next time they log in.'))return;
   setLoading(true,'Resetting…');
@@ -1239,7 +1299,7 @@ async function saveMyHcp(){
 function renderAdmin(){
   const panel=document.getElementById('adminHcpPanel');const ap=adminPlayer();
   if(!players.length){panel.innerHTML='<div class="empty">No players.</div>';return;}
-  panel.innerHTML=players.map(p=>{const hist=[...(p.hcp_history||[])].sort((a,b)=>b.date.localeCompare(a.date));const isAP=p.id===ap?.id;return`<div style="margin-bottom:1.5rem;padding-bottom:1.5rem;border-bottom:1px solid rgba(255,255,255,0.06)"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.7rem;flex-wrap:wrap;gap:8px"><div style="display:flex;align-items:center;gap:10px"><div class="av" style="background:${clr(p)}">${ini(p.name)}</div><div><div style="font-weight:500">${p.name} ${isAP?'<span class="tag tag-admin">Admin</span>':''}</div><div style="font-size:0.72rem;color:rgba(255,255,255,0.38)">Current: <strong style="color:var(--gold-l)">${currentHcp(p)!=null?currentHcp(p):'not set'}</strong></div></div></div><div style="display:flex;gap:6px"><button class="btn btn-warn btn-sm" onclick="openHcpEdit(${p.id})">+ Update Index</button><button class="btn btn-ghost btn-sm" onclick="resetPlayerPin(${p.id})">Reset PIN</button></div></div>${hist.length?`<table class="hcp-hist"><thead><tr><th>Effective Date</th><th>HCP Index</th><th>Note</th><th></th></tr></thead><tbody>${hist.map((e,i)=>`<tr class="${i===0?'current-hcp':''}"><td style="font-family:'DM Mono',monospace;font-size:0.8rem">${fd(e.date)}</td><td style="font-family:'DM Mono',monospace;font-weight:${i===0?600:400};color:${i===0?'var(--gold-l)':'inherit'}">${e.value}</td><td style="color:rgba(255,255,255,0.4);font-size:0.78rem">${e.note||'—'}</td><td><button class="btn btn-danger btn-sm" onclick="deleteHcpEntry(${p.id},'${e.date}',${e.value})">✕</button></td></tr>`).join('')}</tbody></table></div>`:'<div style="font-size:0.8rem;color:rgba(255,255,255,0.3);padding:6px 0">No history.</div>'}</div>`;}).join('');
+  panel.innerHTML=players.map(p=>{const hist=[...(p.hcp_history||[])].sort((a,b)=>b.date.localeCompare(a.date));const isAP=p.id===ap?.id;return`<div style="margin-bottom:1.5rem;padding-bottom:1.5rem;border-bottom:1px solid rgba(255,255,255,0.06)"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.7rem;flex-wrap:wrap;gap:8px"><div style="display:flex;align-items:center;gap:10px"><div class="av" style="background:${clr(p)}">${ini(p.name)}</div><div><div style="font-weight:500">${p.name} ${isAP?'<span class="tag tag-admin">Admin</span>':''}</div><div style="font-size:0.72rem;color:rgba(255,255,255,0.38)">Current: <strong style="color:var(--gold-l)">${currentHcp(p)!=null?currentHcp(p):'not set'}</strong></div></div></div><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn btn-warn btn-sm" onclick="openHcpEdit(${p.id})">+ Update Index</button><button class="btn btn-ghost btn-sm" onclick="openEditEmail(${p.id})">Edit Email</button><button class="btn btn-ghost btn-sm" onclick="resetPlayerPin(${p.id})">Reset PIN</button></div></div>${hist.length?`<table class="hcp-hist"><thead><tr><th>Effective Date</th><th>HCP Index</th><th>Note</th><th></th></tr></thead><tbody>${hist.map((e,i)=>`<tr class="${i===0?'current-hcp':''}"><td style="font-family:'DM Mono',monospace;font-size:0.8rem">${fd(e.date)}</td><td style="font-family:'DM Mono',monospace;font-weight:${i===0?600:400};color:${i===0?'var(--gold-l)':'inherit'}">${e.value}</td><td style="color:rgba(255,255,255,0.4);font-size:0.78rem">${e.note||'—'}</td><td><button class="btn btn-danger btn-sm" onclick="deleteHcpEntry(${p.id},'${e.date}',${e.value})">✕</button></td></tr>`).join('')}</tbody></table></div>`:'<div style="font-size:0.8rem;color:rgba(255,255,255,0.3);padding:6px 0">No history.</div>'}</div>`;}).join('');
   const rsel=document.getElementById('adminRoundPlayer');rsel.innerHTML=`<option value="all">All players</option>`+players.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
   renderAdminRounds();
 }
@@ -1320,7 +1380,7 @@ async function init(){
 
   setLoading(false);
 }
-if(sessionStorage.getItem('app_auth')==='1'){document.getElementById('lockScreen').style.display='none';init();}else{setLoading(false);setTimeout(()=>document.getElementById('appPwdInput').focus(),100);}
+if(sessionStorage.getItem('sl_session_player')){document.getElementById('lockScreen').style.display='none';init();}else{setLoading(false);setTimeout(()=>document.getElementById('loginEmail').focus(),100);}
 </script>
 </body>
 </html>
