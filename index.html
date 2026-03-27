@@ -185,11 +185,12 @@ select option { background: #1a3a2a; }
   </div>
 </header>
 <div class="main">
+  <div id="pendingBanner" style="display:none;background:rgba(201,168,76,0.08);border:1px solid rgba(201,168,76,0.25);border-radius:10px;padding:0.7rem 1rem;font-size:0.82rem;color:rgba(240,213,140,0.8);margin-bottom:1rem">Your account is pending admin approval. You can log rounds in the meantime.</div>
   <div class="nav">
-    <button class="nav-tab active" onclick="showView('leaderboard',this)">Leaderboards</button>
+    <button class="nav-tab active" id="tabLeaderboard" onclick="showView('leaderboard',this)">Leaderboards</button>
     <button class="nav-tab" onclick="showView('log',this)">Log Round</button>
-    <button class="nav-tab" onclick="showView('history',this)">My Rounds</button>
-    <button class="nav-tab" onclick="showView('players',this)">Players</button>
+    <button class="nav-tab" id="tabHistory" onclick="showView('history',this)">My Rounds</button>
+    <button class="nav-tab" id="tabPlayers" onclick="showView('players',this)">Players</button>
     <button class="nav-tab" id="adminTab" style="display:none" onclick="requireAdminPin(this)">⚙ Admin</button>
   </div>
 
@@ -242,7 +243,7 @@ select option { background: #1a3a2a; }
           <div class="fgi full"><label>Tee</label><div class="tee-sel" id="teeSelector"></div></div>
         </div>
         <div class="fgi" style="margin-bottom:1.2rem">
-          <label>Players in this round</label>
+          <label>Select all players you are scoring for</label>
           <div id="playerCheckboxes" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px"></div>
         </div>
         <div class="fgi" style="margin-bottom:1.2rem">
@@ -517,6 +518,7 @@ async function loadData(){const all=await sbGet('players','order=created_at.asc'
 function adminPlayer(){return players.find(p=>p.is_admin)||players[0];}
 function isAdmin(){const ap=adminPlayer();return ap&&activeId===ap.id;}
 function updateAdminUI(){const a=isAdmin();document.getElementById('adminTab').style.display=a?'inline-block':'none';document.getElementById('adminBadge').style.display=a?'inline-flex':'none';const ab=document.getElementById('addPlayerBtn');if(ab)ab.style.display=a?'inline-block':'none';}
+function applyPendingUI(){const p=players.find(x=>x.id===activeId);const pending=p&&p.approved===false;document.getElementById('pendingBanner').style.display=pending?'block':'none';document.getElementById('tabLeaderboard').style.display=pending?'none':'';document.getElementById('tabHistory').style.display=pending?'none':'';document.getElementById('tabPlayers').style.display=pending?'none':'';if(pending){showView('log',document.querySelector('.nav-tab'));document.querySelector('.nav-tab').classList.remove('active');}}
 
 // ── Email + PIN Login ─────────────────────────────────────────────────────────
 let lockLoginPlayer=null;
@@ -528,7 +530,7 @@ async function submitEmailPin(){
   if(!email||!pin){err.textContent='Please enter your email and PIN.';err.style.display='block';return;}
   err.style.display='none';
   try{
-    const results=await sbGet('players',`email=eq.${encodeURIComponent(email)}&approved=eq.true`);
+    const results=await sbGet('players',`email=eq.${encodeURIComponent(email)}`);
     if(!results.length){err.textContent='No account found with that email.';err.style.display='block';return;}
     const p=results[0];
     if(!p.pin){
@@ -958,7 +960,11 @@ async function resumeRound(roundId){
 
 function buildPlayerCheckboxes(){
   const wrap=document.getElementById('playerCheckboxes');if(!wrap)return;
-  wrap.innerHTML=players.map(p=>{const checked=groupPlayerIds.includes(p.id);return`<div onclick="toggleGroupPlayer(${p.id})" style="display:flex;align-items:center;gap:7px;padding:7px 12px;border-radius:8px;cursor:pointer;border:1px solid ${checked?'rgba(201,168,76,0.5)':'rgba(255,255,255,0.12)'};background:${checked?'rgba(201,168,76,0.1)':'rgba(0,0,0,0.2)'};transition:all 0.15s;user-select:none"><div style="width:18px;height:18px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.58rem;font-weight:600;color:#fff">${ini(p.name)}</div><span style="font-size:0.83rem;font-weight:${checked?500:400};color:${checked?'var(--gold-l)':'var(--cream)'}">${p.name}</span>${checked?'<span style="color:var(--gold);font-size:0.8rem">✓</span>':''}</div>`;}).join('');
+  const activePlayer=players.find(x=>x.id===activeId);
+  const isPending=activePlayer&&activePlayer.approved===false;
+  if(isPending){groupPlayerIds=[activeId];}
+  const list=isPending?players.filter(p=>p.id===activeId):players;
+  wrap.innerHTML=list.map(p=>{const checked=groupPlayerIds.includes(p.id);return`<div ${isPending?'':'onclick="toggleGroupPlayer('+p.id+')"'} style="display:flex;align-items:center;gap:7px;padding:7px 12px;border-radius:8px;${isPending?'':'cursor:pointer;'}border:1px solid ${checked?'rgba(201,168,76,0.5)':'rgba(255,255,255,0.12)'};background:${checked?'rgba(201,168,76,0.1)':'rgba(0,0,0,0.2)'};transition:all 0.15s;user-select:none"><div style="width:18px;height:18px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.58rem;font-weight:600;color:#fff">${ini(p.name)}</div><span style="font-size:0.83rem;font-weight:${checked?500:400};color:${checked?'var(--gold-l)':'var(--cream)'}">${p.name}</span>${checked?'<span style="color:var(--gold);font-size:0.8rem">✓</span>':''}</div>`;}).join('');
 }
 function toggleGroupPlayer(id){if(groupPlayerIds.includes(id))groupPlayerIds=groupPlayerIds.filter(x=>x!==id);else groupPlayerIds.push(id);buildPlayerCheckboxes();}
 async function startGroupEntry(){
@@ -1376,7 +1382,7 @@ async function init(){
   // Restore last selected player
   const savedId=localStorage.getItem('sl_active_player');
   if(savedId){const saved=players.find(p=>p.id==savedId);if(saved){activeId=saved.id;document.getElementById('playerName').textContent=saved.name;const av=document.getElementById('playerAvatar');av.textContent=ini(saved.name);av.style.background=clr(saved);const hb=document.getElementById('myHcpBtn');if(hb)hb.style.display='inline-block';}}
-  updateAdminUI();buildPlayerCheckboxes();checkForResumableRounds();
+  updateAdminUI();applyPendingUI();buildPlayerCheckboxes();checkForResumableRounds();
 
   setLoading(false);
 }
