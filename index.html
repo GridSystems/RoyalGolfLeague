@@ -1,0 +1,1145 @@
+<!-- RESTORE POINT v3.0 — 2026-03-26 — Bulk entry rebuilt as standalone one-player-at-a-time scorecard. All other features intact. -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Saturday League — Royal Golf Club</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root { --gd: #1a3a2a; --cream: #f7f3ec; --gold: #c9a84c; --gold-l: #f0d58c; --danger: #e07070; --border: rgba(255,255,255,0.08); --border-gold: rgba(201,168,76,0.22); }
+body { font-family: 'DM Sans', sans-serif; background: var(--gd); color: var(--cream); min-height: 100vh; }
+header { background: rgba(0,0,0,0.4); border-bottom: 1px solid var(--border-gold); padding: 1rem 1.5rem; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 200; backdrop-filter: blur(10px); }
+.logo { font-family: 'Playfair Display', serif; font-size: 1.2rem; color: var(--gold-l); }
+.logo-sub { font-size: 0.65rem; color: rgba(240,213,140,0.4); letter-spacing: 0.12em; text-transform: uppercase; margin-top: 2px; }
+.hdr-right { display: flex; align-items: center; gap: 10px; }
+.player-btn { background: rgba(255,255,255,0.06); border: 1px solid var(--border); border-radius: 20px; color: var(--cream); font-family: 'DM Sans', sans-serif; font-size: 0.8rem; padding: 5px 14px; cursor: pointer; display: flex; align-items: center; gap: 7px; transition: all 0.15s; }
+.player-btn:hover { background: rgba(255,255,255,0.11); }
+.admin-badge { font-size: 0.65rem; background: rgba(201,168,76,0.12); border: 1px solid var(--border-gold); color: var(--gold-l); padding: 3px 8px; border-radius: 10px; }
+.av-sm { width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.62rem; font-weight: 600; color: #fff; flex-shrink: 0; }
+.main { max-width: 1100px; margin: 0 auto; padding: 1.25rem 1.5rem; }
+.nav { display: flex; border-bottom: 1px solid var(--border); margin-bottom: 1.5rem; overflow-x: auto; }
+.nav-tab { padding: 10px 18px; font-size: 0.82rem; font-weight: 500; cursor: pointer; color: rgba(255,255,255,0.38); border-bottom: 2px solid transparent; transition: all 0.15s; background: none; border-top: none; border-left: none; border-right: none; font-family: 'DM Sans', sans-serif; white-space: nowrap; }
+.nav-tab.active { color: var(--gold-l); border-bottom-color: var(--gold); }
+.view { display: none; } .view.active { display: block; }
+.panel { background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; margin-bottom: 1.25rem; }
+.ph { background: rgba(0,0,0,0.22); padding: 0.85rem 1.25rem; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); flex-wrap: wrap; gap: 8px; }
+.pt { font-family: 'Playfair Display', serif; font-size: 0.98rem; color: var(--gold-l); }
+.pb { padding: 1.25rem; }
+.sub-tabs { display: flex; padding: 0 1.25rem; background: rgba(0,0,0,0.15); border-bottom: 1px solid var(--border); overflow-x: auto; }
+.sub-tab { padding: 9px 16px; font-size: 0.8rem; font-weight: 500; cursor: pointer; color: rgba(255,255,255,0.35); border-bottom: 2px solid transparent; transition: all 0.15s; background: none; border-top: none; border-left: none; border-right: none; font-family: 'DM Sans', sans-serif; white-space: nowrap; }
+.sub-tab.active { color: var(--gold-l); border-bottom-color: var(--gold); }
+.lb-view { display: none; padding: 1.25rem; } .lb-view.active { display: block; }
+.stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; margin-bottom: 1.25rem; }
+.sc { background: rgba(255,255,255,0.04); border: 1px solid rgba(201,168,76,0.14); border-radius: 12px; padding: 0.85rem 1rem; position: relative; overflow: hidden; }
+.sc::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, var(--gold), transparent); }
+.sl { font-size: 0.65rem; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase; color: rgba(240,213,140,0.45); margin-bottom: 4px; }
+.sv { font-family: 'DM Mono', monospace; font-size: 1.35rem; font-weight: 500; color: var(--gold-l); line-height: 1; }
+.ss { font-size: 0.67rem; color: rgba(255,255,255,0.32); margin-top: 3px; }
+.fg { display: grid; grid-template-columns: 1fr 1fr; gap: 11px; }
+.fgi { display: flex; flex-direction: column; gap: 5px; }
+.fgi.full { grid-column: 1 / -1; }
+label { font-size: 0.68rem; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255,255,255,0.38); }
+input, select, textarea { background: rgba(0,0,0,0.28); border: 1px solid var(--border); border-radius: 8px; color: var(--cream); font-family: 'DM Sans', sans-serif; font-size: 0.88rem; padding: 8px 12px; outline: none; transition: border-color 0.2s; width: 100%; }
+input:focus, select:focus, textarea:focus { border-color: rgba(201,168,76,0.5); }
+select option { background: #1a3a2a; }
+.scorecard-wrap { overflow-x: auto; }
+.sc-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; min-width: 700px; }
+.sc-table th { padding: 6px 5px; font-size: 0.6rem; font-weight: 500; letter-spacing: 0.07em; text-transform: uppercase; color: rgba(255,255,255,0.32); border-bottom: 1px solid var(--border); text-align: center; background: rgba(0,0,0,0.18); }
+.sc-table th.left { text-align: left; padding-left: 10px; }
+.sc-table td { padding: 4px 5px; border-bottom: 1px solid rgba(255,255,255,0.03); text-align: center; vertical-align: middle; }
+.sc-table td.left { text-align: left; padding-left: 10px; font-size: 0.73rem; }
+.sc-table td.muted { color: rgba(255,255,255,0.35); font-size: 0.72rem; }
+.sc-table td.mono { font-family: 'DM Mono', monospace; }
+.sc-table td.tot { font-family: 'DM Mono', monospace; background: rgba(0,0,0,0.18); font-weight: 500; }
+.sc-table td.sep { background: rgba(0,0,0,0.18); width: 5px; padding: 0; }
+.score-inp { width: 100%; text-align: center; padding: 4px 2px; font-family: 'DM Mono', monospace; font-size: 0.88rem; font-weight: 500; background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 5px; color: var(--cream); outline: none; min-width: 30px; }
+.score-inp:focus { border-color: rgba(201,168,76,0.5); }
+.btn { cursor: pointer; font-family: 'DM Sans', sans-serif; font-weight: 500; font-size: 0.82rem; padding: 8px 16px; border-radius: 8px; border: none; transition: all 0.15s; }
+.btn-primary { background: var(--gold); color: var(--gd); }
+.btn-primary:hover { background: var(--gold-l); }
+.btn-ghost { background: transparent; color: var(--cream); border: 1px solid var(--border); }
+.btn-ghost:hover { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.18); }
+.btn-sm { padding: 4px 10px; font-size: 0.73rem; }
+.btn-danger { background: transparent; color: var(--danger); border: 1px solid rgba(224,112,112,0.2); }
+.btn-danger:hover { background: rgba(224,112,112,0.08); }
+.btn-warn { background: transparent; color: #f0c060; border: 1px solid rgba(240,192,96,0.22); }
+.btn-warn:hover { background: rgba(240,192,96,0.08); }
+.fa { display: flex; gap: 9px; justify-content: flex-end; margin-top: 1rem; flex-wrap: wrap; }
+.sp { display: inline-flex; align-items: center; justify-content: center; font-family: 'DM Mono', monospace; font-weight: 500; font-size: 0.82rem; padding: 2px 9px; border-radius: 20px; min-width: 44px; }
+.s-eagle { background: rgba(123,79,166,0.14); color: #c9a0f0; border: 1px solid rgba(123,79,166,0.28); }
+.s-birdie { background: rgba(26,107,60,0.16); color: #7fcc9e; border: 1px solid rgba(26,107,60,0.3); }
+.s-par { background: rgba(43,87,151,0.16); color: #82aaf0; border: 1px solid rgba(43,87,151,0.3); }
+.s-bogey { background: rgba(192,82,42,0.16); color: #f0a882; border: 1px solid rgba(192,82,42,0.3); }
+.s-double { background: rgba(139,0,0,0.14); color: #f08080; border: 1px solid rgba(139,0,0,0.28); }
+/* Round tables — always wrapped in scrollable div */
+.rt-wrap { overflow-x: auto; }
+.rt { width: 100%; border-collapse: collapse; font-size: 0.82rem; min-width: 460px; }
+.rt th { text-align: left; padding: 8px 12px; font-size: 0.6rem; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase; color: rgba(255,255,255,0.3); border-bottom: 1px solid var(--border); background: rgba(0,0,0,0.15); white-space: nowrap; }
+.rt td { padding: 9px 12px; border-bottom: 1px solid rgba(255,255,255,0.03); vertical-align: middle; }
+.rt tr:last-child td { border-bottom: none; }
+.rt tr:hover td { background: rgba(255,255,255,0.02); }
+.rank { font-family: 'DM Mono', monospace; font-size: 0.82rem; color: rgba(255,255,255,0.28); width: 32px; text-align: center; }
+.rank.gold { color: #ffd700; font-weight: 600; } .rank.silver { color: #c0c0c0; font-weight: 600; } .rank.bronze { color: #cd7f32; font-weight: 600; }
+.av { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.7rem; font-weight: 600; color: #fff; flex-shrink: 0; }
+.tbar { display: flex; align-items: flex-end; gap: 3px; height: 40px; }
+.tbi { flex: 1; border-radius: 3px 3px 0 0; min-height: 4px; }
+.player-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+.pc { background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 12px; padding: 1rem; display: flex; align-items: center; gap: 10px; cursor: pointer; transition: all 0.15s; }
+.pc:hover { background: rgba(255,255,255,0.07); border-color: rgba(201,168,76,0.28); }
+.pc.active-p { border-color: var(--gold); background: rgba(201,168,76,0.08); }
+.add-pc { border: 1px dashed rgba(255,255,255,0.12); background: transparent; justify-content: center; color: rgba(255,255,255,0.3); font-size: 0.85rem; gap: 8px; }
+.add-pc:hover { border-color: rgba(201,168,76,0.4); color: var(--gold-l); }
+.tee-sel { display: flex; flex-wrap: wrap; gap: 7px; }
+.tee-opt { display: flex; align-items: center; gap: 6px; padding: 6px 11px; border-radius: 8px; border: 1px solid var(--border); cursor: pointer; font-size: 0.8rem; transition: all 0.15s; background: rgba(0,0,0,0.18); }
+.tee-opt.selected { border-color: var(--gold); background: rgba(201,168,76,0.1); color: var(--gold-l); }
+.tee-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; }
+.hcp-hist { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+.hcp-hist th { padding: 6px 10px; font-size: 0.6rem; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase; color: rgba(255,255,255,0.3); border-bottom: 1px solid var(--border); text-align: left; background: rgba(0,0,0,0.12); }
+.hcp-hist td { padding: 7px 10px; border-bottom: 1px solid rgba(255,255,255,0.03); vertical-align: middle; }
+.hcp-hist tr:last-child td { border-bottom: none; }
+.current-hcp { background: rgba(201,168,76,0.06); }
+.modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.75); display: flex; align-items: center; justify-content: center; z-index: 500; }
+.modal { background: #1b3828; border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; padding: 1.5rem; width: min(480px, 94vw); max-height: 90vh; overflow-y: auto; }
+.modal-sm { width: min(360px, 94vw); }
+.modal h3 { font-family: 'Playfair Display', serif; color: var(--gold-l); margin-bottom: 1rem; font-size: 1.08rem; }
+.empty { text-align: center; padding: 2.5rem 1rem; color: rgba(255,255,255,0.25); font-size: 0.87rem; }
+.info-box { background: rgba(201,168,76,0.07); border: 1px solid rgba(201,168,76,0.16); border-radius: 8px; padding: 10px 14px; font-size: 0.8rem; color: rgba(240,213,140,0.72); margin-bottom: 1rem; }
+.tag { display: inline-flex; align-items: center; font-size: 0.67rem; padding: 2px 8px; border-radius: 10px; font-weight: 500; }
+.tag-admin { background: rgba(201,168,76,0.12); color: var(--gold-l); border: 1px solid rgba(201,168,76,0.24); }
+.tag-you { background: rgba(74,126,232,0.12); color: #82aaf0; border: 1px solid rgba(74,126,232,0.24); }
+.loading-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.65); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 1000; gap: 14px; }
+.spinner { width: 36px; height: 36px; border: 3px solid rgba(201,168,76,0.15); border-top-color: var(--gold); border-radius: 50%; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.toast { position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%); background: #1e3d2c; border: 1px solid rgba(201,168,76,0.35); color: var(--gold-l); padding: 10px 20px; border-radius: 10px; font-size: 0.85rem; z-index: 2000; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+.toast.show { opacity: 1; }
+.db-status { font-size: 0.7rem; padding: 3px 9px; border-radius: 10px; font-weight: 500; }
+.db-ok { background: rgba(74,140,92,0.18); color: #7fcc9e; border: 1px solid rgba(74,140,92,0.26); }
+.db-err { background: rgba(224,112,112,0.14); color: #f08080; border: 1px solid rgba(224,112,112,0.26); }
+.prog-bar { height: 5px; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: hidden; margin-top: 4px; }
+.prog-fill { height: 100%; border-radius: 3px; background: var(--gold); transition: width 0.3s; }
+.live-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #7fcc9e; margin-right: 5px; animation: pulse 1.5s infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+@media (max-width: 640px) { .fg { grid-template-columns: 1fr; } .main { padding: 1rem; } }
+</style>
+</head>
+<body>
+<div class="loading-overlay" id="loadingOverlay"><div class="spinner"></div><div style="color:var(--gold-l);font-size:0.88rem">Connecting to Supabase…</div></div>
+<div class="toast" id="toast"></div>
+<header>
+  <div class="logo"><div>Saturday League</div><div class="logo-sub">Royal Golf Club · Copenhagen</div></div>
+  <div class="hdr-right">
+    <span class="db-status db-ok" id="dbStatus">● Supabase</span>
+    <span class="admin-badge" id="adminBadge" style="display:none">⚙ Admin</span>
+    <button class="player-btn" onclick="showPicker()" id="playerBtn">
+      <div class="av-sm" id="playerAvatar" style="background:#555"></div>
+      <span id="playerName">Select player</span>
+    </button>
+  </div>
+</header>
+<div class="main">
+  <div class="nav">
+    <button class="nav-tab active" onclick="showView('leaderboard',this)">Leaderboards</button>
+    <button class="nav-tab" onclick="showView('log',this)">Log Round</button>
+    <button class="nav-tab" onclick="showView('history',this)">My Rounds</button>
+    <button class="nav-tab" onclick="showView('players',this)">Players</button>
+    <button class="nav-tab" id="adminTab" style="display:none" onclick="requireAdminPin(this)">⚙ Admin</button>
+  </div>
+
+  <!-- LEADERBOARDS -->
+  <div class="view active" id="view-leaderboard">
+    <div class="panel" style="overflow:visible">
+      <div class="sub-tabs">
+        <button class="sub-tab active" onclick="showLb('today',this)"><span class="live-dot"></span>Today</button>
+        <button class="sub-tab" onclick="showLb('season',this)">Season</button>
+        <button class="sub-tab" onclick="showLb('dreamcard',this)">Eclectic</button>
+      </div>
+      <div class="lb-view active" id="lb-today">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:8px">
+          <div style="font-size:0.8rem;color:rgba(255,255,255,0.4)" id="todayDateLabel"></div>
+          <button class="btn btn-ghost btn-sm" onclick="renderTodayLb()">↺ Refresh</button>
+        </div>
+        <div id="todayTable"></div>
+        <div id="todayScoreboards" style="margin-top:1.5rem"></div>
+      </div>
+      <div class="lb-view" id="lb-season">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:8px">
+          <div style="font-size:0.8rem;color:rgba(255,255,255,0.4)">Sum of each player's <strong style="color:var(--gold-l)">4 best</strong> stableford rounds</div>
+          <select id="seasonYear" onchange="renderSeasonLb()" style="background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.14);border-radius:6px;color:var(--cream);font-size:0.75rem;padding:4px 8px;outline:none"></select>
+        </div>
+        <div id="seasonTable"></div>
+      </div>
+      <div class="lb-view" id="lb-dreamcard">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:8px">
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <div style="font-size:0.8rem;color:rgba(255,255,255,0.4)">Best nett score per hole, ranked by total.</div>
+            <button class="btn btn-ghost btn-sm" id="myEclecticBtn" style="display:none" onclick="scrollToMyEclectic()">My Card ↓</button>
+          </div>
+          <select id="dreamYear" onchange="renderDreamCard()" style="background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.14);border-radius:6px;color:var(--cream);font-size:0.75rem;padding:4px 8px;outline:none"></select>
+        </div>
+        <div id="eclecticRankings" style="margin-bottom:1.5rem"></div>
+        <div id="eclecticScorecards"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- LOG ROUND -->
+  <div class="view" id="view-log">
+    <div id="resumePanel" style="display:none;margin-bottom:1rem"></div>
+    <div class="panel" id="logStep1">
+      <div class="ph"><span class="pt">Round Setup — Royal Golf Club</span><span style="font-size:0.75rem;color:rgba(255,255,255,0.35)">Step 1 of 2</span></div>
+      <div class="pb">
+        <div class="fg" style="margin-bottom:1.2rem">
+          <div class="fgi"><label>Date</label><input type="date" id="roundDate"></div>
+          <div class="fgi"><label>Notes</label><input type="text" id="roundNotes" placeholder="Weather, conditions…"></div>
+          <div class="fgi full"><label>Tee</label><div class="tee-sel" id="teeSelector"></div></div>
+        </div>
+        <div class="fgi" style="margin-bottom:1.2rem">
+          <label>Players in this round</label>
+          <div id="playerCheckboxes" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px"></div>
+        </div>
+        <div class="fgi" style="margin-bottom:1.2rem">
+          <label>Starting Hole</label>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px">
+            <div onclick="setStartHole(1)" id="sh_1" class="tee-opt selected" style="font-size:0.85rem;font-weight:500">Hole 1</div>
+            <div onclick="setStartHole(10)" id="sh_10" class="tee-opt" style="font-size:0.85rem;font-weight:500">Hole 10</div>
+            <div onclick="setStartHole('other')" id="sh_other" class="tee-opt" style="font-size:0.85rem;font-weight:500">Other</div>
+            <input type="number" id="startHoleCustom" min="1" max="18" placeholder="Hole #" style="display:none;width:80px;padding:6px 10px;font-size:0.85rem">
+          </div>
+        </div>
+        <div class="fa" style="margin-top:0"><button class="btn btn-primary" onclick="startGroupEntry()">Enter Scores →</button></div>
+      </div>
+    </div>
+    <div id="logStep2" style="display:none">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:8px">
+        <button class="btn btn-ghost btn-sm" onclick="backToSetup()">← Back to setup</button>
+        <button class="btn btn-primary" onclick="saveGroupRound()">Save All Rounds</button>
+      </div>
+      <div id="holeEntryCard"></div>
+      <div class="fa" style="margin-top:0.5rem">
+        <button class="btn btn-ghost" onclick="backToSetup()">← Back</button>
+        <button class="btn btn-primary" onclick="saveGroupRound()">Save All Rounds</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MY ROUNDS -->
+  <div class="view" id="view-history">
+    <div class="stats-row" id="myStats"></div>
+    <div class="panel">
+      <div class="ph">
+        <span class="pt" id="myTitle">My Rounds</span>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <button class="btn btn-warn btn-sm" onclick="showMyHcp()" id="myHcpBtn" style="display:none">Update My HCP</button>
+          <select id="sortSel" onchange="renderMyRounds()" style="background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.14);border-radius:6px;color:var(--cream);font-size:0.75rem;padding:4px 8px;outline:none">
+            <option value="date-desc">Newest first</option><option value="date-asc">Oldest first</option>
+            <option value="pts-desc">Best stableford</option><option value="score-asc">Best stroke</option>
+          </select>
+        </div>
+      </div>
+      <div id="myTable"></div>
+    </div>
+  </div>
+
+  <!-- PLAYERS -->
+  <div class="view" id="view-players">
+    <div class="panel">
+      <div class="ph"><span class="pt">Club Roster</span><button class="btn btn-ghost btn-sm" id="addPlayerBtn" style="display:none" onclick="showAddPlayer()">+ Add Player</button></div>
+      <div class="pb"><div class="player-grid" id="playerGrid"></div></div>
+    </div>
+  </div>
+
+  <!-- ADMIN -->
+  <div class="view" id="view-admin">
+    <div class="info-box" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+      <span>Admin view — handicaps, bulk entry, edit rounds.</span>
+      <button class="btn btn-ghost btn-sm" onclick="document.getElementById('changePinModal').style.display='flex'">Change PIN</button>
+    </div>
+    <div class="panel" id="bulkEntryPanel">
+      <div class="ph"><span class="pt">Bulk Round Entry</span><span style="font-size:0.75rem;color:rgba(255,255,255,0.35)">Enter a full round for one player at a time</span></div>
+      <div class="pb" id="bulkEntryBody">
+        <!-- built by renderBulkEntry() -->
+      </div>
+    </div>
+    <div class="panel">
+      <div class="ph"><span class="pt">Handicap Index History</span></div>
+      <div class="pb" id="adminHcpPanel"></div>
+    </div>
+    <div class="panel">
+      <div class="ph">
+        <span class="pt">All Rounds</span>
+        <select id="adminRoundPlayer" onchange="renderAdminRounds()" style="background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.14);border-radius:6px;color:var(--cream);font-size:0.75rem;padding:4px 8px;outline:none"></select>
+      </div>
+      <div id="adminRoundsTable"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Modals -->
+<div class="modal-bg" id="adminPinModal" style="display:none"><div class="modal modal-sm">
+  <h3>⚙ Admin Access</h3>
+  <div style="font-size:0.82rem;color:rgba(255,255,255,0.45);margin-bottom:1rem">Enter the admin PIN to continue.</div>
+  <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:1rem">
+    <div class="fgi"><label>PIN</label><input type="password" id="adminPinInput" placeholder="••••" maxlength="20" onkeydown="if(event.key==='Enter')submitAdminPin()"></div>
+    <div id="adminPinError" style="color:#f08080;font-size:0.78rem;display:none">Incorrect PIN.</div>
+  </div>
+  <div style="display:flex;gap:9px;justify-content:flex-end">
+    <button class="btn btn-ghost btn-sm" onclick="closeModal('adminPinModal')">Cancel</button>
+    <button class="btn btn-primary btn-sm" onclick="submitAdminPin()">Enter</button>
+  </div>
+</div></div>
+
+<div class="modal-bg" id="myHcpModal" style="display:none"><div class="modal modal-sm">
+  <h3 id="myHcpTitle">Update My Handicap</h3>
+  <div style="font-size:0.8rem;color:rgba(255,255,255,0.45);margin-bottom:1rem">Update your own handicap index.</div>
+  <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:1rem">
+    <div class="fgi"><label>Current Index</label><input type="text" id="myHcpCurrent" readonly style="opacity:0.5"></div>
+    <div class="fgi"><label>New Handicap Index</label><input type="number" id="myHcpVal" placeholder="e.g. 14.2" step="0.1" min="-10" max="54"></div>
+    <div class="fgi"><label>Effective From</label><input type="date" id="myHcpDate"></div>
+  </div>
+  <div style="display:flex;gap:9px;justify-content:flex-end">
+    <button class="btn btn-ghost btn-sm" onclick="closeModal('myHcpModal')">Cancel</button>
+    <button class="btn btn-primary btn-sm" onclick="saveMyHcp()">Save</button>
+  </div>
+</div></div>
+
+<div class="modal-bg" id="changePinModal" style="display:none"><div class="modal modal-sm">
+  <h3>Change Admin PIN</h3>
+  <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:1rem">
+    <div class="fgi"><label>New PIN</label><input type="password" id="newPinVal" placeholder="Choose a PIN" maxlength="20"></div>
+    <div class="fgi"><label>Confirm PIN</label><input type="password" id="newPinConfirm" placeholder="Repeat PIN" maxlength="20"></div>
+  </div>
+  <div style="display:flex;gap:9px;justify-content:flex-end">
+    <button class="btn btn-ghost btn-sm" onclick="closeModal('changePinModal')">Cancel</button>
+    <button class="btn btn-primary btn-sm" onclick="saveNewPin()">Save PIN</button>
+  </div>
+</div></div>
+
+<div class="modal-bg" id="pickerModal" style="display:none"><div class="modal modal-sm">
+  <h3>Who are you?</h3>
+  <div id="pickerList" style="display:flex;flex-direction:column;gap:7px;margin-bottom:1rem"></div>
+  <div style="display:flex;justify-content:flex-end"><button class="btn btn-ghost btn-sm" onclick="closeModal('pickerModal')">Cancel</button></div>
+</div></div>
+
+<div class="modal-bg" id="addModal" style="display:none"><div class="modal modal-sm">
+  <h3>Add Player</h3>
+  <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:1rem">
+    <div class="fgi"><label>Full Name</label><input type="text" id="newName" placeholder="e.g. Anders Nielsen"></div>
+    <div class="fgi"><label>Handicap Index</label><input type="number" id="newHcp" placeholder="e.g. 14.2" step="0.1" min="-10" max="54"></div>
+    <div class="fgi"><label>Colour</label><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px" id="colorPicker"></div></div>
+  </div>
+  <div style="display:flex;gap:9px;justify-content:flex-end">
+    <button class="btn btn-ghost btn-sm" onclick="closeModal('addModal')">Cancel</button>
+    <button class="btn btn-primary btn-sm" onclick="addPlayer()">Add Player</button>
+  </div>
+</div></div>
+
+<div class="modal-bg" id="editHcpModal" style="display:none"><div class="modal modal-sm">
+  <h3 id="editHcpTitle">Update Handicap</h3>
+  <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:1rem">
+    <div class="fgi"><label>New Handicap Index</label><input type="number" id="editHcpVal" placeholder="e.g. 12.4" step="0.1" min="-10" max="54"></div>
+    <div class="fgi"><label>Effective From</label><input type="date" id="editHcpDate"></div>
+    <div class="fgi"><label>Note (optional)</label><input type="text" id="editHcpNote" placeholder="e.g. Updated from Golfbox"></div>
+  </div>
+  <div style="display:flex;gap:9px;justify-content:flex-end">
+    <button class="btn btn-ghost btn-sm" onclick="closeModal('editHcpModal')">Cancel</button>
+    <button class="btn btn-primary btn-sm" onclick="saveHcpEdit()">Save</button>
+  </div>
+</div></div>
+
+<div class="modal-bg" id="editRoundModal" style="display:none"><div class="modal">
+  <h3 id="editRoundTitle">Edit Round</h3>
+  <div class="fg" style="margin-bottom:1rem">
+    <div class="fgi"><label>Date</label><input type="date" id="erDate"></div>
+    <div class="fgi"><label>Notes</label><input type="text" id="erNotes"></div>
+    <div class="fgi full"><label>Tee</label><div class="tee-sel" id="erTeeSelector"></div></div>
+  </div>
+  <div class="scorecard-wrap"><table class="sc-table" id="erScorecard"></table></div>
+  <div class="fa">
+    <button class="btn btn-danger btn-sm" onclick="deleteRoundAdmin()">Delete Round</button>
+    <button class="btn btn-ghost btn-sm" onclick="closeModal('editRoundModal')">Cancel</button>
+    <button class="btn btn-primary btn-sm" onclick="saveRoundEdit()">Save Changes</button>
+  </div>
+</div></div>
+
+<script>
+// ── Supabase ──────────────────────────────────────────────────────────────────
+const SUPABASE_URL='https://qvjybtcbymexheqrjkai.supabase.co';
+const SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF2anlidGNieW1leGhlcXJqa2FpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQzNDUyMDAsImV4cCI6MjA4OTkyMTIwMH0.ODg9C2HU4exSpTt5ABfODz_vz3v0Uz_tQsL3XAuWJ-4';
+const H={'Content-Type':'application/json','apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY};
+async function sbGet(t,p=''){const r=await fetch(`${SUPABASE_URL}/rest/v1/${t}?${p}`,{headers:H});if(!r.ok)throw new Error(await r.text());return r.json();}
+async function sbInsert(t,b){const r=await fetch(`${SUPABASE_URL}/rest/v1/${t}`,{method:'POST',headers:{...H,'Prefer':'return=representation'},body:JSON.stringify(b)});if(!r.ok)throw new Error(await r.text());return r.json();}
+async function sbUpdate(t,id,b){const r=await fetch(`${SUPABASE_URL}/rest/v1/${t}?id=eq.${id}`,{method:'PATCH',headers:{...H,'Prefer':'return=representation'},body:JSON.stringify(b)});if(!r.ok)throw new Error(await r.text());return r.json();}
+async function sbDelete(t,id){const r=await fetch(`${SUPABASE_URL}/rest/v1/${t}?id=eq.${id}`,{method:'DELETE',headers:H});if(!r.ok)throw new Error(await r.text());}
+
+// ── Course data ───────────────────────────────────────────────────────────────
+const HOLE_PARS=[4,4,5,3,4,4,3,4,4,4,4,4,3,5,4,3,5,5];
+const HOLE_HCP=[4,14,8,18,12,10,16,6,2,5,7,13,17,3,11,15,1,9];
+const COURSE_PAR=72;
+const TEES=[
+  {id:'champion',name:'Royal Champion',color:'#222',rating:77.9,slope:153,dist:[477,333,527,138,359,426,150,389,396,372,366,410,150,523,428,197,494,438]},
+  {id:'platinum',name:'Royal Platinum',color:'#b0a0c0',rating:77.6,slope:153,dist:[432,333,527,138,359,426,150,389,396,372,366,410,150,523,428,197,476,438]},
+  {id:'62',name:'62 Tee',color:'#e0d8b0',rating:76.2,slope:149,dist:[402,333,496,138,338,396,150,389,396,332,366,392,150,494,428,138,445,438]},
+  {id:'57',name:'57 Tee',color:'#f5e840',rating:73.1,slope:144,dist:[371,318,466,119,305,363,127,354,374,300,337,362,129,431,382,124,424,404]},
+  {id:'54',name:'54 Tee',color:'#4a8ce8',rating:71.3,slope:141,dist:[329,241,384,119,305,319,90,354,374,284,288,362,129,383,332,104,424,404]},
+  {id:'50',name:'50 Tee',color:'#e84848',rating:69.5,slope:134,dist:[329,241,384,99,283,319,90,303,335,284,288,332,105,383,332,104,406,368]},
+  {id:'43',name:'43 Tee',color:'#f0a030',rating:66.0,slope:125,dist:[282,211,347,79,255,250,50,266,296,235,274,289,85,351,304,70,313,359]},
+];
+const COLORS=['#e8534a','#4a7fe8','#e8a93a','#6cb86c','#a06be8','#e86ca0','#4ab8c8','#c8a060','#80b840','#e87040'];
+
+let players=[],allRounds=[],activeId=null,selColor=0;
+let selTeeId='platinum',erSelTeeId='platinum',editingHcpPlayerId=null,editingRoundId=null;
+let groupPlayerIds=[];
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+const ini=n=>n.trim().split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
+const clr=p=>p.color!=null?COLORS[p.color]:'#666';
+const getTee=id=>TEES.find(t=>t.id===id)||TEES[1];
+const tS=h=>h.reduce((s,x)=>s+(x.score||0),0);
+const tP=h=>h.reduce((s,x)=>s+(x.par||4),0);
+const ds=d=>(d>=0?'+':'')+d;
+const fd=d=>d?new Date(d+'T00:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}):'—';
+const scC=d=>d<=-2?'s-eagle':d===-1?'s-birdie':d===0?'s-par':d===1?'s-bogey':'s-double';
+const vpC=d=>d<=-2?'#c9a0f0':d===-1?'#7fcc9e':d===0?'#82aaf0':d===1?'#f0a882':'#f08080';
+const ptC=p=>p>=4?'#c9a0f0':p===3?'#7fcc9e':p===2?'#82aaf0':p===1?'#f0a882':'rgba(255,255,255,0.28)';
+const today=()=>new Date().toISOString().split('T')[0];
+function toast(msg,dur=2500){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),dur);}
+function setLoading(on,msg='Loading…'){const o=document.getElementById('loadingOverlay');o.style.display=on?'flex':'none';if(on)o.querySelector('div:last-child').textContent=msg;}
+function closeModal(id){document.getElementById(id).style.display='none';}
+
+// ── Handicap logic ────────────────────────────────────────────────────────────
+function hcpOnDate(player,date){const hist=player.hcp_history||[];if(!hist.length)return player.handicap;const s=[...hist].sort((a,b)=>a.date.localeCompare(b.date));let v=s[0].value;for(const e of s){if(e.date<=date)v=e.value;else break;}return v;}
+function currentHcp(player){const hist=player.hcp_history||[];if(!hist.length)return player.handicap;return[...hist].sort((a,b)=>b.date.localeCompare(a.date))[0].value;}
+function calcCourseHcp(index,tee){return Math.round(index*(tee.slope/113)+(tee.rating-COURSE_PAR));}
+function calcPlayingHcp(index,tee){return Math.round(calcCourseHcp(index,tee)*0.95);}
+function strokesOnHole(phcp,i){if(phcp<=0)return 0;let s=phcp>=18?1:(HOLE_HCP[i]<=phcp?1:0);if(phcp>18&&HOLE_HCP[i]<=(phcp-18))s++;return s;}
+function stablefordPts(gross,par,strokes){if(!gross)return null;return Math.max(0,2+par+strokes-gross);}
+function calcRoundPoints(round,player){const tee=getTee(round.tee_id||'platinum');const index=hcpOnDate(player,round.date);if(index==null)return null;const phcp=calcPlayingHcp(index,tee);let total=0;for(let i=0;i<18;i++){const h=round.holes[i];if(!h||h.score==null)continue;const pts=stablefordPts(h.score,h.par,strokesOnHole(phcp,i));if(pts!==null)total+=pts;}return total;}
+function calcHolePoints(round,player){const tee=getTee(round.tee_id||'platinum');const index=hcpOnDate(player,round.date);if(index==null)return Array(18).fill(null);const phcp=calcPlayingHcp(index,tee);return round.holes.map((h,i)=>{if(!h||h.score==null)return null;const str=strokesOnHole(phcp,i);return{pts:stablefordPts(h.score,h.par,str),nett:h.score-str,gross:h.score,str,par:h.par};});}
+
+// ── Storage ───────────────────────────────────────────────────────────────────
+async function loadData(){players=await sbGet('players','order=created_at.asc');allRounds=await sbGet('rounds','order=date.desc');}
+
+// ── Admin ─────────────────────────────────────────────────────────────────────
+function adminPlayer(){return players.find(p=>p.is_admin)||players[0];}
+function isAdmin(){const ap=adminPlayer();return ap&&activeId===ap.id;}
+function updateAdminUI(){const a=isAdmin();document.getElementById('adminTab').style.display=a?'inline-block':'none';document.getElementById('adminBadge').style.display=a?'inline-flex':'none';const ab=document.getElementById('addPlayerBtn');if(ab)ab.style.display=a?'inline-block':'none';}
+
+// ── PIN ───────────────────────────────────────────────────────────────────────
+const PIN_KEY='sl_admin_pin';const DEFAULT_PIN='saturday';
+let pendingAdminBtn=null;
+function getPin(){return localStorage.getItem(PIN_KEY)||DEFAULT_PIN;}
+function requireAdminPin(btn){if(sessionStorage.getItem('admin_auth')==='1'){showView('admin',btn);return;}pendingAdminBtn=btn;document.getElementById('adminPinInput').value='';document.getElementById('adminPinError').style.display='none';document.getElementById('adminPinModal').style.display='flex';setTimeout(()=>document.getElementById('adminPinInput').focus(),50);}
+function submitAdminPin(){const entered=document.getElementById('adminPinInput').value;if(entered===getPin()){sessionStorage.setItem('admin_auth','1');closeModal('adminPinModal');showView('admin',pendingAdminBtn);}else{document.getElementById('adminPinError').style.display='block';document.getElementById('adminPinInput').value='';document.getElementById('adminPinInput').focus();}}
+function saveNewPin(){const v1=document.getElementById('newPinVal').value.trim();const v2=document.getElementById('newPinConfirm').value.trim();if(!v1){alert('Enter a PIN.');return;}if(v1!==v2){alert('PINs do not match.');return;}localStorage.setItem(PIN_KEY,v1);toast('Admin PIN updated ✓');closeModal('changePinModal');}
+
+// ── Navigation ────────────────────────────────────────────────────────────────
+function showView(id,btn){
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('view-'+id).classList.add('active');
+  if(btn)btn.classList.add('active');
+  if(id==='leaderboard'){renderTodayLb();populateYearSelects();renderSeasonLb();renderDreamCard();}
+  if(id==='history'){renderMyRounds();const b=document.getElementById('myHcpBtn');if(b)b.style.display=activeId?'inline-block':'none';}
+  if(id==='players')renderGrid();
+  if(id==='log'){buildTeeSelectorEl('teeSelector',selTeeId,'selTeeId');buildPlayerCheckboxes();checkForResumableRounds();}
+  if(id==='admin'){renderAdmin();renderBulkEntry();}
+}
+function showLb(id,btn){document.querySelectorAll('.lb-view').forEach(v=>v.classList.remove('active'));document.querySelectorAll('.sub-tab').forEach(t=>t.classList.remove('active'));document.getElementById('lb-'+id).classList.add('active');if(btn)btn.classList.add('active');if(id==='today')renderTodayLb();if(id==='season')renderSeasonLb();if(id==='dreamcard'){renderDreamCard();}}
+
+// ── Tee selectors ─────────────────────────────────────────────────────────────
+function buildTeeSelectorEl(cid,active,sv){const el=document.getElementById(cid);if(!el)return;el.innerHTML=TEES.map(t=>`<div class="tee-opt${t.id===active?' selected':''}" onclick="selectTee('${cid}','${t.id}','${sv}')"><span class="tee-dot" style="background:${t.color};border:1px solid rgba(255,255,255,0.25)"></span>${t.name} <span style="font-size:0.68rem;color:rgba(255,255,255,0.32)">${t.rating}/${t.slope}</span></div>`).join('');}
+function selectTee(cid,teeId,sv){if(sv==='selTeeId')selTeeId=teeId;if(sv==='erSelTeeId'){erSelTeeId=teeId;buildEditScorecard();}if(sv==='beTeeId'){BE.teeId=teeId;}buildTeeSelectorEl(cid,teeId,sv);}
+
+// ── Scorecard builder (for edit modal) ───────────────────────────────────────
+function buildScorecardHTML(pfx,tee,phcp,existing){
+  const F=[0,1,2,3,4,5,6,7,8],B=[9,10,11,12,13,14,15,16,17];
+  const pF=HOLE_PARS.slice(0,9).reduce((a,b)=>a+b,0),pB=HOLE_PARS.slice(9).reduce((a,b)=>a+b,0);
+  const dF=tee.dist.slice(0,9).reduce((a,b)=>a+b,0),dB=tee.dist.slice(9).reduce((a,b)=>a+b,0);
+  let h=`<thead><tr><th class="left">Hole</th>${F.map(i=>`<th>${i+1}</th>`).join('')}<th>Out</th><th class="sep"></th>${B.map(i=>`<th>${i+1}</th>`).join('')}<th>In</th><th>Total</th></tr></thead><tbody>`;
+  h+=`<tr><td class="left muted">Metres</td>${F.map(i=>`<td class="muted" style="font-size:0.68rem">${tee.dist[i]}</td>`).join('')}<td class="tot muted">${dF}</td><td class="sep"></td>${B.map(i=>`<td class="muted" style="font-size:0.68rem">${tee.dist[i]}</td>`).join('')}<td class="tot muted">${dB}</td><td class="tot muted">${dF+dB}</td></tr>`;
+  h+=`<tr><td class="left muted">Par</td>${F.map(i=>`<td class="mono muted">${HOLE_PARS[i]}</td>`).join('')}<td class="tot mono muted">${pF}</td><td class="sep"></td>${B.map(i=>`<td class="mono muted">${HOLE_PARS[i]}</td>`).join('')}<td class="tot mono muted">${pB}</td><td class="tot mono muted">${pF+pB}</td></tr>`;
+  h+=`<tr><td class="left muted">SI</td>${F.map(i=>`<td style="font-size:0.67rem;color:rgba(255,255,255,0.27)">${HOLE_HCP[i]}</td>`).join('')}<td class="tot"></td><td class="sep"></td>${B.map(i=>`<td style="font-size:0.67rem;color:rgba(255,255,255,0.27)">${HOLE_HCP[i]}</td>`).join('')}<td class="tot"></td><td class="tot"></td></tr>`;
+  if(phcp!=null&&!isNaN(phcp))h+=`<tr><td class="left muted" style="font-size:0.67rem">Strokes</td>${F.map(i=>{const s=strokesOnHole(phcp,i);return`<td style="font-size:0.7rem;color:${s?'#f0d58c':'rgba(255,255,255,0.17)'}">${s||'·'}</td>`;}).join('')}<td class="tot"></td><td class="sep"></td>${B.map(i=>{const s=strokesOnHole(phcp,i);return`<td style="font-size:0.7rem;color:${s?'#f0d58c':'rgba(255,255,255,0.17)'}">${s||'·'}</td>`;}).join('')}<td class="tot"></td><td class="tot"></td></tr>`;
+  h+=`<tr><td class="left" style="font-weight:500;color:var(--gold-l);font-size:0.78rem">Score</td>`;
+  for(let i=0;i<9;i++){const sv=existing&&existing[i]?.score!=null?existing[i].score:'';h+=`<td><input class="score-inp" type="number" id="${pfx}${i+1}" value="${sv}" min="1" max="15" oninput="liveTotals('${pfx}',${phcp})"></td>`;}
+  h+=`<td class="tot" id="${pfx}tot_out">—</td><td class="sep"></td>`;
+  for(let i=9;i<18;i++){const sv=existing&&existing[i]?.score!=null?existing[i].score:'';h+=`<td><input class="score-inp" type="number" id="${pfx}${i+1}" value="${sv}" min="1" max="15" oninput="liveTotals('${pfx}',${phcp})"></td>`;}
+  h+=`<td class="tot" id="${pfx}tot_in">—</td><td class="tot" id="${pfx}tot_total">—</td></tr>`;
+  h+=`<tr><td class="left muted" style="font-size:0.67rem">vs Par</td>`;
+  for(let i=0;i<9;i++)h+=`<td id="${pfx}vp${i+1}" style="font-size:0.67rem;font-family:'DM Mono',monospace"></td>`;
+  h+=`<td class="tot" id="${pfx}vp_out" style="font-size:0.7rem;font-family:'DM Mono',monospace"></td><td class="sep"></td>`;
+  for(let i=9;i<18;i++)h+=`<td id="${pfx}vp${i+1}" style="font-size:0.67rem;font-family:'DM Mono',monospace"></td>`;
+  h+=`<td class="tot" id="${pfx}vp_in" style="font-size:0.7rem;font-family:'DM Mono',monospace"></td><td class="tot" id="${pfx}vp_total" style="font-family:'DM Mono',monospace;font-weight:500"></td></tr>`;
+  if(phcp!=null&&!isNaN(phcp)){h+=`<tr><td class="left" style="font-weight:500;color:#82aaf0;font-size:0.78rem">Points</td>`;for(let i=0;i<9;i++)h+=`<td id="${pfx}pt${i+1}" style="font-family:'DM Mono',monospace;font-size:0.8rem;font-weight:500"></td>`;h+=`<td class="tot" id="${pfx}pts_out" style="color:#82aaf0">—</td><td class="sep"></td>`;for(let i=9;i<18;i++)h+=`<td id="${pfx}pt${i+1}" style="font-family:'DM Mono',monospace;font-size:0.8rem;font-weight:500"></td>`;h+=`<td class="tot" id="${pfx}pts_in" style="color:#82aaf0">—</td><td class="tot" id="${pfx}pts_total" style="color:#82aaf0;font-weight:500">—</td></tr>`;}
+  return h+'</tbody>';
+}
+function buildEditScorecard(){const r=allRounds.find(x=>x.id===editingRoundId);if(!r)return;const p=players.find(x=>x.id===r.player_id);const tee=getTee(erSelTeeId);const index=p?hcpOnDate(p,r.date):null;const phcp=index!=null?calcPlayingHcp(index,tee):null;document.getElementById('erScorecard').innerHTML=buildScorecardHTML('er_',tee,phcp,r.holes);liveTotals('er_',phcp);}
+function getScoresFromInputs(pfx){return Array.from({length:18},(_,i)=>({hole:i+1,score:document.getElementById(`${pfx}${i+1}`)?.value?parseInt(document.getElementById(`${pfx}${i+1}`).value):null,par:HOLE_PARS[i],hcp:HOLE_HCP[i]}));}
+function liveTotals(pfx,phcp){let oT=0,iT=0,oP=0,iP=0,oPts=0,iPts=0,oC=0,iC=0;for(let i=0;i<18;i++){const el=document.getElementById(`${pfx}${i+1}`);const val=el&&el.value?parseInt(el.value):null;const par=HOLE_PARS[i];const isF=i<9;if(isF)oP+=par;else iP+=par;if(val!=null){const d=val-par;const vpEl=document.getElementById(`${pfx}vp${i+1}`);if(vpEl){vpEl.textContent=ds(d);vpEl.style.color=vpC(d);}if(isF){oT+=val;oC++;}else{iT+=val;iC++;}if(phcp!=null&&!isNaN(phcp)){const str=strokesOnHole(phcp,i);const pts=stablefordPts(val,par,str);const ptEl=document.getElementById(`${pfx}pt${i+1}`);if(ptEl&&pts!=null){ptEl.textContent=pts;ptEl.style.color=ptC(pts);}if(isF)oPts+=pts||0;else iPts+=pts||0;}}else{const vpEl=document.getElementById(`${pfx}vp${i+1}`);if(vpEl)vpEl.textContent='';const ptEl=document.getElementById(`${pfx}pt${i+1}`);if(ptEl)ptEl.textContent='';}}const set=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=v;};const setC=(id,c)=>{const e=document.getElementById(id);if(e)e.style.color=c;};if(oC>0){set(`${pfx}tot_out`,oT);const d=oT-oP;set(`${pfx}vp_out`,ds(d));setC(`${pfx}vp_out`,vpC(d));}else{set(`${pfx}tot_out`,'—');set(`${pfx}vp_out`,'');}if(iC>0){set(`${pfx}tot_in`,iT);const d=iT-iP;set(`${pfx}vp_in`,ds(d));setC(`${pfx}vp_in`,vpC(d));}else{set(`${pfx}tot_in`,'—');set(`${pfx}vp_in`,'');}if(oC+iC>0){const t=oT+iT;set(`${pfx}tot_total`,t);const d=t-(oP+iP);set(`${pfx}vp_total`,ds(d));setC(`${pfx}vp_total`,vpC(d));}else{set(`${pfx}tot_total`,'—');set(`${pfx}vp_total`,'');}if(phcp!=null&&!isNaN(phcp)){if(oC>0)set(`${pfx}pts_out`,oPts);else set(`${pfx}pts_out`,'—');if(iC>0)set(`${pfx}pts_in`,iPts);else set(`${pfx}pts_in`,'—');if(oC+iC>0)set(`${pfx}pts_total`,oPts+iPts);else set(`${pfx}pts_total`,'—');}}
+
+// ── Hole-by-hole entry ────────────────────────────────────────────────────────
+let HE={playerList:[],scores:{},roundIds:{},currentHole:1,currentPidx:0,startHole:1,tee:null,teeId:'',date:'',notes:''};
+
+// Returns holes 1-18 in play order starting from startHole, wrapping around
+function heOrderedHoles(startHole){
+  const order=[];for(let i=0;i<18;i++)order.push(((startHole-1+i)%18)+1);
+  return order;
+}
+// Given current position in ordered sequence (0-17), return next hole number
+function heNextHole(currentHole,startHole){
+  const order=heOrderedHoles(startHole);
+  const pos=order.indexOf(currentHole);
+  if(pos===-1||pos===17)return null; // done
+  return order[pos+1];
+}
+function hePrevHole(currentHole,startHole){
+  const order=heOrderedHoles(startHole);
+  const pos=order.indexOf(currentHole);
+  if(pos<=0)return null;
+  return order[pos-1];
+}
+// Position in sequence (0-based)
+function heHolePos(currentHole,startHole){return heOrderedHoles(startHole).indexOf(currentHole);}
+
+let selectedStartHole=1;
+function setStartHole(val){
+  ['sh_1','sh_10','sh_other'].forEach(id=>{const el=document.getElementById(id);if(el)el.classList.remove('selected');});
+  const custom=document.getElementById('startHoleCustom');
+  if(val==='other'){
+    document.getElementById('sh_other').classList.add('selected');
+    custom.style.display='block';
+    custom.value='';
+    custom.focus();
+    selectedStartHole='other';
+  } else {
+    document.getElementById(`sh_${val}`).classList.add('selected');
+    custom.style.display='none';
+    selectedStartHole=parseInt(val);
+  }
+}
+
+async function heInit(playerList,tee,teeId,date,notes,startHole){
+  const scores={},roundIds={};
+  setLoading(true,'Starting round…');
+  try{
+    for(const{p,phcp,index}of playerList){
+      scores[p.id]=Array(18).fill(null);
+      const holes=Array.from({length:18},(_,i)=>({hole:i+1,score:null,par:HOLE_PARS[i],hcp:HOLE_HCP[i]}));
+      const courseHcp=index!=null?calcCourseHcp(index,tee):null;
+      const playingHcp=index!=null?calcPlayingHcp(index,tee):null;
+      const payload={id:Date.now()+Math.floor(Math.random()*100000),player_id:p.id,course:'Royal Golf Club, Copenhagen',date,tee_id:teeId,tee_name:tee.name,tee_color:tee.color,rating:tee.rating,slope:tee.slope,hcp_index:index,course_hcp:courseHcp,playing_hcp:playingHcp,notes,holes};
+      const[saved]=await sbInsert('rounds',payload);
+      const rec=saved||payload;
+      roundIds[p.id]=rec.id;
+      allRounds.unshift(rec);
+    }
+  }catch(e){alert('Error creating rounds: '+e.message);setLoading(false);return;}
+  setLoading(false);
+  HE={playerList,scores,roundIds,currentHole:startHole,currentPidx:0,startHole,tee,teeId,date,notes};
+  heRender();
+}
+
+// Silently PATCH the round for a player with current scores — no spinner, fire-and-forget
+async function hePatchRound(pid){
+  const rid=HE.roundIds[pid];if(!rid)return;
+  // Check round still exists locally — if deleted by admin, abort and redirect
+  if(!allRounds.find(x=>x.id===rid)){
+    const p=HE.playerList.find(x=>x.p.id===pid);
+    alert(`${p?p.p.name+"'s":''} round was deleted. Returning to setup.`);
+    groupPlayerIds=[];document.getElementById('roundNotes').value='';
+    document.getElementById('logStep2').style.display='none';
+    document.getElementById('logStep1').style.display='block';
+    buildPlayerCheckboxes();
+    return;
+  }
+  const holes=HE.scores[pid].map((score,i)=>({hole:i+1,score,par:HOLE_PARS[i],hcp:HOLE_HCP[i]}));
+  try{
+    await sbUpdate('rounds',rid,{holes});
+    const r=allRounds.find(x=>x.id===rid);if(r)r.holes=holes;
+  }catch(e){console.warn('Patch failed for',pid,e);}
+}
+
+// Patch all players in the group for the current hole
+async function hePatchAll(){
+  await Promise.all(HE.playerList.map(({p})=>hePatchRound(p.id)));
+}
+
+function heRender(){
+  const s=HE,hole=s.currentHole,hi=hole-1,tee=s.tee;
+  const par=HOLE_PARS[hi],si=HOLE_HCP[hi],dist=tee.dist[hi];
+  const order=heOrderedHoles(s.startHole);
+  const pos=order.indexOf(hole); // 0-based position in play sequence
+  const isLast=pos===17;
+  const nextH=isLast?null:order[pos+1];
+  const prevH=pos>0?order[pos-1]:null;
+  const cardId='holeEntryCard';
+  const card=document.getElementById(cardId);if(!card)return;
+
+  // Progress dots in play order
+  const dots=order.map((h)=>{
+    const isCur=h===hole;
+    let filled,partial;
+      filled=s.playerList.every(({p})=>s.scores[p.id][h-1]!==null);
+      partial=s.playerList.some(({p})=>s.scores[p.id][h-1]!==null);
+    let bg=filled?'var(--gold)':partial?'rgba(201,168,76,0.4)':'rgba(255,255,255,0.15)';
+    if(isCur)bg='#82aaf0';
+    return`<div onclick="heJump(${h})" style="width:${isCur?'24px':'10px'};height:10px;border-radius:5px;background:${bg};cursor:pointer;transition:all 0.2s;flex-shrink:0;display:flex;align-items:center;justify-content:center">${isCur?`<span style="font-size:0.55rem;font-weight:600;color:#fff">${h}</span>`:''}</div>`;
+  }).join('');
+
+  const summary=s.playerList.map(({p,phcp})=>{
+    const filled=s.scores[p.id].filter(x=>x!==null).length;
+    const totalPts=s.scores[p.id].reduce((sum,score,i)=>{if(score===null)return sum;return sum+(stablefordPts(score,HOLE_PARS[i],strokesOnHole(phcp||0,i))||0);},0);
+    return`<div style="display:flex;align-items:center;gap:6px;padding:5px 10px;border-radius:8px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07)"><div style="width:18px;height:18px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.55rem;font-weight:600;color:#fff">${ini(p.name)}</div><span style="font-size:0.78rem;font-weight:500">${p.name}</span><span style="font-size:0.7rem;color:rgba(255,255,255,0.35)">${filled}/18</span>${phcp!=null?`<span style="font-size:0.7rem;color:#82aaf0;margin-left:2px">${totalPts}pts</span>`:''}</div>`;
+  }).join('');
+
+  const inputs=s.playerList.map(({p,phcp},pidx)=>{
+    const str=phcp!=null?strokesOnHole(phcp,hi):0;
+    const val=s.scores[p.id][hi];
+    const isCur=pidx===s.currentPidx;
+    const pts=val!=null?stablefordPts(val,par,str):null;
+    const nett=val!=null?val-str:null;
+    return`<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:10px;border:1px solid ${isCur?'rgba(130,170,240,0.5)':'rgba(255,255,255,0.08)'};background:${isCur?'rgba(130,170,240,0.07)':'rgba(0,0,0,0.2)'};transition:all 0.15s">
+      <div style="width:26px;height:26px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.65rem;font-weight:600;color:#fff;flex-shrink:0">${ini(p.name)}</div>
+      <div style="flex:1"><div style="font-size:0.85rem;font-weight:500">${p.name}</div><div style="font-size:0.7rem;color:rgba(255,255,255,0.35)">${phcp!=null?`HCP ${phcp} · ${str>0?`<span style="color:#f0d58c">+${str} stroke${str>1?'s':''}</span>`:'no strokes'}`:'no handicap'}</div></div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px">
+        <input type="number" id="he_${p.id}" value="${val!=null?val:''}" min="1" max="15"
+          style="width:60px;text-align:center;font-family:'DM Mono',monospace;font-size:1.3rem;font-weight:600;padding:6px 4px;background:rgba(0,0,0,0.4);border:1px solid ${isCur?'rgba(130,170,240,0.6)':'rgba(255,255,255,0.15)'};border-radius:8px;color:var(--cream);outline:none">
+        <div style="font-size:0.72rem;color:${pts!=null?ptC(pts):'rgba(255,255,255,0.2)'}">${pts!=null?pts+' pts'+(nett!=null?' · nett '+nett:''):'—'}</div>
+      </div>
+    </div>`;
+  }).join('');
+
+  const curPlayerLabel = '';
+  const startLabel = s.startHole!==1 ? `<span style="font-size:0.68rem;background:rgba(201,168,76,0.12);border:1px solid rgba(201,168,76,0.25);color:var(--gold-l);padding:2px 8px;border-radius:10px;margin-left:6px">Starting H${s.startHole}</span>` : '';
+  const nextLabel = nextH ? 'Hole '+nextH+' →' : 'Done ✓';
+
+  card.innerHTML=`<div class="panel"><div class="ph">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span class="pt">Hole ${hole}</span><span style="font-size:0.8rem;color:rgba(255,255,255,0.45)">Par ${par} &nbsp;·&nbsp; SI ${si} &nbsp;·&nbsp; ${dist}m &nbsp;·&nbsp; <span style="color:rgba(201,168,76,0.7)">${tee.name}</span>${curPlayerLabel}</span>${startLabel}</div>
+    <div style="font-size:0.72rem;color:rgba(255,255,255,0.3)">${pos+1} of 18</div>
+  </div><div class="pb">
+    <div style="display:flex;gap:4px;align-items:center;margin-bottom:1.2rem;flex-wrap:wrap">${dots}</div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:1.2rem">${inputs}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:1rem">${summary}</div>
+    <div style="display:flex;gap:10px;justify-content:center">
+      <button class="btn btn-ghost" onclick="hePrev()" ${!prevH?'disabled style="opacity:0.3"':''}>← ${prevH?'Hole '+prevH:'Start'}</button>
+      <button class="btn btn-primary" onclick="heNext()">${nextLabel}</button>
+    </div>
+  </div>`;
+
+  s.playerList.forEach(({p},pidx)=>{
+    const inp=document.getElementById(`he_${p.id}`);
+    if(!inp)return;
+    inp.addEventListener('input',()=>heUpdateScore(p.id,pidx));
+    inp.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();heEnter(pidx);}});
+  });
+  setTimeout(()=>{const inp=document.getElementById(`he_${s.playerList[s.currentPidx]?.p.id}`);if(inp){inp.focus();inp.select();}},50);
+}
+
+function heUpdateScore(pid,pidx){
+  const inp=document.getElementById(`he_${pid}`);
+  if(!inp)return;
+  HE.scores[pid][HE.currentHole-1]=inp.value?parseInt(inp.value):null;
+}
+
+async function heEnter(pidx){
+  const pl=HE.playerList[pidx];
+  if(pl){const inp=document.getElementById(`he_${pl.p.id}`);if(inp)HE.scores[pl.p.id][HE.currentHole-1]=inp.value?parseInt(inp.value):null;}
+  const order=heOrderedHoles(HE.startHole);
+  const pos=order.indexOf(HE.currentHole);
+  const nextH=pos<17?order[pos+1]:null;
+
+  if(pidx<HE.playerList.length-1){
+    HE.currentPidx=pidx+1;
+    const nextInp=document.getElementById(`he_${HE.playerList[HE.currentPidx].p.id}`);
+    if(nextInp){nextInp.focus();nextInp.select();}
+    heRender();
+  } else {
+    heFlushInputs();hePatchAll();
+    if(nextH){HE.currentHole=nextH;HE.currentPidx=0;heRender();}else heRender();
+  }
+}
+
+function heFlushInputs(){HE.playerList.forEach(({p})=>{const inp=document.getElementById(`he_${p.id}`);if(inp)HE.scores[p.id][HE.currentHole-1]=inp.value?parseInt(inp.value):null;});}
+
+async function heNext(){
+  heFlushInputs();
+  const order=heOrderedHoles(HE.startHole);
+  const pos=order.indexOf(HE.currentHole);
+  const nextH=pos<17?order[pos+1]:null;
+  hePatchAll();
+  if(nextH){HE.currentHole=nextH;HE.currentPidx=0;heRender();}else heRender();
+}
+async function hePrev(){
+  heFlushInputs();
+  const order=heOrderedHoles(HE.startHole);
+  const pos=order.indexOf(HE.currentHole);
+  const prevH=pos>0?order[pos-1]:null;
+  hePatchAll();
+  if(prevH){HE.currentHole=prevH;HE.currentPidx=0;heRender();}
+}
+async function heJump(h){heFlushInputs();hePatchAll();HE.currentHole=h;HE.currentPidx=0;heRender();}
+function checkForResumableRounds(){
+  const panel=document.getElementById('resumePanel');
+  if(!panel)return;
+  const td=today();
+  // Find today's partial rounds — any round today with at least 1 score but fewer than 18
+  const partial=allRounds.filter(r=>{
+    if(r.date!==td)return false;
+    const scored=r.holes.filter(h=>h&&h.score!=null).length;
+    return scored>0&&scored<18;
+  });
+  if(!partial.length){panel.style.display='none';return;}
+
+  // Group rounds that share the same creation time cluster (within 5s) as a "group round"
+  // For simplicity, show each partial round as resumable
+  const items=partial.map(r=>{
+    const p=players.find(x=>x.id===r.player_id);
+    const scored=r.holes.filter(h=>h&&h.score!=null).length;
+    // Find next unscored hole
+    const nextHole=r.holes.find(h=>h&&h.score==null);
+    const nextHoleNum=nextHole?nextHole.hole:1;
+    return{r,p,scored,nextHoleNum};
+  }).filter(x=>x.p);
+
+  if(!items.length){panel.style.display='none';return;}
+
+  panel.style.display='block';
+  panel.innerHTML=`<div style="background:rgba(130,170,240,0.08);border:1px solid rgba(130,170,240,0.25);border-radius:12px;padding:1rem 1.2rem">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem;flex-wrap:wrap;gap:8px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:1rem">🔄</span>
+        <span style="font-weight:500;font-size:0.92rem;color:var(--gold-l)">Resume today's round${items.length>1?'s':''}</span>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="document.getElementById('resumePanel').style.display='none'">Dismiss</button>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      ${items.map(({r,p,scored,nextHoleNum})=>`
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;background:rgba(0,0,0,0.2);border-radius:8px;padding:8px 12px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <div class="av" style="background:${clr(p)};width:24px;height:24px;font-size:0.62rem">${ini(p.name)}</div>
+            <div>
+              <div style="font-size:0.85rem;font-weight:500">${p.name}</div>
+              <div style="font-size:0.72rem;color:rgba(255,255,255,0.4)">${scored}/18 holes · next: Hole ${nextHoleNum} · <span style="color:rgba(201,168,76,0.7)">${r.tee_name||'—'}</span></div>
+            </div>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="resumeRound(${r.id})">Resume →</button>
+        </div>`).join('')}
+    </div>
+  </div>`;
+}
+
+async function resumeRound(roundId){
+  const r=allRounds.find(x=>x.id===roundId);
+  if(!r){alert('Round not found.');return;}
+  const p=players.find(x=>x.id===r.player_id);
+  if(!p){alert('Player not found.');return;}
+
+  const tee=getTee(r.tee_id||'platinum');
+  const index=hcpOnDate(p,r.date);
+  const phcp=index!=null?calcPlayingHcp(index,tee):null;
+  const playerList=[{p,phcp,index}];
+
+  // Restore scores from existing round
+  const scores={[p.id]:r.holes.map(h=>h?h.score:null)};
+  const roundIds={[p.id]:r.id};
+
+  // Find first unscored hole
+  const firstUnscored=r.holes.find(h=>h&&h.score==null);
+  const startAtHole=firstUnscored?firstUnscored.hole:1;
+
+  // Set up HE state directly without creating new rounds
+  HE={mode:'group',playerList,scores,roundIds,currentHole:startAtHole,currentPidx:0,startHole:startAtHole,tee,teeId:r.tee_id||'platinum',date:r.date,notes:r.notes||''};
+
+  // Pre-select this player in groupPlayerIds
+  groupPlayerIds=[p.id];
+
+  // Switch to entry screen
+  document.getElementById('resumePanel').style.display='none';
+  document.getElementById('logStep1').style.display='none';
+  document.getElementById('logStep2').style.display='block';
+  heRender();
+}
+
+
+function buildPlayerCheckboxes(){
+  const wrap=document.getElementById('playerCheckboxes');if(!wrap)return;
+  wrap.innerHTML=players.map(p=>{const checked=groupPlayerIds.includes(p.id);return`<div onclick="toggleGroupPlayer(${p.id})" style="display:flex;align-items:center;gap:7px;padding:7px 12px;border-radius:8px;cursor:pointer;border:1px solid ${checked?'rgba(201,168,76,0.5)':'rgba(255,255,255,0.12)'};background:${checked?'rgba(201,168,76,0.1)':'rgba(0,0,0,0.2)'};transition:all 0.15s;user-select:none"><div style="width:18px;height:18px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.58rem;font-weight:600;color:#fff">${ini(p.name)}</div><span style="font-size:0.83rem;font-weight:${checked?500:400};color:${checked?'var(--gold-l)':'var(--cream)'}">${p.name}</span>${checked?'<span style="color:var(--gold);font-size:0.8rem">✓</span>':''}</div>`;}).join('');
+}
+function toggleGroupPlayer(id){if(groupPlayerIds.includes(id))groupPlayerIds=groupPlayerIds.filter(x=>x!==id);else groupPlayerIds.push(id);buildPlayerCheckboxes();}
+async function startGroupEntry(){
+  if(!groupPlayerIds.length){alert('Select at least one player.');return;}
+  const date=document.getElementById('roundDate').value;if(!date){alert('Enter a date.');return;}
+  // Resolve starting hole
+  let startHole;
+  if(selectedStartHole==='other'){
+    const v=parseInt(document.getElementById('startHoleCustom').value);
+    if(!v||v<1||v>18){alert('Enter a valid starting hole (1–18).');return;}
+    startHole=v;
+  } else {
+    startHole=parseInt(selectedStartHole)||1;
+  }
+  const tee=getTee(selTeeId);
+  const playerList=groupPlayerIds.map(pid=>{const p=players.find(x=>x.id===pid);if(!p)return null;const index=hcpOnDate(p,date);const phcp=index!=null?calcPlayingHcp(index,tee):null;return{p,phcp,index};}).filter(Boolean);
+  document.getElementById('logStep1').style.display='none';document.getElementById('logStep2').style.display='block';
+  await heInit(playerList,tee,selTeeId,date,document.getElementById('roundNotes').value.trim(),startHole);
+}
+function backToSetup(){document.getElementById('logStep2').style.display='none';document.getElementById('logStep1').style.display='block';}
+async function saveGroupRound(){
+  heFlushInputs();
+  // Validate minimum holes
+  for(const{p}of HE.playerList){
+    const filled=HE.scores[p.id].filter(x=>x!==null).length;
+    if(filled<9){alert(`Enter at least 9 scores for ${p.name}.`);return;}
+  }
+  // Check rounds still exist in DB
+  for(const{p}of HE.playerList){
+    const rid=HE.roundIds[p.id];
+    if(!rid||!allRounds.find(x=>x.id===rid)){
+      alert(`${p.name}'s round no longer exists — it may have been deleted. Returning to setup.`);
+      groupPlayerIds=[];document.getElementById('roundNotes').value='';
+      document.getElementById('logStep2').style.display='none';document.getElementById('logStep1').style.display='block';
+      buildPlayerCheckboxes();return;
+    }
+  }
+  setLoading(true,'Saving…');
+  try{
+    await Promise.all(HE.playerList.map(({p})=>hePatchRound(p.id)));
+    toast(`${HE.playerList.length} round${HE.playerList.length>1?'s':''} saved ✓`);
+    groupPlayerIds=[];document.getElementById('roundNotes').value='';
+    document.getElementById('logStep2').style.display='none';document.getElementById('logStep1').style.display='block';
+    buildPlayerCheckboxes();showView('leaderboard',document.querySelectorAll('.nav-tab')[0]);
+  }catch(e){alert('Error: '+e.message);}finally{setLoading(false);}
+}
+
+// ── Bulk entry (admin) — one player, full 18-hole scorecard at a time ─────────
+let BE = { date:'', teeId:'platinum', notes:'', playerId:null, step:'setup' };
+
+function renderBulkEntry(){
+  const body = document.getElementById('bulkEntryBody');
+  if(!body) return;
+
+  if(BE.step === 'setup'){
+    const tee = getTee(BE.teeId || 'platinum');
+    body.innerHTML = `
+      <div class="fg" style="margin-bottom:1.2rem">
+        <div class="fgi"><label>Date</label><input type="date" id="beDate" value="${BE.date||today()}" onchange="BE.date=this.value"></div>
+        <div class="fgi"><label>Notes</label><input type="text" id="beNotes" placeholder="Weather, conditions…" value="${BE.notes||''}" onchange="BE.notes=this.value"></div>
+        <div class="fgi full"><label>Tee</label><div class="tee-sel" id="beTeeSelector"></div></div>
+      </div>
+      <div class="fgi" style="margin-bottom:1.2rem">
+        <label>Player</label>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px">
+          ${players.map(p=>`
+            <div onclick="BE.playerId=${p.id};renderBulkEntry()" style="display:flex;align-items:center;gap:7px;padding:7px 12px;border-radius:8px;cursor:pointer;border:1px solid ${BE.playerId===p.id?'rgba(201,168,76,0.5)':'rgba(255,255,255,0.12)'};background:${BE.playerId===p.id?'rgba(201,168,76,0.1)':'rgba(0,0,0,0.2)'};transition:all 0.15s;user-select:none">
+              <div style="width:18px;height:18px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.58rem;font-weight:600;color:#fff">${ini(p.name)}</div>
+              <span style="font-size:0.83rem;font-weight:${BE.playerId===p.id?500:400};color:${BE.playerId===p.id?'var(--gold-l)':'var(--cream)'}">${p.name}</span>
+              ${BE.playerId===p.id?'<span style="color:var(--gold);font-size:0.8rem">✓</span>':''}
+            </div>`).join('')}
+        </div>
+      </div>
+      <div class="fa" style="margin-top:0">
+        <button class="btn btn-primary" onclick="startBulkScorecard()">Enter Scores →</button>
+      </div>`;
+    buildTeeSelectorEl('beTeeSelector', BE.teeId||'platinum', 'beTeeId');
+
+  } else if(BE.step === 'scorecard'){
+    const p = players.find(x=>x.id===BE.playerId);
+    if(!p){ BE.step='setup'; renderBulkEntry(); return; }
+    const tee = getTee(BE.teeId||'platinum');
+    const index = hcpOnDate(p, BE.date);
+    const phcp = index!=null ? calcPlayingHcp(index,tee) : null;
+    const ch = index!=null ? calcCourseHcp(index,tee) : null;
+    const hcpBar = index!=null
+      ? `Index <strong>${index}</strong> &nbsp;·&nbsp; Course HCP <strong>${ch}</strong> &nbsp;·&nbsp; Playing HCP <strong>${phcp}</strong>`
+      : `<span style="color:#f0a882">No handicap set</span>`;
+    body.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:8px">
+        <div style="display:flex;align-items:center;gap:9px">
+          <div class="av" style="background:${clr(p)}">${ini(p.name)}</div>
+          <div>
+            <div style="font-weight:500;font-size:0.92rem">${p.name}</div>
+            <div style="font-size:0.75rem;color:rgba(240,213,140,0.65)">${hcpBar}</div>
+          </div>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="BE.step='setup';renderBulkEntry()">← Change player</button>
+      </div>
+      <div class="scorecard-wrap">
+        <table class="sc-table" id="beScorecardTable">${buildScorecardHTML('be_', tee, phcp, null)}</table>
+      </div>
+      <div class="fa" style="margin-top:1rem">
+        <button class="btn btn-ghost btn-sm" onclick="BE.step='setup';renderBulkEntry()">← Back</button>
+        <button class="btn btn-primary" onclick="saveBulkScorecard()">Save Round ✓</button>
+      </div>`;
+    liveTotals('be_', phcp);
+  }
+}
+
+function selectTeeForBulk(teeId){
+  BE.teeId = teeId;
+  renderBulkEntry();
+}
+
+function startBulkScorecard(){
+  BE.date = document.getElementById('beDate')?.value || today();
+  BE.notes = document.getElementById('beNotes')?.value || '';
+  if(!BE.date){ alert('Enter a date.'); return; }
+  if(!BE.playerId){ alert('Select a player.'); return; }
+  BE.step = 'scorecard';
+  renderBulkEntry();
+}
+
+async function saveBulkScorecard(){
+  const p = players.find(x=>x.id===BE.playerId);
+  if(!p){ alert('Player not found.'); return; }
+  const tee = getTee(BE.teeId||'platinum');
+  const holes = getScoresFromInputs('be_');
+  const scored = holes.filter(h=>h.score!=null).length;
+  if(scored < 9){ alert(`Enter at least 9 scores for ${p.name}.`); return; }
+  const index = hcpOnDate(p, BE.date);
+  const courseHcp = index!=null ? calcCourseHcp(index,tee) : null;
+  const playingHcp = index!=null ? calcPlayingHcp(index,tee) : null;
+  const payload = {
+    id: Date.now()+Math.floor(Math.random()*100000),
+    player_id: p.id, course:'Royal Golf Club, Copenhagen',
+    date: BE.date, tee_id: BE.teeId, tee_name: tee.name, tee_color: tee.color,
+    rating: tee.rating, slope: tee.slope,
+    hcp_index: index, course_hcp: courseHcp, playing_hcp: playingHcp,
+    notes: BE.notes, holes
+  };
+  setLoading(true, 'Saving…');
+  try{
+    const [saved] = await sbInsert('rounds', payload);
+    allRounds.unshift(saved||payload);
+    toast(`${p.name}'s round saved ✓`);
+    // Reset for next player, keep date/tee/notes
+    BE.playerId = null;
+    BE.step = 'setup';
+    renderBulkEntry();
+    renderAdminRounds();
+    renderTodayLb();
+  } catch(e){ alert('Error: '+e.message); }
+  finally{ setLoading(false); }
+}
+
+function scrollToMyEclectic(){
+  if(!activeId)return;
+  const el=document.getElementById(`eclectic_${activeId}`);
+  if(el)el.scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+// ── Leaderboards ──────────────────────────────────────────────────────────────
+function getSeasons(){const y=[...new Set(allRounds.map(r=>r.date.slice(0,4)))].sort().reverse();return y.length?y:[new Date().getFullYear().toString()];}
+function populateYearSelects(){const seasons=getSeasons();['seasonYear','dreamYear'].forEach(id=>{const sel=document.getElementById(id);if(!sel)return;const cur=sel.value;sel.innerHTML=seasons.map(y=>`<option value="${y}">${y}</option>`).join('');if(cur&&seasons.includes(cur))sel.value=cur;});}
+
+function renderTodayLb(){
+  const td=today();document.getElementById('todayDateLabel').textContent=new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+  const todayRounds=allRounds.filter(r=>r.date===td);
+  if(!todayRounds.length){document.getElementById('todayTable').innerHTML='<div class="empty">No rounds logged today yet.</div>';document.getElementById('todayScoreboards').innerHTML='';return;}
+  const rows=todayRounds.map(r=>{const p=players.find(x=>x.id===r.player_id);const holePts=p?calcHolePoints(r,p):[];const completed=r.holes.filter(h=>h&&h.score!=null).length;const pts=holePts.filter(x=>x!==null).reduce((s,x)=>s+(x.pts||0),0);const tee=getTee(r.tee_id||'platinum');const index=p?hcpOnDate(p,r.date):null;const phcp=index!=null?calcPlayingHcp(index,tee):null;return{r,p,pts,completed,phcp,holePts};}).sort((a,b)=>b.pts!==a.pts?b.pts-a.pts:b.completed-a.completed);
+  document.getElementById('todayTable').innerHTML=`<div class="rt-wrap"><table class="rt"><thead><tr><th></th><th>Player</th><th>Tee</th><th>Playing HCP</th><th>Holes</th><th>Progress</th><th>Points</th></tr></thead><tbody>${rows.map((row,i)=>{const rc=i===0?'rank gold':i===1?'rank silver':i===2?'rank bronze':'rank';const med=i===0?'1st':i===1?'2nd':i===2?'3rd':`${i+1}th`;const pct=Math.round((row.completed/18)*100);return`<tr><td class="${rc}">${med}</td><td><div style="display:flex;align-items:center;gap:8px">${row.p?`<div class="av" style="background:${clr(row.p)}">${ini(row.p.name)}</div>${row.p.name}`:'Unknown'}</div></td><td><span style="display:inline-flex;align-items:center;gap:4px;font-size:0.76rem"><span class="tee-dot" style="background:${row.r.tee_color||'#888'}"></span>${row.r.tee_name||'—'}</span></td><td style="font-family:'DM Mono',monospace;color:rgba(255,255,255,0.5)">${row.phcp!=null?row.phcp:'—'}</td><td style="font-family:'DM Mono',monospace">${row.completed}<span style="color:rgba(255,255,255,0.3)">/18</span></td><td><div class="prog-bar"><div class="prog-fill" style="width:${pct}%"></div></div></td><td style="font-family:'DM Mono',monospace;font-weight:600;font-size:1.1rem;color:#82aaf0">${row.pts}</td></tr>`;}).join('')}</tbody></table></div>`;
+  document.getElementById('todayScoreboards').innerHTML=rows.map(row=>{if(!row.p)return'';const F=[0,1,2,3,4,5,6,7,8],B=[9,10,11,12,13,14,15,16,17];const hp=row.holePts;function cell(i){const h=row.r.holes[i];const x=hp[i];if(!h||h.score==null)return`<td style="color:rgba(255,255,255,0.2)">·</td>`;const d=h.score-h.par;return`<td style="font-family:'DM Mono',monospace;font-size:0.82rem;font-weight:500;color:${vpC(d)}">${h.score}</td>`;}function ptsCell(i){const x=hp[i];if(!x)return`<td style="color:rgba(255,255,255,0.18)">·</td>`;return`<td style="font-family:'DM Mono',monospace;font-size:0.78rem;font-weight:500;color:${ptC(x.pts)}">${x.pts}</td>`;}const fPts=F.map(i=>hp[i]?.pts||0).reduce((a,b)=>a+b,0),bPts=B.map(i=>hp[i]?.pts||0).reduce((a,b)=>a+b,0);return`<div style="margin-top:1rem;padding-top:1rem;border-top:1px solid rgba(255,255,255,0.06)"><div style="display:flex;align-items:center;gap:9px;margin-bottom:0.6rem"><div class="av" style="background:${clr(row.p)};width:22px;height:22px;font-size:0.6rem">${ini(row.p.name)}</div><span style="font-weight:500;font-size:0.88rem">${row.p.name}</span><span style="font-size:0.75rem;color:rgba(255,255,255,0.38)">${row.completed} holes · HCP ${row.phcp!=null?row.phcp:'—'}</span></div><div class="scorecard-wrap"><table class="sc-table" style="min-width:500px"><thead><tr><th class="left">Hole</th>${F.map(i=>`<th>${i+1}</th>`).join('')}<th>Out</th><th class="sep"></th>${B.map(i=>`<th>${i+1}</th>`).join('')}<th>In</th><th>Total</th></tr></thead><tbody><tr><td class="left muted">Par</td>${F.map(i=>`<td class="mono muted">${HOLE_PARS[i]}</td>`).join('')}<td class="tot mono muted">35</td><td class="sep"></td>${B.map(i=>`<td class="mono muted">${HOLE_PARS[i]}</td>`).join('')}<td class="tot mono muted">37</td><td class="tot mono muted">72</td></tr><tr><td class="left" style="font-weight:500;color:var(--gold-l);font-size:0.77rem">Score</td>${F.map(i=>cell(i)).join('')}<td class="tot">${F.some(i=>row.r.holes[i]?.score)?tS(row.r.holes.slice(0,9).filter(h=>h?.score)):''}</td><td class="sep"></td>${B.map(i=>cell(i)).join('')}<td class="tot">${B.some(i=>row.r.holes[i]?.score)?tS(row.r.holes.slice(9).filter(h=>h?.score)):''}</td><td class="tot" style="font-weight:600">${row.completed?tS(row.r.holes.filter(h=>h?.score)):''}</td></tr><tr><td class="left" style="color:#82aaf0;font-size:0.77rem">Points</td>${F.map(i=>ptsCell(i)).join('')}<td class="tot" style="color:#82aaf0;font-weight:600">${fPts||'—'}</td><td class="sep"></td>${B.map(i=>ptsCell(i)).join('')}<td class="tot" style="color:#82aaf0;font-weight:600">${bPts||'—'}</td><td class="tot" style="color:#82aaf0;font-weight:700;font-size:1rem">${row.pts}</td></tr></tbody></table></div>`;}).join('');}
+
+function renderSeasonLb(){
+  const season=document.getElementById('seasonYear')?.value||new Date().getFullYear().toString();
+  const sr=allRounds.filter(r=>r.date.startsWith(season));
+  const standings=players.map(p=>{const pr=sr.filter(r=>r.player_id===p.id);if(!pr.length)return null;const rpts=pr.map(r=>({r,pts:calcRoundPoints(r,p)||0})).sort((a,b)=>b.pts-a.pts);const best4=rpts.slice(0,4);const total=best4.reduce((s,x)=>s+x.pts,0);const avg=rpts.length?(rpts.reduce((s,x)=>s+x.pts,0)/rpts.length).toFixed(1):null;return{p,rounds:pr.length,total,best4,avg};}).filter(Boolean).sort((a,b)=>b.total-a.total);
+  if(!standings.length){document.getElementById('seasonTable').innerHTML='<div class="empty">No rounds for '+season+' yet.</div>';return;}
+  document.getElementById('seasonTable').innerHTML=`<div class="rt-wrap"><table class="rt"><thead><tr><th></th><th>Player</th><th>Rounds</th><th>HCP</th><th>Avg Pts</th><th>Best 4 Rounds</th><th style="color:#82aaf0">Season Total</th></tr></thead><tbody>${standings.map((s,i)=>{const rc=i===0?'rank gold':i===1?'rank silver':i===2?'rank bronze':'rank';const med=i===0?'1st':i===1?'2nd':i===2?'3rd':`${i+1}th`;const hcp=currentHcp(s.p);const b4=s.best4.map(x=>`<span style="display:inline-flex;align-items:center;background:rgba(130,170,240,0.12);border:1px solid rgba(130,170,240,0.25);border-radius:6px;padding:1px 7px;font-family:'DM Mono',monospace;font-size:0.78rem;color:#82aaf0;margin:1px">${x.pts}<span style="font-size:0.6rem;color:rgba(255,255,255,0.3);margin-left:3px">${fd(x.r.date).replace(/\s\d{4}/,'')}</span></span>`).join(' ');return`<tr><td class="${rc}">${med}</td><td><div style="display:flex;align-items:center;gap:8px"><div class="av" style="background:${clr(s.p)}">${ini(s.p.name)}</div>${s.p.name}</div></td><td style="font-family:'DM Mono',monospace">${s.rounds}</td><td style="font-family:'DM Mono',monospace;color:rgba(255,255,255,0.5)">${hcp!=null?hcp:'—'}</td><td style="font-family:'DM Mono',monospace;color:rgba(255,255,255,0.5)">${s.avg}</td><td>${b4}</td><td style="font-family:'DM Mono',monospace;font-weight:700;font-size:1.1rem;color:#82aaf0">${s.total}</td></tr>`;}).join('')}</tbody></table></div>`;}
+
+function renderDreamCard(){
+  const season=document.getElementById('dreamYear')?.value||new Date().getFullYear().toString();
+  const sr=allRounds.filter(r=>r.date.startsWith(season));
+  const F=[0,1,2,3,4,5,6,7,8],B=[9,10,11,12,13,14,15,16,17];
+  const pF=HOLE_PARS.slice(0,9).reduce((a,b)=>a+b,0),pB=HOLE_PARS.slice(9).reduce((a,b)=>a+b,0);
+  const playerEclectics=players.map(p=>{const pr=sr.filter(r=>r.player_id===p.id);if(!pr.length)return null;const bestPerHole=Array.from({length:18},(_,hi)=>{let best=null;for(const r of pr){const h=r.holes[hi];if(!h||h.score==null)continue;const tee=getTee(r.tee_id||'platinum');const index=hcpOnDate(p,r.date);if(index==null)continue;const phcp=calcPlayingHcp(index,tee);const str=strokesOnHole(phcp,hi);const nett=h.score-str;const pts=stablefordPts(h.score,h.par,str);if(best===null||nett<best.nett||(nett===best.nett&&(pts||0)>(best.pts||0)))best={nett,gross:h.score,pts:pts||0,str,par:HOLE_PARS[hi],date:r.date};}return best;});const filled=bestPerHole.filter(Boolean).length;const fN=F.reduce((s,i)=>s+(bestPerHole[i]?.nett??0),0),bN=B.reduce((s,i)=>s+(bestPerHole[i]?.nett??0),0);const fP=F.reduce((s,i)=>s+(bestPerHole[i]?.pts??0),0),bP=B.reduce((s,i)=>s+(bestPerHole[i]?.pts??0),0);const fF=F.filter(i=>bestPerHole[i]).length,bF=B.filter(i=>bestPerHole[i]).length;return{p,bestPerHole,filled,fN,bN,fP,bP,fF,bF,totalNett:fN+bN,totalPts:fP+bP};}).filter(Boolean).sort((a,b)=>{if(a.filled===0&&b.filled===0)return 0;if(a.filled===0)return 1;if(b.filled===0)return -1;return a.totalNett!==b.totalNett?a.totalNett-b.totalNett:b.totalPts-a.totalPts;});
+  if(!playerEclectics.length){document.getElementById('eclecticRankings').innerHTML='<div class="empty">No rounds for '+season+' yet.</div>';document.getElementById('eclecticScorecards').innerHTML='';return;}
+  document.getElementById('eclecticRankings').innerHTML=`<div class="rt-wrap"><table class="rt"><thead><tr><th></th><th>Player</th><th>Holes</th><th>HCP</th><th>Nett Out</th><th>Nett In</th><th style="color:var(--gold-l)">Eclectic Total</th><th style="color:#82aaf0">Total Pts</th></tr></thead><tbody>${playerEclectics.map((e,i)=>{const rc=i===0?'rank gold':i===1?'rank silver':i===2?'rank bronze':'rank';const med=i===0?'1st':i===1?'2nd':i===2?'3rd':`${i+1}th`;const hcp=currentHcp(e.p);const nd=e.totalNett-(pF+pB);return`<tr><td class="${rc}">${med}</td><td><div style="display:flex;align-items:center;gap:8px"><div class="av" style="background:${clr(e.p)}">${ini(e.p.name)}</div>${e.p.name}</div></td><td style="font-family:'DM Mono',monospace">${e.filled}<span style="color:rgba(255,255,255,0.3)">/18</span></td><td style="font-family:'DM Mono',monospace;color:rgba(255,255,255,0.5)">${hcp!=null?hcp:'—'}</td><td style="font-family:'DM Mono',monospace">${e.fF?e.fN:'—'}</td><td style="font-family:'DM Mono',monospace">${e.bF?e.bN:'—'}</td><td><span style="font-family:'DM Mono',monospace;font-weight:700;font-size:1.05rem;color:var(--gold-l)">${e.filled?e.totalNett:'—'}</span>${e.filled?`<span style="font-size:0.72rem;color:${vpC(nd)};margin-left:5px">(${ds(nd)})</span>`:''}</td><td style="font-family:'DM Mono',monospace;font-weight:600;color:#82aaf0">${e.filled?e.totalPts:'—'}</td></tr>`;}).join('')}</tbody></table></div>`;
+  document.getElementById('eclecticScorecards').innerHTML=playerEclectics.map((e,rank)=>{function hc(i){const b=e.bestPerHole[i];if(!b)return`<td style="color:rgba(255,255,255,0.2)">—</td>`;const diff=b.nett-b.par;return`<td title="${fd(b.date)} · Gross ${b.gross}${b.str?' −'+b.str:''} = Nett ${b.nett} (${b.pts}pts)" style="font-family:'DM Mono',monospace;font-size:0.88rem;font-weight:600;color:${vpC(diff)};cursor:default">${b.nett}</td>`;}function pc(i){const b=e.bestPerHole[i];if(!b)return`<td style="color:rgba(255,255,255,0.2)">—</td>`;return`<td style="font-family:'DM Mono',monospace;font-size:0.78rem;font-weight:500;color:${ptC(b.pts)}">${b.pts}</td>`;}const nd=e.totalNett-(pF+pB);const mc=rank===0?'#ffd700':rank===1?'#c0c0c0':rank===2?'#cd7f32':'rgba(255,255,255,0.3)';const isMe=e.p.id===activeId;return`<div id="eclectic_${e.p.id}" style="margin-top:1.2rem;padding-top:1.2rem;border-top:2px solid ${isMe?clr(e.p):'rgba(255,255,255,0.06)'};${isMe?'border-radius:0 0 8px 8px;background:rgba(255,255,255,0.02);padding:1rem;':''}"><div style="display:flex;align-items:center;gap:10px;margin-bottom:0.75rem;flex-wrap:wrap"><div style="font-size:0.82rem;font-weight:600;color:${mc};font-family:'DM Mono',monospace;min-width:28px">${rank+1}.</div><div class="av" style="background:${clr(e.p)}">${ini(e.p.name)}</div><span style="font-weight:500;font-size:0.92rem">${e.p.name}</span>${isMe?`<span style="font-size:0.68rem;background:rgba(255,255,255,0.1);padding:2px 8px;border-radius:10px;color:rgba(255,255,255,0.5)">You</span>`:''}<span style="font-size:0.75rem;color:rgba(255,255,255,0.38)">${e.filled}/18 holes</span><span style="margin-left:auto;font-family:'DM Mono',monospace;font-size:0.82rem">Nett <strong style="color:var(--gold-l)">${e.filled?e.totalNett:'—'}</strong>${e.filled?`<span style="color:${vpC(nd)};font-size:0.75rem"> ${ds(nd)}</span>`:''} &nbsp;·&nbsp; Pts <strong style="color:#82aaf0">${e.filled?e.totalPts:'—'}</strong></span></div><div class="scorecard-wrap"><table class="sc-table" style="min-width:600px"><thead><tr><th class="left">Hole</th>${F.map(i=>`<th>${i+1}</th>`).join('')}<th>Out</th><th class="sep"></th>${B.map(i=>`<th>${i+1}</th>`).join('')}<th>In</th><th>Total</th></tr></thead><tbody><tr><td class="left muted">Par</td>${F.map(i=>`<td class="mono muted">${HOLE_PARS[i]}</td>`).join('')}<td class="tot mono muted">${pF}</td><td class="sep"></td>${B.map(i=>`<td class="mono muted">${HOLE_PARS[i]}</td>`).join('')}<td class="tot mono muted">${pB}</td><td class="tot mono muted">${pF+pB}</td></tr><tr><td class="left muted">SI</td>${F.map(i=>`<td style="font-size:0.67rem;color:rgba(255,255,255,0.27)">${HOLE_HCP[i]}</td>`).join('')}<td class="tot"></td><td class="sep"></td>${B.map(i=>`<td style="font-size:0.67rem;color:rgba(255,255,255,0.27)">${HOLE_HCP[i]}</td>`).join('')}<td class="tot"></td><td class="tot"></td></tr><tr><td class="left" style="font-weight:500;color:var(--gold-l);font-size:0.78rem">Best Nett</td>${F.map(i=>hc(i)).join('')}<td class="tot" style="font-family:'DM Mono',monospace;font-weight:600;color:${e.fF?vpC(e.fN-pF):'rgba(255,255,255,0.3)'}">${e.fF?e.fN:'—'}</td><td class="sep"></td>${B.map(i=>hc(i)).join('')}<td class="tot" style="font-family:'DM Mono',monospace;font-weight:600;color:${e.bF?vpC(e.bN-pB):'rgba(255,255,255,0.3)'}">${e.bF?e.bN:'—'}</td><td class="tot" style="font-family:'DM Mono',monospace;font-weight:700;color:${e.filled?vpC(nd):'rgba(255,255,255,0.3)'}">${e.filled?e.totalNett:'—'}</td></tr><tr><td class="left" style="color:#82aaf0;font-size:0.78rem">Points</td>${F.map(i=>pc(i)).join('')}<td class="tot" style="color:#82aaf0;font-weight:600">${e.fF?e.fP:'—'}</td><td class="sep"></td>${B.map(i=>pc(i)).join('')}<td class="tot" style="color:#82aaf0;font-weight:600">${e.bF?e.bP:'—'}</td><td class="tot" style="color:#82aaf0;font-weight:700">${e.filled?e.totalPts:'—'}</td></tr></tbody></table></div>`;}).join('');
+  // Show My Card button if player is in the eclectic
+  const myBtn=document.getElementById('myEclecticBtn');
+  if(myBtn) myBtn.style.display=playerEclectics.some(e=>e.p.id===activeId)?'inline-block':'none';
+}
+
+// ── My Rounds ─────────────────────────────────────────────────────────────────
+function renderMyRounds(){
+  const p=players.find(x=>x.id===activeId);document.getElementById('myTitle').textContent=p?p.name+"'s Rounds":"My Rounds";
+  const mr=activeId?allRounds.filter(r=>r.player_id===activeId):[];
+  if(!mr.length){document.getElementById('myStats').innerHTML='';document.getElementById('myTable').innerHTML=activeId?'<div class="empty">No rounds yet.</div>':'<div class="empty">Select your player profile (top right).</div>';return;}
+  const diffs=mr.map(r=>tS(r.holes)-tP(r.holes));const pts=mr.map(r=>calcRoundPoints(r,p)).filter(x=>x!=null);const best=Math.min(...diffs);const avg=(diffs.reduce((a,b)=>a+b,0)/diffs.length).toFixed(1);const bPts=pts.length?Math.max(...pts):null;const aPts=pts.length?(pts.reduce((a,b)=>a+b,0)/pts.length).toFixed(1):null;
+  const rec=[...mr].sort((a,b)=>a.date.localeCompare(b.date)).slice(-10);const rd=rec.map(r=>calcRoundPoints(r,p)||0);const mn=Math.min(...rd),mx=Math.max(...rd),rng=mx-mn||1;
+  document.getElementById('myStats').innerHTML=`<div class="sc"><div class="sl">Rounds</div><div class="sv">${mr.length}</div><div class="ss">total</div></div><div class="sc"><div class="sl">Best Pts</div><div class="sv" style="color:#82aaf0">${bPts!=null?bPts:'—'}</div><div class="ss">stableford</div></div><div class="sc"><div class="sl">Avg Pts</div><div class="sv" style="color:#82aaf0">${aPts!=null?aPts:'—'}</div><div class="ss">per round</div></div><div class="sc"><div class="sl">Best Stroke</div><div class="sv">${ds(best)}</div><div class="ss">vs par</div></div><div class="sc"><div class="sl">Trend</div><div class="tbar">${rd.map((d,i)=>`<div class="tbi" style="height:${Math.round(8+((d-mn)/rng)*28)}px;background:#82aaf0;opacity:0.65" title="${fd(rec[i].date)}: ${d} pts"></div>`).join('')}</div>`;
+  const sort=document.getElementById('sortSel').value;const sorted=[...mr].sort((a,b)=>{if(sort==='date-desc')return b.date.localeCompare(a.date);if(sort==='date-asc')return a.date.localeCompare(b.date);if(sort==='pts-desc')return(calcRoundPoints(b,p)||0)-(calcRoundPoints(a,p)||0);return(tS(a.holes)-tP(a.holes))-(tS(b.holes)-tP(b.holes));});
+  document.getElementById('myTable').innerHTML=`<div class="rt-wrap"><table class="rt"><thead><tr><th>Date</th><th>Tee</th><th>Index</th><th>Playing HCP</th><th>Points</th><th>Out</th><th>In</th><th>Total</th><th>vs Par</th></tr></thead><tbody>${sorted.map(r=>{const f=r.holes.slice(0,9),b=r.holes.slice(9);const tot=tS(r.holes),diff=tot-tP(r.holes);const rpts=calcRoundPoints(r,p);return`<tr><td style="color:rgba(255,255,255,0.45);font-size:0.78rem">${fd(r.date)}</td><td><span style="display:inline-flex;align-items:center;gap:4px;font-size:0.76rem"><span class="tee-dot" style="background:${r.tee_color||'#888'}"></span>${r.tee_name||'—'}</span></td><td style="font-family:'DM Mono',monospace;font-size:0.79rem;color:rgba(255,255,255,0.45)">${r.hcp_index!=null?r.hcp_index:'—'}</td><td style="font-family:'DM Mono',monospace;font-size:0.79rem;color:rgba(255,255,255,0.45)">${r.playing_hcp!=null?r.playing_hcp:'—'}</td><td style="font-family:'DM Mono',monospace;font-weight:600;font-size:1rem;color:#82aaf0">${rpts!=null?rpts:'—'}</td><td style="font-family:'DM Mono',monospace;font-size:0.84rem">${f.some(h=>h.score)?tS(f):'—'}<span style="font-size:0.67rem;color:rgba(255,255,255,0.27)">/p${tP(f)}</span></td><td style="font-family:'DM Mono',monospace;font-size:0.84rem">${b.some(h=>h.score)?tS(b):'—'}<span style="font-size:0.67rem;color:rgba(255,255,255,0.27)">/p${tP(b)}</span></td><td style="font-family:'DM Mono',monospace;font-weight:500">${tot}</td><td><span class="sp ${scC(diff)}">${ds(diff)}</span></td></tr>`;}).join('')}</tbody></table></div>`;}
+
+// ── Players ───────────────────────────────────────────────────────────────────
+function showPicker(){
+  const list=document.getElementById('pickerList');const ap=adminPlayer();
+  if(!players.length){list.innerHTML='<div style="color:rgba(255,255,255,0.4);font-size:0.85rem">No players yet.</div>';}
+  else{list.innerHTML=players.map(p=>`<div onclick="setPlayer(${p.id})" style="display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:10px;cursor:pointer;background:${p.id===activeId?'rgba(201,168,76,0.12)':'rgba(255,255,255,0.04)'};border:1px solid ${p.id===activeId?'rgba(201,168,76,0.4)':'rgba(255,255,255,0.08)'}"><div style="width:30px;height:30px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.72rem;font-weight:600;color:#fff">${ini(p.name)}</div><div style="flex:1"><div style="font-weight:500;font-size:0.88rem;display:flex;align-items:center;gap:6px">${p.name}${p.id===ap?.id?'<span class="tag tag-admin">Admin</span>':''}${p.id===activeId?'<span class="tag tag-you">You</span>':''}</div><div style="font-size:0.7rem;color:rgba(255,255,255,0.36)">${currentHcp(p)!=null?'HCP '+currentHcp(p)+' · ':''}${allRounds.filter(r=>r.player_id===p.id).length} rounds</div></div>`).join('');}
+  document.getElementById('pickerModal').style.display='flex';
+}
+function setPlayer(id){
+  activeId=id;const p=players.find(x=>x.id===id);
+  if(p){document.getElementById('playerName').textContent=p.name;const av=document.getElementById('playerAvatar');av.textContent=ini(p.name);av.style.background=clr(p);}
+  localStorage.setItem('sl_active_player',id);closeModal('pickerModal');updateAdminUI();
+  const hb=document.getElementById('myHcpBtn');if(hb)hb.style.display='inline-block';
+}
+function showAddPlayer(){
+  if(!isAdmin()){alert('Only the admin can add players.');return;}
+  selColor=0;document.getElementById('newName').value='';document.getElementById('newHcp').value='';
+  document.getElementById('colorPicker').innerHTML=COLORS.map((c,i)=>`<div onclick="pickColor(${i})" id="cp${i}" style="width:26px;height:26px;border-radius:50%;background:${c};cursor:pointer;border:2px solid ${i===0?'#fff':'transparent'};transition:all 0.15s"></div>`).join('');
+  document.getElementById('addModal').style.display='flex';setTimeout(()=>document.getElementById('newName').focus(),50);
+}
+function pickColor(i){selColor=i;COLORS.forEach((_,j)=>{const el=document.getElementById('cp'+j);if(el)el.style.borderColor=j===i?'#fff':'transparent';});}
+async function addPlayer(){
+  const name=document.getElementById('newName').value.trim();if(!name){alert('Enter a name.');return;}
+  const hcp=document.getElementById('newHcp').value;const td=today();const hcpVal=hcp?parseFloat(hcp):null;
+  const payload={id:Date.now(),name,color:selColor,handicap:hcpVal,hcp_history:hcpVal!=null?[{date:td,value:hcpVal,note:'Initial entry'}]:[]};
+  setLoading(true,'Saving player…');
+  try{await sbInsert('players',payload);players.push(payload);toast('Player added ✓');closeModal('addModal');renderGrid();updateAdminUI();}
+  catch(e){alert('Error: '+e.message);}finally{setLoading(false);}
+}
+async function deletePlayer(id){
+  if(!isAdmin()){alert('Only the admin can remove players.');return;}
+  const ap=adminPlayer();if(ap&&ap.id===id){alert('Cannot remove the admin player.');return;}
+  if(!confirm('Remove this player?'))return;
+  setLoading(true,'Removing…');
+  try{await sbDelete('players',id);players=players.filter(p=>p.id!==id);if(activeId===id){activeId=null;document.getElementById('playerName').textContent='Select player';document.getElementById('playerAvatar').style.background='#555';document.getElementById('playerAvatar').textContent='';}toast('Player removed');renderGrid();}
+  catch(e){alert('Error: '+e.message);}finally{setLoading(false);}
+}
+function renderGrid(){
+  const g=document.getElementById('playerGrid');const ap=adminPlayer();const admin=isAdmin();
+  const ab=document.getElementById('addPlayerBtn');if(ab)ab.style.display=admin?'inline-block':'none';
+  g.innerHTML=players.map(p=>`
+    <div class="pc${p.id===activeId?' active-p':''}" onclick="setPlayer(${p.id})">
+      <div class="av" style="background:${clr(p)}">${ini(p.name)}</div>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
+          <span style="font-weight:500;font-size:0.9rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.name}</span>
+          ${p.id===ap?.id?'<span class="tag tag-admin" style="font-size:0.6rem;padding:1px 6px">Admin</span>':''}
+        </div>
+        <div style="font-size:0.7rem;color:rgba(255,255,255,0.36)">${currentHcp(p)!=null?'HCP '+currentHcp(p)+' · ':''}${allRounds.filter(r=>r.player_id===p.id).length} rounds</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
+        ${p.id!==ap?.id&&admin?`<button class="btn btn-warn btn-sm" onclick="event.stopPropagation();makeAdmin(${p.id})">★ Admin</button>`:''}
+        ${p.id!==ap?.id&&admin?`<button style="background:transparent;border:none;color:rgba(255,255,255,0.2);cursor:pointer;font-size:1rem;padding:2px" onclick="event.stopPropagation();deletePlayer(${p.id})">✕</button>`:''}
+      </div>
+    </div>`).join('')+(admin?`<div class="pc add-pc" onclick="showAddPlayer()"><span style="font-size:1.1rem">+</span> Add player</div>`:'');
+}
+async function makeAdmin(id){
+  if(!confirm('Make this player the admin?'))return;
+  setLoading(true,'Updating…');
+  try{for(const p of players){if(p.is_admin){p.is_admin=false;await sbUpdate('players',p.id,{is_admin:false});}}const p=players.find(x=>x.id===id);if(p){p.is_admin=true;await sbUpdate('players',p.id,{is_admin:true});}toast('Admin updated ✓');renderGrid();updateAdminUI();}
+  catch(e){alert('Error: '+e.message);}finally{setLoading(false);}
+}
+
+// ── Self-service HCP ──────────────────────────────────────────────────────────
+function showMyHcp(){
+  if(!activeId){alert('Select your player profile first.');return;}
+  const p=players.find(x=>x.id===activeId);if(!p)return;
+  document.getElementById('myHcpTitle').textContent='Update Handicap — '+p.name;
+  document.getElementById('myHcpCurrent').value=currentHcp(p)!=null?currentHcp(p):'Not set';
+  document.getElementById('myHcpVal').value='';document.getElementById('myHcpDate').value=today();
+  document.getElementById('myHcpModal').style.display='flex';setTimeout(()=>document.getElementById('myHcpVal').focus(),50);
+}
+async function saveMyHcp(){
+  const val=parseFloat(document.getElementById('myHcpVal').value);const date=document.getElementById('myHcpDate').value;
+  if(isNaN(val)||!date){alert('Enter a valid index and date.');return;}
+  const p=players.find(x=>x.id===activeId);if(!p)return;
+  const hist=[...(p.hcp_history||[])].filter(e=>e.date!==date);hist.push({date,value:val,note:'Player update'});
+  p.hcp_history=hist;p.handicap=val;
+  setLoading(true,'Saving…');
+  try{await sbUpdate('players',p.id,{hcp_history:hist,handicap:val});toast('Handicap updated ✓');closeModal('myHcpModal');renderMyRounds();renderGrid();}
+  catch(e){alert('Error: '+e.message);}finally{setLoading(false);}
+}
+
+// ── Admin functions ───────────────────────────────────────────────────────────
+function renderAdmin(){
+  const panel=document.getElementById('adminHcpPanel');const ap=adminPlayer();
+  if(!players.length){panel.innerHTML='<div class="empty">No players.</div>';return;}
+  panel.innerHTML=players.map(p=>{const hist=[...(p.hcp_history||[])].sort((a,b)=>b.date.localeCompare(a.date));const isAP=p.id===ap?.id;return`<div style="margin-bottom:1.5rem;padding-bottom:1.5rem;border-bottom:1px solid rgba(255,255,255,0.06)"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.7rem;flex-wrap:wrap;gap:8px"><div style="display:flex;align-items:center;gap:10px"><div class="av" style="background:${clr(p)}">${ini(p.name)}</div><div><div style="font-weight:500">${p.name} ${isAP?'<span class="tag tag-admin">Admin</span>':''}</div><div style="font-size:0.72rem;color:rgba(255,255,255,0.38)">Current: <strong style="color:var(--gold-l)">${currentHcp(p)!=null?currentHcp(p):'not set'}</strong></div></div></div><button class="btn btn-warn btn-sm" onclick="openHcpEdit(${p.id})">+ Update Index</button></div>${hist.length?`<table class="hcp-hist"><thead><tr><th>Effective Date</th><th>HCP Index</th><th>Note</th><th></th></tr></thead><tbody>${hist.map((e,i)=>`<tr class="${i===0?'current-hcp':''}"><td style="font-family:'DM Mono',monospace;font-size:0.8rem">${fd(e.date)}</td><td style="font-family:'DM Mono',monospace;font-weight:${i===0?600:400};color:${i===0?'var(--gold-l)':'inherit'}">${e.value}</td><td style="color:rgba(255,255,255,0.4);font-size:0.78rem">${e.note||'—'}</td><td><button class="btn btn-danger btn-sm" onclick="deleteHcpEntry(${p.id},'${e.date}',${e.value})">✕</button></td></tr>`).join('')}</tbody></table></div>`:'<div style="font-size:0.8rem;color:rgba(255,255,255,0.3);padding:6px 0">No history.</div>'}</div>`;}).join('');
+  const rsel=document.getElementById('adminRoundPlayer');rsel.innerHTML=`<option value="all">All players</option>`+players.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+  renderAdminRounds();
+}
+function openHcpEdit(pid){
+  editingHcpPlayerId=pid;const p=players.find(x=>x.id===pid);
+  document.getElementById('editHcpTitle').textContent='Update HCP — '+p.name;
+  document.getElementById('editHcpVal').value='';document.getElementById('editHcpDate').value=today();document.getElementById('editHcpNote').value='';
+  document.getElementById('editHcpModal').style.display='flex';setTimeout(()=>document.getElementById('editHcpVal').focus(),50);
+}
+async function saveHcpEdit(){
+  const val=parseFloat(document.getElementById('editHcpVal').value);const date=document.getElementById('editHcpDate').value;const note=document.getElementById('editHcpNote').value.trim()||'Admin update';
+  if(isNaN(val)||!date){alert('Enter a valid index and date.');return;}
+  const p=players.find(x=>x.id===editingHcpPlayerId);if(!p)return;
+  const hist=[...(p.hcp_history||[])].filter(e=>e.date!==date);hist.push({date,value:val,note});p.hcp_history=hist;p.handicap=val;
+  setLoading(true,'Saving…');
+  try{await sbUpdate('players',p.id,{hcp_history:hist,handicap:val});toast('Handicap updated ✓');closeModal('editHcpModal');renderAdmin();}
+  catch(e){alert('Error: '+e.message);}finally{setLoading(false);}
+}
+async function deleteHcpEntry(pid,date,value){
+  if(!confirm(`Delete HCP entry ${value} effective ${fd(date)}?`))return;
+  const p=players.find(x=>x.id===pid);if(!p)return;
+  const hist=p.hcp_history.filter(e=>!(e.date===date&&e.value===value));p.hcp_history=hist;
+  setLoading(true,'Saving…');
+  try{await sbUpdate('players',p.id,{hcp_history:hist});toast('Entry deleted');renderAdmin();}
+  catch(e){alert('Error: '+e.message);}finally{setLoading(false);}
+}
+function renderAdminRounds(){
+  const filterPid=document.getElementById('adminRoundPlayer').value;
+  let rounds=filterPid==='all'?allRounds:allRounds.filter(r=>r.player_id==filterPid);
+  rounds=[...rounds].sort((a,b)=>b.date.localeCompare(a.date));
+  const ct=document.getElementById('adminRoundsTable');
+  if(!rounds.length){ct.innerHTML='<div class="empty">No rounds.</div>';return;}
+  ct.innerHTML=`<div style="overflow-x:auto"><table class="rt" style="min-width:600px"><thead><tr><th>Date</th><th>Player</th><th>Tee</th><th>HCP</th><th>Pts</th><th>Total</th><th>vs Par</th><th></th></tr></thead><tbody>${rounds.map(r=>{const p=players.find(x=>x.id===r.player_id);const tot=tS(r.holes),diff=tot-tP(r.holes);const rpts=p?calcRoundPoints(r,p):null;return`<tr><td style="color:rgba(255,255,255,0.45);font-size:0.78rem;white-space:nowrap">${fd(r.date)}</td><td><div style="display:flex;align-items:center;gap:6px">${p?`<div class="av" style="background:${clr(p)};width:22px;height:22px;font-size:0.6rem">${ini(p.name)}</div>${p.name}`:'Unknown'}</div></td><td><span style="display:inline-flex;align-items:center;gap:4px;font-size:0.76rem"><span class="tee-dot" style="background:${r.tee_color||'#888'}"></span>${r.tee_name||'—'}</span></td><td style="font-family:'DM Mono',monospace;font-size:0.79rem">${r.hcp_index!=null?r.hcp_index:'—'} / ${r.playing_hcp!=null?r.playing_hcp:'—'}</td><td style="font-family:'DM Mono',monospace;font-weight:600;color:#82aaf0">${rpts!=null?rpts:'—'}</td><td style="font-family:'DM Mono',monospace">${tot}</td><td><span class="sp ${scC(diff)}">${ds(diff)}</span></td><td style="white-space:nowrap"><button class="btn btn-warn btn-sm" onclick="openEditRound(${r.id})" style="margin-right:4px">Edit</button><button class="btn btn-danger btn-sm" onclick="deleteRoundDirect(${r.id})">✕</button></td></tr>`;}).join('')}</tbody></table></div>`;}
+
+async function deleteRoundDirect(id){
+  const r=allRounds.find(x=>x.id===id);if(!r)return;
+  const p=players.find(x=>x.id===r.player_id);
+  if(!confirm(`Delete ${p?p.name+'\'s':''} round on ${fd(r.date)}?`))return;
+  setLoading(true,'Deleting…');
+  try{await sbDelete('rounds',id);allRounds=allRounds.filter(x=>x.id!==id);toast('Round deleted');renderAdminRounds();renderTodayLb();}
+  catch(e){alert('Error: '+e.message);}finally{setLoading(false);}
+}function openEditRound(id){
+  editingRoundId=id;const r=allRounds.find(x=>x.id===id);if(!r)return;const p=players.find(x=>x.id===r.player_id);
+  document.getElementById('editRoundTitle').textContent='Edit Round — '+(p?p.name:'?')+' · '+fd(r.date);
+  document.getElementById('erDate').value=r.date;document.getElementById('erNotes').value=r.notes||'';
+  erSelTeeId=r.tee_id||'platinum';buildTeeSelectorEl('erTeeSelector',erSelTeeId,'erSelTeeId');buildEditScorecard();
+  document.getElementById('editRoundModal').style.display='flex';
+}
+async function saveRoundEdit(){
+  const r=allRounds.find(x=>x.id===editingRoundId);if(!r)return;const p=players.find(x=>x.id===r.player_id);
+  const date=document.getElementById('erDate').value;const tee=getTee(erSelTeeId);const holes=getScoresFromInputs('er_');
+  const index=p?hcpOnDate(p,date):null;const courseHcp=index!=null?calcCourseHcp(index,tee):null;const playingHcp=index!=null?calcPlayingHcp(index,tee):null;
+  const updates={date,notes:document.getElementById('erNotes').value.trim(),tee_id:erSelTeeId,tee_name:tee.name,tee_color:tee.color,rating:tee.rating,slope:tee.slope,hcp_index:index,course_hcp:courseHcp,playing_hcp:playingHcp,holes};
+  setLoading(true,'Saving…');
+  try{await sbUpdate('rounds',r.id,updates);Object.assign(r,updates);toast('Round updated ✓');closeModal('editRoundModal');renderAdminRounds();}
+  catch(e){alert('Error: '+e.message);}finally{setLoading(false);}
+}
+async function deleteRoundAdmin(){
+  if(!confirm('Delete this round permanently?'))return;
+  setLoading(true,'Deleting…');
+  try{await sbDelete('rounds',editingRoundId);allRounds=allRounds.filter(r=>r.id!==editingRoundId);toast('Round deleted');closeModal('editRoundModal');renderAdminRounds();}
+  catch(e){alert('Error: '+e.message);}finally{setLoading(false);}
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+async function init(){
+  document.getElementById('roundDate').value=today();
+  buildTeeSelectorEl('teeSelector',selTeeId,'selTeeId');
+  try{
+    await loadData();
+    document.getElementById('dbStatus').textContent='● Supabase';document.getElementById('dbStatus').className='db-status db-ok';
+  }catch(e){document.getElementById('dbStatus').textContent='✕ DB Error';document.getElementById('dbStatus').className='db-status db-err';console.error(e);}
+  populateYearSelects();renderTodayLb();renderGrid();
+  // Restore last selected player
+  const savedId=localStorage.getItem('sl_active_player');
+  if(savedId){const saved=players.find(p=>p.id==savedId);if(saved){activeId=saved.id;document.getElementById('playerName').textContent=saved.name;const av=document.getElementById('playerAvatar');av.textContent=ini(saved.name);av.style.background=clr(saved);const hb=document.getElementById('myHcpBtn');if(hb)hb.style.display='inline-block';}}
+  updateAdminUI();buildPlayerCheckboxes();checkForResumableRounds();
+
+  setLoading(false);
+}
+init();
+</script>
+</body>
+</html>
