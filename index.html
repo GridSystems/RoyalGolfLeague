@@ -128,9 +128,31 @@ select option { background: #1a3a2a; }
   <div style="background:rgba(0,0,0,0.35);border:1px solid rgba(201,168,76,0.22);border-radius:20px;padding:2.5rem;width:min(340px,92vw);text-align:center;">
     <div style="font-family:'Playfair Display',serif;font-size:1.5rem;color:#f0d58c;margin-bottom:4px">Saturday League</div>
     <div style="font-size:0.65rem;color:rgba(240,213,140,0.4);letter-spacing:0.12em;text-transform:uppercase;margin-bottom:2rem">Royal Golf Club · Copenhagen</div>
-    <div class="fgi" style="text-align:left;margin-bottom:1rem"><label>Password</label><input type="password" id="appPwdInput" placeholder="••••••" maxlength="40" onkeydown="if(event.key==='Enter')submitAppPwd()"></div>
-    <div id="appPwdError" style="color:#f08080;font-size:0.78rem;margin-bottom:0.75rem;display:none">Incorrect password.</div>
-    <button class="btn btn-primary" style="width:100%" onclick="submitAppPwd()">Enter</button>
+    <!-- Login panel -->
+    <div id="lockLoginPanel">
+      <div class="fgi" style="text-align:left;margin-bottom:1rem"><label>Password</label><input type="password" id="appPwdInput" placeholder="••••••" maxlength="40" onkeydown="if(event.key==='Enter')submitAppPwd()"></div>
+      <div id="appPwdError" style="color:#f08080;font-size:0.78rem;margin-bottom:0.75rem;display:none">Incorrect password.</div>
+      <button class="btn btn-primary" style="width:100%" onclick="submitAppPwd()">Enter</button>
+      <div style="margin-top:1.25rem;font-size:0.8rem;color:rgba(240,213,140,0.5)">New here? <span onclick="showLockSignup()" style="color:var(--gold-l);cursor:pointer;text-decoration:underline">Sign up</span></div>
+    </div>
+    <!-- Sign-up panel -->
+    <div id="lockSignupPanel" style="display:none">
+      <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:1rem;text-align:left">
+        <div class="fgi"><label>Full Name</label><input type="text" id="signupName" placeholder="e.g. Anders Nielsen" maxlength="60"></div>
+        <div class="fgi"><label>Handicap Index</label><input type="number" id="signupHcp" placeholder="e.g. 14.2" step="0.1" min="-10" max="54"></div>
+        <div class="fgi"><label>Choose a 4-digit PIN</label><input type="password" id="signupPin" placeholder="••••" maxlength="4" inputmode="numeric" pattern="[0-9]*"></div>
+        <div class="fgi"><label>Confirm PIN</label><input type="password" id="signupPinConfirm" placeholder="••••" maxlength="4" inputmode="numeric" pattern="[0-9]*"></div>
+        <div id="signupError" style="color:#f08080;font-size:0.78rem;display:none"></div>
+      </div>
+      <button class="btn btn-primary" style="width:100%" onclick="submitSignup()">Register</button>
+      <div style="margin-top:1.25rem;font-size:0.8rem;color:rgba(240,213,140,0.5)"><span onclick="showLockLogin()" style="color:var(--gold-l);cursor:pointer;text-decoration:underline">← Back to login</span></div>
+    </div>
+    <!-- MobilePay panel -->
+    <div id="lockPayPanel" style="display:none">
+      <div style="font-size:0.88rem;color:rgba(255,255,255,0.75);line-height:1.6;margin-bottom:1.5rem;text-align:left">Your registration is pending admin approval.<br><br>Please pay <strong style="color:var(--gold-l)">DKK 250</strong> to access the season at the link below. The pot is split 50/50 between the Eclectic tournament and the best 4 IPS Scores at end of Season.</div>
+      <a href="https://qr.mobilepay.dk/box/53592791-c6e9-4588-976f-8b187c98c76d/pay-in" target="_blank" style="display:block;background:rgba(201,168,76,0.12);border:1px solid rgba(201,168,76,0.35);border-radius:12px;padding:1rem;text-align:center;text-decoration:none;color:var(--gold-l);font-size:0.9rem;font-weight:500;margin-bottom:1.25rem">Pay DKK 250 via MobilePay →</a>
+      <button class="btn btn-ghost" style="width:100%" onclick="showLockLogin()">Back to Login</button>
+    </div>
   </div>
 </div>
 <div class="loading-overlay" id="loadingOverlay"><div class="spinner"></div><div style="color:var(--gold-l);font-size:0.88rem">Connecting to Supabase…</div></div>
@@ -265,6 +287,10 @@ select option { background: #1a3a2a; }
       <button class="btn btn-ghost btn-sm" onclick="document.getElementById('changePinModal').style.display='flex'">Change Admin PIN</button>
       <button class="btn btn-ghost btn-sm" onclick="document.getElementById('changeAppPwdModal').style.display='flex'">Change App Password</button>
     </div>
+    <div class="panel" id="pendingApprovalsPanel" style="display:none">
+      <div class="ph"><span class="pt">Pending Approvals</span><span id="pendingBadge" style="font-size:0.75rem;color:var(--gold-l)"></span></div>
+      <div class="pb" id="pendingApprovalsList"></div>
+    </div>
     <div class="panel" id="bulkEntryPanel">
       <div class="ph"><span class="pt">Bulk Round Entry</span><span style="font-size:0.75rem;color:rgba(255,255,255,0.35)">Enter a full round for one player at a time</span></div>
       <div class="pb" id="bulkEntryBody">
@@ -334,6 +360,36 @@ select option { background: #1a3a2a; }
   <div style="display:flex;gap:9px;justify-content:flex-end">
     <button class="btn btn-ghost btn-sm" onclick="closeModal('changeAppPwdModal')">Cancel</button>
     <button class="btn btn-primary btn-sm" onclick="saveNewAppPwd()">Save</button>
+  </div>
+</div></div>
+
+
+<div class="modal-bg" id="pinModal" style="display:none"><div class="modal modal-sm">
+  <div id="pinModalHeader" style="display:flex;align-items:center;gap:12px;margin-bottom:1.25rem">
+    <div id="pinModalAvatar" style="width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.8rem;font-weight:600;color:#fff;flex-shrink:0"></div>
+    <div><div id="pinModalName" style="font-family:'Playfair Display',serif;font-size:1rem;color:var(--gold-l)"></div><div id="pinModalSub" style="font-size:0.72rem;color:rgba(255,255,255,0.4)"></div></div>
+  </div>
+  <div id="pinEnterSection">
+    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:1rem">
+      <div class="fgi"><label>Enter your PIN</label><input type="password" id="pinInput" placeholder="••••" maxlength="4" inputmode="numeric" pattern="[0-9]*" onkeydown="if(event.key==='Enter')submitPin()"></div>
+      <div id="pinError" style="color:#f08080;font-size:0.78rem;display:none">Incorrect PIN.</div>
+    </div>
+    <div style="display:flex;gap:9px;justify-content:flex-end">
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('pinModal')">Cancel</button>
+      <button class="btn btn-primary btn-sm" onclick="submitPin()">Confirm</button>
+    </div>
+  </div>
+  <div id="pinSetSection" style="display:none">
+    <div style="font-size:0.82rem;color:rgba(255,255,255,0.45);margin-bottom:1rem">No PIN set yet. Choose a 4-digit PIN to secure your account.</div>
+    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:1rem">
+      <div class="fgi"><label>Choose a PIN</label><input type="password" id="pinSetInput" placeholder="••••" maxlength="4" inputmode="numeric" pattern="[0-9]*"></div>
+      <div class="fgi"><label>Confirm PIN</label><input type="password" id="pinSetConfirm" placeholder="••••" maxlength="4" inputmode="numeric" pattern="[0-9]*"></div>
+      <div id="pinSetError" style="color:#f08080;font-size:0.78rem;display:none"></div>
+    </div>
+    <div style="display:flex;gap:9px;justify-content:flex-end">
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('pinModal')">Cancel</button>
+      <button class="btn btn-primary btn-sm" onclick="saveFirstPin()">Set PIN</button>
+    </div>
   </div>
 </div></div>
 
@@ -440,7 +496,8 @@ function calcRoundPoints(round,player){const tee=getTee(round.tee_id||'platinum'
 function calcHolePoints(round,player){const tee=getTee(round.tee_id||'platinum');const index=hcpOnDate(player,round.date);if(index==null)return Array(18).fill(null);const phcp=calcPlayingHcp(index,tee);return round.holes.map((h,i)=>{if(!h||h.score==null)return null;const str=strokesOnHole(phcp,i);return{pts:stablefordPts(h.score,h.par,str),nett:h.score-str,gross:h.score,str,par:h.par};});}
 
 // ── Storage ───────────────────────────────────────────────────────────────────
-async function loadData(){players=await sbGet('players','order=created_at.asc');allRounds=await sbGet('rounds','order=date.desc');}
+let pendingPlayers=[];
+async function loadData(){const all=await sbGet('players','order=created_at.asc');pendingPlayers=all.filter(p=>p.approved===false);players=all.filter(p=>p.approved!==false);allRounds=await sbGet('rounds','order=date.desc');}
 
 // ── Admin ─────────────────────────────────────────────────────────────────────
 function adminPlayer(){return players.find(p=>p.is_admin)||players[0];}
@@ -452,6 +509,58 @@ const APP_PWD_KEY='sl_app_pwd';const DEFAULT_APP_PWD='royal';
 function getAppPwd(){return localStorage.getItem(APP_PWD_KEY)||DEFAULT_APP_PWD;}
 function submitAppPwd(){const entered=document.getElementById('appPwdInput').value;if(entered===getAppPwd()){sessionStorage.setItem('app_auth','1');document.getElementById('lockScreen').style.display='none';init().then(()=>showPicker());}else{document.getElementById('appPwdError').style.display='block';document.getElementById('appPwdInput').value='';document.getElementById('appPwdInput').focus();}}
 function saveNewAppPwd(){const v1=document.getElementById('newAppPwdVal').value.trim();const v2=document.getElementById('newAppPwdConfirm').value.trim();if(!v1){alert('Enter a password.');return;}if(v1!==v2){alert('Passwords do not match.');return;}localStorage.setItem(APP_PWD_KEY,v1);toast('App password updated ✓');closeModal('changeAppPwdModal');}
+
+// ── Sign-up ───────────────────────────────────────────────────────────────────
+function showLockLogin(){document.getElementById('lockLoginPanel').style.display='block';document.getElementById('lockSignupPanel').style.display='none';document.getElementById('lockPayPanel').style.display='none';setTimeout(()=>document.getElementById('appPwdInput').focus(),50);}
+function showLockSignup(){document.getElementById('lockLoginPanel').style.display='none';document.getElementById('lockSignupPanel').style.display='block';document.getElementById('lockPayPanel').style.display='none';document.getElementById('signupName').value='';document.getElementById('signupHcp').value='';document.getElementById('signupPin').value='';document.getElementById('signupPinConfirm').value='';document.getElementById('signupError').style.display='none';setTimeout(()=>document.getElementById('signupName').focus(),50);}
+function showSignup(){showLockSignup();}
+async function submitSignup(){
+  const name=document.getElementById('signupName').value.trim();
+  const hcpRaw=document.getElementById('signupHcp').value;
+  const pin=document.getElementById('signupPin').value.trim();
+  const pinConfirm=document.getElementById('signupPinConfirm').value.trim();
+  const err=document.getElementById('signupError');
+  if(!name){err.textContent='Please enter your name.';err.style.display='block';return;}
+  if(!pin||pin.length<4){err.textContent='PIN must be 4 digits.';err.style.display='block';return;}
+  if(pin!==pinConfirm){err.textContent='PINs do not match.';err.style.display='block';return;}
+  const hcpVal=hcpRaw?parseFloat(hcpRaw):null;
+  const nextColor=Math.floor(Math.random()*COLORS.length);
+  const payload={id:Date.now(),name,color:nextColor,handicap:hcpVal,hcp_history:hcpVal!=null?[{date:today(),value:hcpVal,note:'Sign-up entry'}]:[],approved:false,pin};
+  err.style.display='none';
+  try{
+    await sbInsert('players',payload);
+    document.getElementById('lockLoginPanel').style.display='none';
+    document.getElementById('lockSignupPanel').style.display='none';
+    document.getElementById('lockPayPanel').style.display='block';
+  }catch(e){err.textContent='Error: '+e.message;err.style.display='block';}
+}
+function renderPendingApprovals(){
+  const panel=document.getElementById('pendingApprovalsPanel');
+  const list=document.getElementById('pendingApprovalsList');
+  const badge=document.getElementById('pendingBadge');
+  if(!pendingPlayers.length){panel.style.display='none';return;}
+  panel.style.display='block';
+  badge.textContent=pendingPlayers.length+' pending';
+  list.innerHTML=pendingPlayers.map(p=>`<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)"><div style="width:34px;height:34px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.72rem;font-weight:600;color:#fff;flex-shrink:0">${ini(p.name)}</div><div style="flex:1"><div style="font-weight:500;font-size:0.88rem">${p.name}</div><div style="font-size:0.72rem;color:rgba(255,255,255,0.4)">${p.hcp_history?.length?'HCP '+p.hcp_history[p.hcp_history.length-1].value:'No HCP'}</div></div><button class="btn btn-primary btn-sm" onclick="approvePlayer(${p.id})">Approve</button><button class="btn btn-danger btn-sm" onclick="rejectPlayer(${p.id})">Reject</button></div>`).join('');
+}
+async function approvePlayer(id){
+  setLoading(true,'Approving…');
+  try{
+    await sbUpdate('players',id,{approved:true});
+    const p=pendingPlayers.find(x=>x.id===id);
+    if(p){p.approved=true;pendingPlayers=pendingPlayers.filter(x=>x.id!==id);players.push(p);}
+    toast(p?.name+' approved ✓');renderPendingApprovals();renderGrid();
+  }catch(e){alert('Error: '+e.message);}finally{setLoading(false);}
+}
+async function rejectPlayer(id){
+  if(!confirm('Reject and delete this signup?'))return;
+  setLoading(true,'Rejecting…');
+  try{
+    await sbDelete('players',id);
+    pendingPlayers=pendingPlayers.filter(x=>x.id!==id);
+    toast('Signup rejected');renderPendingApprovals();
+  }catch(e){alert('Error: '+e.message);}finally{setLoading(false);}
+}
 
 // ── PIN ───────────────────────────────────────────────────────────────────────
 const PIN_KEY='sl_admin_pin';const DEFAULT_PIN='saturday';
@@ -471,7 +580,7 @@ function showView(id,btn){
   if(id==='history'){renderMyRounds();const b=document.getElementById('myHcpBtn');if(b)b.style.display=activeId?'inline-block':'none';}
   if(id==='players')renderGrid();
   if(id==='log'){buildTeeSelectorEl('teeSelector',selTeeId,'selTeeId');buildPlayerCheckboxes();checkForResumableRounds();}
-  if(id==='admin'){renderAdmin();renderBulkEntry();}
+  if(id==='admin'){renderPendingApprovals();renderAdmin();renderBulkEntry();}
 }
 function showLb(id,btn){document.querySelectorAll('.lb-view').forEach(v=>v.classList.remove('active'));document.querySelectorAll('.sub-tab').forEach(t=>t.classList.remove('active'));document.getElementById('lb-'+id).classList.add('active');if(btn)btn.classList.add('active');if(id==='today')renderTodayLb();if(id==='season')renderSeasonLb();if(id==='dreamcard'){renderDreamCard();}}
 
@@ -1004,8 +1113,52 @@ function renderMyRounds(){
 function showPicker(){
   const list=document.getElementById('pickerList');const ap=adminPlayer();
   if(!players.length){list.innerHTML='<div style="color:rgba(255,255,255,0.4);font-size:0.85rem">No players yet.</div>';}
-  else{list.innerHTML=players.map(p=>`<div onclick="setPlayer(${p.id})" style="display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:10px;cursor:pointer;background:${p.id===activeId?'rgba(201,168,76,0.12)':'rgba(255,255,255,0.04)'};border:1px solid ${p.id===activeId?'rgba(201,168,76,0.4)':'rgba(255,255,255,0.08)'}"><div style="width:30px;height:30px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.72rem;font-weight:600;color:#fff">${ini(p.name)}</div><div style="flex:1"><div style="font-weight:500;font-size:0.88rem;display:flex;align-items:center;gap:6px">${p.name}${p.id===ap?.id?'<span class="tag tag-admin">Admin</span>':''}${p.id===activeId?'<span class="tag tag-you">You</span>':''}</div><div style="font-size:0.7rem;color:rgba(255,255,255,0.36)">${currentHcp(p)!=null?'HCP '+currentHcp(p)+' · ':''}${allRounds.filter(r=>r.player_id===p.id).length} rounds</div></div></div>`).join('');}
+  else{list.innerHTML=players.map(p=>`<div onclick="requirePin(${p.id})" style="display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:10px;cursor:pointer;background:${p.id===activeId?'rgba(201,168,76,0.12)':'rgba(255,255,255,0.04)'};border:1px solid ${p.id===activeId?'rgba(201,168,76,0.4)':'rgba(255,255,255,0.08)'}"><div style="width:30px;height:30px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.72rem;font-weight:600;color:#fff">${ini(p.name)}</div><div style="flex:1"><div style="font-weight:500;font-size:0.88rem;display:flex;align-items:center;gap:6px">${p.name}${p.id===ap?.id?'<span class="tag tag-admin">Admin</span>':''}${p.id===activeId?'<span class="tag tag-you">You</span>':''}</div><div style="font-size:0.7rem;color:rgba(255,255,255,0.36)">${currentHcp(p)!=null?'HCP '+currentHcp(p)+' · ':''}${allRounds.filter(r=>r.player_id===p.id).length} rounds</div></div></div>`).join('');}
   document.getElementById('pickerModal').style.display='flex';
+}
+let pendingPinId=null;
+function requirePin(id){
+  const p=players.find(x=>x.id===id);if(!p)return;
+  pendingPinId=id;
+  document.getElementById('pinModalAvatar').textContent=ini(p.name);
+  document.getElementById('pinModalAvatar').style.background=clr(p);
+  document.getElementById('pinModalName').textContent=p.name;
+  const hasPin=p.pin&&p.pin.length>0;
+  document.getElementById('pinModalSub').textContent=hasPin?'Enter your PIN to continue':'First time? Set a PIN to secure your account';
+  document.getElementById('pinEnterSection').style.display=hasPin?'block':'none';
+  document.getElementById('pinSetSection').style.display=hasPin?'none':'block';
+  document.getElementById('pinInput').value='';document.getElementById('pinError').style.display='none';
+  document.getElementById('pinSetInput').value='';document.getElementById('pinSetConfirm').value='';document.getElementById('pinSetError').style.display='none';
+  closeModal('pickerModal');
+  document.getElementById('pinModal').style.display='flex';
+  setTimeout(()=>{const f=hasPin?document.getElementById('pinInput'):document.getElementById('pinSetInput');if(f)f.focus();},50);
+}
+function submitPin(){
+  const p=players.find(x=>x.id===pendingPinId);if(!p)return;
+  const entered=document.getElementById('pinInput').value;
+  if(entered===p.pin){closeModal('pinModal');setPlayer(pendingPinId);}
+  else{document.getElementById('pinError').style.display='block';document.getElementById('pinInput').value='';document.getElementById('pinInput').focus();}
+}
+async function saveFirstPin(){
+  const v1=document.getElementById('pinSetInput').value.trim();
+  const v2=document.getElementById('pinSetConfirm').value.trim();
+  const err=document.getElementById('pinSetError');
+  if(!v1||v1.length<4){err.textContent='PIN must be 4 digits.';err.style.display='block';return;}
+  if(v1!==v2){err.textContent='PINs do not match.';err.style.display='block';return;}
+  try{
+    await sbUpdate('players',pendingPinId,{pin:v1});
+    const p=players.find(x=>x.id===pendingPinId);if(p)p.pin=v1;
+    closeModal('pinModal');setPlayer(pendingPinId);toast('PIN set ✓');
+  }catch(e){err.textContent='Error: '+e.message;err.style.display='block';}
+}
+async function resetPlayerPin(id){
+  if(!confirm('Reset this player\'s PIN? They will be asked to set a new one next time they log in.'))return;
+  setLoading(true,'Resetting…');
+  try{
+    await sbUpdate('players',id,{pin:null});
+    const p=players.find(x=>x.id===id);if(p)p.pin=null;
+    toast('PIN reset ✓');
+  }catch(e){alert('Error: '+e.message);}finally{setLoading(false);}
 }
 function setPlayer(id){
   activeId=id;const p=players.find(x=>x.id===id);
@@ -1086,7 +1239,7 @@ async function saveMyHcp(){
 function renderAdmin(){
   const panel=document.getElementById('adminHcpPanel');const ap=adminPlayer();
   if(!players.length){panel.innerHTML='<div class="empty">No players.</div>';return;}
-  panel.innerHTML=players.map(p=>{const hist=[...(p.hcp_history||[])].sort((a,b)=>b.date.localeCompare(a.date));const isAP=p.id===ap?.id;return`<div style="margin-bottom:1.5rem;padding-bottom:1.5rem;border-bottom:1px solid rgba(255,255,255,0.06)"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.7rem;flex-wrap:wrap;gap:8px"><div style="display:flex;align-items:center;gap:10px"><div class="av" style="background:${clr(p)}">${ini(p.name)}</div><div><div style="font-weight:500">${p.name} ${isAP?'<span class="tag tag-admin">Admin</span>':''}</div><div style="font-size:0.72rem;color:rgba(255,255,255,0.38)">Current: <strong style="color:var(--gold-l)">${currentHcp(p)!=null?currentHcp(p):'not set'}</strong></div></div></div><button class="btn btn-warn btn-sm" onclick="openHcpEdit(${p.id})">+ Update Index</button></div>${hist.length?`<table class="hcp-hist"><thead><tr><th>Effective Date</th><th>HCP Index</th><th>Note</th><th></th></tr></thead><tbody>${hist.map((e,i)=>`<tr class="${i===0?'current-hcp':''}"><td style="font-family:'DM Mono',monospace;font-size:0.8rem">${fd(e.date)}</td><td style="font-family:'DM Mono',monospace;font-weight:${i===0?600:400};color:${i===0?'var(--gold-l)':'inherit'}">${e.value}</td><td style="color:rgba(255,255,255,0.4);font-size:0.78rem">${e.note||'—'}</td><td><button class="btn btn-danger btn-sm" onclick="deleteHcpEntry(${p.id},'${e.date}',${e.value})">✕</button></td></tr>`).join('')}</tbody></table></div>`:'<div style="font-size:0.8rem;color:rgba(255,255,255,0.3);padding:6px 0">No history.</div>'}</div>`;}).join('');
+  panel.innerHTML=players.map(p=>{const hist=[...(p.hcp_history||[])].sort((a,b)=>b.date.localeCompare(a.date));const isAP=p.id===ap?.id;return`<div style="margin-bottom:1.5rem;padding-bottom:1.5rem;border-bottom:1px solid rgba(255,255,255,0.06)"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.7rem;flex-wrap:wrap;gap:8px"><div style="display:flex;align-items:center;gap:10px"><div class="av" style="background:${clr(p)}">${ini(p.name)}</div><div><div style="font-weight:500">${p.name} ${isAP?'<span class="tag tag-admin">Admin</span>':''}</div><div style="font-size:0.72rem;color:rgba(255,255,255,0.38)">Current: <strong style="color:var(--gold-l)">${currentHcp(p)!=null?currentHcp(p):'not set'}</strong></div></div></div><div style="display:flex;gap:6px"><button class="btn btn-warn btn-sm" onclick="openHcpEdit(${p.id})">+ Update Index</button><button class="btn btn-ghost btn-sm" onclick="resetPlayerPin(${p.id})">Reset PIN</button></div></div>${hist.length?`<table class="hcp-hist"><thead><tr><th>Effective Date</th><th>HCP Index</th><th>Note</th><th></th></tr></thead><tbody>${hist.map((e,i)=>`<tr class="${i===0?'current-hcp':''}"><td style="font-family:'DM Mono',monospace;font-size:0.8rem">${fd(e.date)}</td><td style="font-family:'DM Mono',monospace;font-weight:${i===0?600:400};color:${i===0?'var(--gold-l)':'inherit'}">${e.value}</td><td style="color:rgba(255,255,255,0.4);font-size:0.78rem">${e.note||'—'}</td><td><button class="btn btn-danger btn-sm" onclick="deleteHcpEntry(${p.id},'${e.date}',${e.value})">✕</button></td></tr>`).join('')}</tbody></table></div>`:'<div style="font-size:0.8rem;color:rgba(255,255,255,0.3);padding:6px 0">No history.</div>'}</div>`;}).join('');
   const rsel=document.getElementById('adminRoundPlayer');rsel.innerHTML=`<option value="all">All players</option>`+players.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
   renderAdminRounds();
 }
