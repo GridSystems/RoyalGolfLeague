@@ -124,6 +124,15 @@ select option { background: #1a3a2a; }
 </style>
 </head>
 <body>
+<div id="lockScreen" style="position:fixed;inset:0;background:#1a3a2a;z-index:1001;display:flex;align-items:center;justify-content:center;">
+  <div style="background:rgba(0,0,0,0.35);border:1px solid rgba(201,168,76,0.22);border-radius:20px;padding:2.5rem;width:min(340px,92vw);text-align:center;">
+    <div style="font-family:'Playfair Display',serif;font-size:1.5rem;color:#f0d58c;margin-bottom:4px">Saturday League</div>
+    <div style="font-size:0.65rem;color:rgba(240,213,140,0.4);letter-spacing:0.12em;text-transform:uppercase;margin-bottom:2rem">Royal Golf Club · Copenhagen</div>
+    <div class="fgi" style="text-align:left;margin-bottom:1rem"><label>Password</label><input type="password" id="appPwdInput" placeholder="••••••" maxlength="40" onkeydown="if(event.key==='Enter')submitAppPwd()"></div>
+    <div id="appPwdError" style="color:#f08080;font-size:0.78rem;margin-bottom:0.75rem;display:none">Incorrect password.</div>
+    <button class="btn btn-primary" style="width:100%" onclick="submitAppPwd()">Enter</button>
+  </div>
+</div>
 <div class="loading-overlay" id="loadingOverlay"><div class="spinner"></div><div style="color:var(--gold-l);font-size:0.88rem">Connecting to Supabase…</div></div>
 <div class="toast" id="toast"></div>
 <header>
@@ -253,7 +262,8 @@ select option { background: #1a3a2a; }
   <div class="view" id="view-admin">
     <div class="info-box" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
       <span>Admin view — handicaps, bulk entry, edit rounds.</span>
-      <button class="btn btn-ghost btn-sm" onclick="document.getElementById('changePinModal').style.display='flex'">Change PIN</button>
+      <button class="btn btn-ghost btn-sm" onclick="document.getElementById('changePinModal').style.display='flex'">Change Admin PIN</button>
+      <button class="btn btn-ghost btn-sm" onclick="document.getElementById('changeAppPwdModal').style.display='flex'">Change App Password</button>
     </div>
     <div class="panel" id="bulkEntryPanel">
       <div class="ph"><span class="pt">Bulk Round Entry</span><span style="font-size:0.75rem;color:rgba(255,255,255,0.35)">Enter a full round for one player at a time</span></div>
@@ -312,6 +322,18 @@ select option { background: #1a3a2a; }
   <div style="display:flex;gap:9px;justify-content:flex-end">
     <button class="btn btn-ghost btn-sm" onclick="closeModal('changePinModal')">Cancel</button>
     <button class="btn btn-primary btn-sm" onclick="saveNewPin()">Save PIN</button>
+  </div>
+</div></div>
+
+<div class="modal-bg" id="changeAppPwdModal" style="display:none"><div class="modal modal-sm">
+  <h3>Change App Password</h3>
+  <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:1rem">
+    <div class="fgi"><label>New Password</label><input type="password" id="newAppPwdVal" placeholder="Choose a password" maxlength="40"></div>
+    <div class="fgi"><label>Confirm Password</label><input type="password" id="newAppPwdConfirm" placeholder="Repeat password" maxlength="40"></div>
+  </div>
+  <div style="display:flex;gap:9px;justify-content:flex-end">
+    <button class="btn btn-ghost btn-sm" onclick="closeModal('changeAppPwdModal')">Cancel</button>
+    <button class="btn btn-primary btn-sm" onclick="saveNewAppPwd()">Save</button>
   </div>
 </div></div>
 
@@ -424,6 +446,12 @@ async function loadData(){players=await sbGet('players','order=created_at.asc');
 function adminPlayer(){return players.find(p=>p.is_admin)||players[0];}
 function isAdmin(){const ap=adminPlayer();return ap&&activeId===ap.id;}
 function updateAdminUI(){const a=isAdmin();document.getElementById('adminTab').style.display=a?'inline-block':'none';document.getElementById('adminBadge').style.display=a?'inline-flex':'none';const ab=document.getElementById('addPlayerBtn');if(ab)ab.style.display=a?'inline-block':'none';}
+
+// ── App Password ──────────────────────────────────────────────────────────────
+const APP_PWD_KEY='sl_app_pwd';const DEFAULT_APP_PWD='royal';
+function getAppPwd(){return localStorage.getItem(APP_PWD_KEY)||DEFAULT_APP_PWD;}
+function submitAppPwd(){const entered=document.getElementById('appPwdInput').value;if(entered===getAppPwd()){sessionStorage.setItem('app_auth','1');document.getElementById('lockScreen').style.display='none';init();}else{document.getElementById('appPwdError').style.display='block';document.getElementById('appPwdInput').value='';document.getElementById('appPwdInput').focus();}}
+function saveNewAppPwd(){const v1=document.getElementById('newAppPwdVal').value.trim();const v2=document.getElementById('newAppPwdConfirm').value.trim();if(!v1){alert('Enter a password.');return;}if(v1!==v2){alert('Passwords do not match.');return;}localStorage.setItem(APP_PWD_KEY,v1);toast('App password updated ✓');closeModal('changeAppPwdModal');}
 
 // ── PIN ───────────────────────────────────────────────────────────────────────
 const PIN_KEY='sl_admin_pin';const DEFAULT_PIN='saturday';
@@ -1139,7 +1167,7 @@ async function init(){
 
   setLoading(false);
 }
-init();
+if(sessionStorage.getItem('app_auth')==='1'){document.getElementById('lockScreen').style.display='none';init();}else{setLoading(false);setTimeout(()=>document.getElementById('appPwdInput').focus(),100);}
 </script>
 </body>
 </html>
