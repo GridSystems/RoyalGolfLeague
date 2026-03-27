@@ -450,7 +450,7 @@ function updateAdminUI(){const a=isAdmin();document.getElementById('adminTab').s
 // ── App Password ──────────────────────────────────────────────────────────────
 const APP_PWD_KEY='sl_app_pwd';const DEFAULT_APP_PWD='royal';
 function getAppPwd(){return localStorage.getItem(APP_PWD_KEY)||DEFAULT_APP_PWD;}
-function submitAppPwd(){const entered=document.getElementById('appPwdInput').value;if(entered===getAppPwd()){sessionStorage.setItem('app_auth','1');document.getElementById('lockScreen').style.display='none';init();}else{document.getElementById('appPwdError').style.display='block';document.getElementById('appPwdInput').value='';document.getElementById('appPwdInput').focus();}}
+function submitAppPwd(){const entered=document.getElementById('appPwdInput').value;if(entered===getAppPwd()){sessionStorage.setItem('app_auth','1');document.getElementById('lockScreen').style.display='none';init().then(()=>showPicker());}else{document.getElementById('appPwdError').style.display='block';document.getElementById('appPwdInput').value='';document.getElementById('appPwdInput').focus();}}
 function saveNewAppPwd(){const v1=document.getElementById('newAppPwdVal').value.trim();const v2=document.getElementById('newAppPwdConfirm').value.trim();if(!v1){alert('Enter a password.');return;}if(v1!==v2){alert('Passwords do not match.');return;}localStorage.setItem(APP_PWD_KEY,v1);toast('App password updated ✓');closeModal('changeAppPwdModal');}
 
 // ── PIN ───────────────────────────────────────────────────────────────────────
