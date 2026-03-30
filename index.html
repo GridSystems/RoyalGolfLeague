@@ -1319,6 +1319,8 @@ async function resetPlayerPin(id){
   }catch(e){alert('Error: '+e.message);}finally{setLoading(false);}
 }
 function setPlayer(id){
+  const sessionId=parseInt(sessionStorage.getItem('sl_session_player'));
+  if(sessionId&&id!==sessionId&&!isAdmin()){toast('You can only view your own profile.');return;}
   activeId=id;const p=players.find(x=>x.id===id);
   if(p){document.getElementById('playerName').textContent=p.name;const av=document.getElementById('playerAvatar');av.textContent=ini(p.name);av.style.background=clr(p);}
   localStorage.setItem('sl_active_player',id);closeModal('pickerModal');updateAdminUI();
@@ -1351,7 +1353,7 @@ function renderGrid(){
   const g=document.getElementById('playerGrid');const ap=adminPlayer();const admin=isAdmin();
   const ab=document.getElementById('addPlayerBtn');if(ab)ab.style.display=admin?'inline-block':'none';
   g.innerHTML=players.map(p=>`
-    <div class="pc${p.id===activeId?' active-p':''}" onclick="setPlayer(${p.id})">
+    <div class="pc${p.id===activeId?' active-p':''}" onclick="setPlayer(${p.id})" style="${p.id!==activeId&&!admin?'cursor:default;opacity:0.75;':''}">
       <div class="av" style="background:${clr(p)}">${ini(p.name)}</div>
       <div style="flex:1;min-width:0">
         <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
