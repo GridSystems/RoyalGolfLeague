@@ -743,11 +743,7 @@ function renderRules(){
   const perComp=Math.floor(total/2);
   const el=document.getElementById('rulesPot');
   if(el)el.innerHTML=`
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:0.5rem;text-align:center">
-      <div style="background:rgba(201,168,76,0.07);border:1px solid var(--border-gold);border-radius:10px;padding:0.85rem 0.5rem">
-        <div style="font-size:0.6rem;text-transform:uppercase;letter-spacing:0.1em;color:rgba(240,213,140,0.4);margin-bottom:4px">Players</div>
-        <div style="font-family:'DM Mono',monospace;font-size:1.2rem;color:var(--gold-l);font-weight:600">${approved}</div>
-      </div>
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:0.5rem;text-align:center">
       <div style="background:rgba(201,168,76,0.07);border:1px solid var(--border-gold);border-radius:10px;padding:0.85rem 0.5rem">
         <div style="font-size:0.6rem;text-transform:uppercase;letter-spacing:0.1em;color:rgba(240,213,140,0.4);margin-bottom:4px">IPS Pot</div>
         <div style="font-family:'DM Mono',monospace;font-size:1.2rem;color:var(--gold-l);font-weight:600">DKK ${perComp}</div>
