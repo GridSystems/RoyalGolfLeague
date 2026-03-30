@@ -361,6 +361,9 @@ select option { background: #1a3a2a; }
       <div class="ph"><span class="pt">Payout Structure</span></div>
       <div class="pb" style="font-size:0.88rem;line-height:1.7;color:rgba(240,213,140,0.85)">
 
+        <p style="margin-bottom:0.75rem"><strong style="color:var(--gold-l)">Current Prize Pot</strong></p>
+        <div id="rulesPot" style="margin-bottom:1.25rem"></div>
+
         <p style="margin-bottom:1rem"><strong style="color:var(--gold-l)">Individual Saturday Days</strong> — Prize structure to be confirmed.</p>
 
         <p style="margin-bottom:0.75rem"><strong style="color:var(--gold-l)">Season Competitions (IPS &amp; Eclectic)</strong></p>
@@ -732,6 +735,29 @@ function showView(id,btn){
   if(id==='players')renderGrid();
   if(id==='log'){buildTeeSelectorEl('teeSelector',selTeeId,'selTeeId');buildPlayerCheckboxes();checkForResumableRounds();}
   if(id==='admin'){renderPendingApprovals();renderAdmin();renderBulkEntry();}
+  if(id==='rules')renderRules();
+}
+function renderRules(){
+  const approved=players.filter(p=>p.approved!==false).length;
+  const total=approved*250;
+  const perComp=Math.floor(total/2);
+  const el=document.getElementById('rulesPot');
+  if(el)el.innerHTML=`
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:0.5rem;text-align:center">
+      <div style="background:rgba(201,168,76,0.07);border:1px solid var(--border-gold);border-radius:10px;padding:0.85rem 0.5rem">
+        <div style="font-size:0.6rem;text-transform:uppercase;letter-spacing:0.1em;color:rgba(240,213,140,0.4);margin-bottom:4px">Players</div>
+        <div style="font-family:'DM Mono',monospace;font-size:1.2rem;color:var(--gold-l);font-weight:600">${approved}</div>
+      </div>
+      <div style="background:rgba(201,168,76,0.07);border:1px solid var(--border-gold);border-radius:10px;padding:0.85rem 0.5rem">
+        <div style="font-size:0.6rem;text-transform:uppercase;letter-spacing:0.1em;color:rgba(240,213,140,0.4);margin-bottom:4px">IPS Pot</div>
+        <div style="font-family:'DM Mono',monospace;font-size:1.2rem;color:var(--gold-l);font-weight:600">DKK ${perComp}</div>
+      </div>
+      <div style="background:rgba(201,168,76,0.07);border:1px solid var(--border-gold);border-radius:10px;padding:0.85rem 0.5rem">
+        <div style="font-size:0.6rem;text-transform:uppercase;letter-spacing:0.1em;color:rgba(240,213,140,0.4);margin-bottom:4px">Eclectic Pot</div>
+        <div style="font-family:'DM Mono',monospace;font-size:1.2rem;color:var(--gold-l);font-weight:600">DKK ${perComp}</div>
+      </div>
+    </div>
+    <p style="font-size:0.75rem;color:rgba(255,255,255,0.3)">DKK 250 per player · ${approved} player${approved!==1?'s':''} · Total pot DKK ${total} · Split 50/50 before MobilePay fees</p>`;
 }
 function showLb(id,btn){document.querySelectorAll('.lb-view').forEach(v=>v.classList.remove('active'));document.querySelectorAll('.sub-tab').forEach(t=>t.classList.remove('active'));document.getElementById('lb-'+id).classList.add('active');if(btn)btn.classList.add('active');if(id==='today')renderTodayLb();if(id==='season')renderSeasonLb();if(id==='dreamcard'){renderDreamCard();}}
 
