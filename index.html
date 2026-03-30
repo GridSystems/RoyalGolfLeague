@@ -303,6 +303,13 @@ select option { background: #1a3a2a; }
       </div>
       <div id="myTable"></div>
     </div>
+    <div class="panel" id="myDreamPanel" style="margin-top:1.25rem;display:none">
+      <div class="ph">
+        <span class="pt">My Dream Scorecard</span>
+        <select id="myDreamYear" onchange="renderMyDreamCard()" style="background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.14);border-radius:6px;color:var(--cream);font-size:0.75rem;padding:4px 8px;outline:none"></select>
+      </div>
+      <div id="myDreamCardBody"></div>
+    </div>
   </div>
 
   <!-- PLAYERS -->
@@ -1367,16 +1374,74 @@ function renderDreamCard(){
   if(myBtn) myBtn.style.display=playerEclectics.some(e=>e.p.id===activeId)?'inline-block':'none';
 }
 
+// ── My Dream Card ─────────────────────────────────────────────────────────────
+function renderMyDreamCard(){
+  const p=players.find(x=>x.id===activeId);
+  const panel=document.getElementById('myDreamPanel');
+  const body=document.getElementById('myDreamCardBody');
+  if(!p||!panel||!body){if(panel)panel.style.display='none';return;}
+  const sel=document.getElementById('myDreamYear');
+  const season=sel?.value||new Date().getFullYear().toString();
+  const pr=allRounds.filter(r=>r.player_id===p.id&&r.date.startsWith(season));
+  if(!pr.length){panel.style.display='none';return;}
+  panel.style.display='block';
+  const F=[0,1,2,3,4,5,6,7,8],B=[9,10,11,12,13,14,15,16,17];
+  const pF=HOLE_PARS.slice(0,9).reduce((a,b)=>a+b,0),pB=HOLE_PARS.slice(9).reduce((a,b)=>a+b,0);
+  const bestPerHole=Array.from({length:18},(_,hi)=>{
+    let best=null;
+    for(const r of pr){
+      const h=r.holes[hi];if(!h||h.score==null)continue;
+      const tee=getTee(r.tee_id||'57');
+      const index=hcpOnDate(p,r.date);if(index==null)continue;
+      const phcp=calcPlayingHcp(index,tee);
+      const str=strokesOnHole(phcp,hi);
+      const nett=h.score-str;
+      const pts=stablefordPts(h.score,h.par,str);
+      if(best===null||nett<best.nett||(nett===best.nett&&(pts||0)>(best.pts||0)))
+        best={nett,gross:h.score,pts:pts||0,str,par:HOLE_PARS[hi],date:r.date};
+    }
+    return best;
+  });
+  const filled=bestPerHole.filter(Boolean).length;
+  const fN=F.reduce((s,i)=>s+(bestPerHole[i]?.nett??0),0),bN=B.reduce((s,i)=>s+(bestPerHole[i]?.nett??0),0);
+  const fP=F.reduce((s,i)=>s+(bestPerHole[i]?.pts??0),0),bP=B.reduce((s,i)=>s+(bestPerHole[i]?.pts??0),0);
+  const fF=F.filter(i=>bestPerHole[i]).length,bF=B.filter(i=>bestPerHole[i]).length;
+  const totalNett=fN+bN,totalPts=fP+bP,nd=totalNett-(pF+pB);
+  function hc(i){const b=bestPerHole[i];if(!b)return`<td style="color:rgba(255,255,255,0.2)">—</td>`;const diff=b.nett-b.par;return`<td title="${fd(b.date)} · Gross ${b.gross}${b.str?' −'+b.str:''} = Nett ${b.nett} (${b.pts}pts)" style="font-family:'DM Mono',monospace;font-size:0.88rem;font-weight:600;color:${vpC(diff)};cursor:default">${b.nett}</td>`;}
+  function pc(i){const b=bestPerHole[i];if(!b)return`<td style="color:rgba(255,255,255,0.2)">—</td>`;return`<td style="font-family:'DM Mono',monospace;font-size:0.78rem;font-weight:500;color:${ptC(b.pts)}">${b.pts}</td>`;}
+  body.innerHTML=`<div style="padding:1rem 1.25rem">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:1rem;flex-wrap:wrap">
+      <span style="font-size:0.82rem;color:rgba(255,255,255,0.45)">${filled}/18 holes filled</span>
+      <span style="margin-left:auto;font-family:'DM Mono',monospace;font-size:0.85rem">
+        Nett <strong style="color:var(--gold-l)">${filled?totalNett:'—'}</strong>${filled?`<span style="color:${vpC(nd)};font-size:0.75rem;margin-left:4px">(${ds(nd)})</span>`:''}
+        &nbsp;·&nbsp; Pts <strong style="color:#82aaf0">${filled?totalPts:'—'}</strong>
+      </span>
+    </div>
+    <div class="scorecard-wrap"><table class="sc-table" style="min-width:600px"><thead><tr>
+      <th class="left">Hole</th>${F.map(i=>`<th>${i+1}</th>`).join('')}<th>Out</th><th class="sep"></th>${B.map(i=>`<th>${i+1}</th>`).join('')}<th>In</th><th>Total</th>
+    </tr></thead><tbody>
+      <tr><td class="left muted">Par</td>${F.map(i=>`<td class="mono muted">${HOLE_PARS[i]}</td>`).join('')}<td class="tot mono muted">${pF}</td><td class="sep"></td>${B.map(i=>`<td class="mono muted">${HOLE_PARS[i]}</td>`).join('')}<td class="tot mono muted">${pB}</td><td class="tot mono muted">${pF+pB}</td></tr>
+      <tr><td class="left muted">SI</td>${F.map(i=>`<td style="font-size:0.67rem;color:rgba(255,255,255,0.27)">${HOLE_HCP[i]}</td>`).join('')}<td class="tot"></td><td class="sep"></td>${B.map(i=>`<td style="font-size:0.67rem;color:rgba(255,255,255,0.27)">${HOLE_HCP[i]}</td>`).join('')}<td class="tot"></td><td class="tot"></td></tr>
+      <tr><td class="left" style="font-weight:500;color:var(--gold-l);font-size:0.78rem">Best Nett</td>${F.map(i=>hc(i)).join('')}<td class="tot" style="font-family:'DM Mono',monospace;font-weight:600;color:${fF?vpC(fN-pF):'rgba(255,255,255,0.3)'}">${fF?fN:'—'}</td><td class="sep"></td>${B.map(i=>hc(i)).join('')}<td class="tot" style="font-family:'DM Mono',monospace;font-weight:600;color:${bF?vpC(bN-pB):'rgba(255,255,255,0.3)'}">${bF?bN:'—'}</td><td class="tot" style="font-family:'DM Mono',monospace;font-weight:700;color:${filled?vpC(nd):'rgba(255,255,255,0.3)'}">${filled?totalNett:'—'}</td></tr>
+      <tr><td class="left" style="color:#82aaf0;font-size:0.78rem">Points</td>${F.map(i=>pc(i)).join('')}<td class="tot" style="color:#82aaf0;font-weight:600">${fF?fP:'—'}</td><td class="sep"></td>${B.map(i=>pc(i)).join('')}<td class="tot" style="color:#82aaf0;font-weight:600">${bF?bP:'—'}</td><td class="tot" style="color:#82aaf0;font-weight:700">${filled?totalPts:'—'}</td></tr>
+    </tbody></table></div>
+    <p style="font-size:0.72rem;color:rgba(255,255,255,0.28);margin-top:0.75rem">Hover a score to see the date and gross details.</p>
+  </div>`;}
+
 // ── My Rounds ─────────────────────────────────────────────────────────────────
 function renderMyRounds(){
   const p=players.find(x=>x.id===activeId);document.getElementById('myTitle').textContent=p?p.name+"'s Rounds":"My Rounds";
+  // Populate dream card year selector
+  const myDreamYearEl=document.getElementById('myDreamYear');
+  if(myDreamYearEl&&!myDreamYearEl.options.length){const cy=new Date().getFullYear();[cy,cy-1].forEach(y=>{const o=document.createElement('option');o.value=y;o.textContent=y;myDreamYearEl.appendChild(o);});}
   const mr=activeId?allRounds.filter(r=>r.player_id===activeId):[];
   if(!mr.length){document.getElementById('myStats').innerHTML='';document.getElementById('myTable').innerHTML=activeId?'<div class="empty">No rounds yet.</div>':'<div class="empty">Select your player profile (top right).</div>';return;}
   const diffs=mr.map(r=>tS(r.holes)-tP(r.holes));const pts=mr.map(r=>calcRoundPoints(r,p)).filter(x=>x!=null);const best=Math.min(...diffs);const avg=(diffs.reduce((a,b)=>a+b,0)/diffs.length).toFixed(1);const bPts=pts.length?Math.max(...pts):null;const aPts=pts.length?(pts.reduce((a,b)=>a+b,0)/pts.length).toFixed(1):null;
   const rec=[...mr].sort((a,b)=>a.date.localeCompare(b.date)).slice(-10);const rd=rec.map(r=>calcRoundPoints(r,p)||0);const mn=Math.min(...rd),mx=Math.max(...rd),rng=mx-mn||1;
   document.getElementById('myStats').innerHTML=`<div class="sc"><div class="sl">Rounds</div><div class="sv">${mr.length}</div><div class="ss">total</div></div><div class="sc"><div class="sl">Best Pts</div><div class="sv" style="color:#82aaf0">${bPts!=null?bPts:'—'}</div><div class="ss">stableford</div></div><div class="sc"><div class="sl">Avg Pts</div><div class="sv" style="color:#82aaf0">${aPts!=null?aPts:'—'}</div><div class="ss">per round</div></div><div class="sc"><div class="sl">Best Stroke</div><div class="sv">${ds(best)}</div><div class="ss">vs par</div></div><div class="sc"><div class="sl">Trend</div><div class="tbar">${rd.map((d,i)=>`<div class="tbi" style="height:${Math.round(8+((d-mn)/rng)*28)}px;background:#82aaf0;opacity:0.65" title="${fd(rec[i].date)}: ${d} pts"></div>`).join('')}</div>`;
   const sort=document.getElementById('sortSel').value;const sorted=[...mr].sort((a,b)=>{if(sort==='date-desc')return b.date.localeCompare(a.date);if(sort==='date-asc')return a.date.localeCompare(b.date);if(sort==='pts-desc')return(calcRoundPoints(b,p)||0)-(calcRoundPoints(a,p)||0);return(tS(a.holes)-tP(a.holes))-(tS(b.holes)-tP(b.holes));});
-  document.getElementById('myTable').innerHTML=`<div class="rt-wrap"><table class="rt"><thead><tr><th>Date</th><th>Tee</th><th>Index</th><th>Playing HCP</th><th>Points</th><th>Out</th><th>In</th><th>Total</th><th>vs Par</th></tr></thead><tbody>${sorted.map(r=>{const f=r.holes.slice(0,9),b=r.holes.slice(9);const tot=tS(r.holes),diff=tot-tP(r.holes);const rpts=calcRoundPoints(r,p);return`<tr><td style="color:rgba(255,255,255,0.45);font-size:0.78rem">${fd(r.date)}</td><td><span style="display:inline-flex;align-items:center;gap:4px;font-size:0.76rem"><span class="tee-dot" style="background:${r.tee_color||'#888'}"></span>${r.tee_name||'—'}</span></td><td style="font-family:'DM Mono',monospace;font-size:0.79rem;color:rgba(255,255,255,0.45)">${r.hcp_index!=null?r.hcp_index:'—'}</td><td style="font-family:'DM Mono',monospace;font-size:0.79rem;color:rgba(255,255,255,0.45)">${r.playing_hcp!=null?r.playing_hcp:'—'}</td><td style="font-family:'DM Mono',monospace;font-weight:600;font-size:1rem;color:#82aaf0">${rpts!=null?rpts:'—'}</td><td style="font-family:'DM Mono',monospace;font-size:0.84rem">${f.some(h=>h.score)?tS(f):'—'}<span style="font-size:0.67rem;color:rgba(255,255,255,0.27)">/p${tP(f)}</span></td><td style="font-family:'DM Mono',monospace;font-size:0.84rem">${b.some(h=>h.score)?tS(b):'—'}<span style="font-size:0.67rem;color:rgba(255,255,255,0.27)">/p${tP(b)}</span></td><td style="font-family:'DM Mono',monospace;font-weight:500">${tot}</td><td><span class="sp ${scC(diff)}">${ds(diff)}</span></td></tr>`;}).join('')}</tbody></table></div>`;}
+  document.getElementById('myTable').innerHTML=`<div class="rt-wrap"><table class="rt"><thead><tr><th>Date</th><th>Tee</th><th>Index</th><th>Playing HCP</th><th>Points</th><th>Out</th><th>In</th><th>Total</th><th>vs Par</th></tr></thead><tbody>${sorted.map(r=>{const f=r.holes.slice(0,9),b=r.holes.slice(9);const tot=tS(r.holes),diff=tot-tP(r.holes);const rpts=calcRoundPoints(r,p);return`<tr><td style="color:rgba(255,255,255,0.45);font-size:0.78rem">${fd(r.date)}</td><td><span style="display:inline-flex;align-items:center;gap:4px;font-size:0.76rem"><span class="tee-dot" style="background:${r.tee_color||'#888'}"></span>${r.tee_name||'—'}</span></td><td style="font-family:'DM Mono',monospace;font-size:0.79rem;color:rgba(255,255,255,0.45)">${r.hcp_index!=null?r.hcp_index:'—'}</td><td style="font-family:'DM Mono',monospace;font-size:0.79rem;color:rgba(255,255,255,0.45)">${r.playing_hcp!=null?r.playing_hcp:'—'}</td><td style="font-family:'DM Mono',monospace;font-weight:600;font-size:1rem;color:#82aaf0">${rpts!=null?rpts:'—'}</td><td style="font-family:'DM Mono',monospace;font-size:0.84rem">${f.some(h=>h.score)?tS(f):'—'}<span style="font-size:0.67rem;color:rgba(255,255,255,0.27)">/p${tP(f)}</span></td><td style="font-family:'DM Mono',monospace;font-size:0.84rem">${b.some(h=>h.score)?tS(b):'—'}<span style="font-size:0.67rem;color:rgba(255,255,255,0.27)">/p${tP(b)}</span></td><td style="font-family:'DM Mono',monospace;font-weight:500">${tot}</td><td><span class="sp ${scC(diff)}">${ds(diff)}</span></td></tr>`;}).join('')}</tbody></table></div>`;
+  renderMyDreamCard();}
 
 // ── Players ───────────────────────────────────────────────────────────────────
 function showPicker(){
