@@ -241,10 +241,9 @@ select option { background: #1a3a2a; }
         <div class="fg" style="margin-bottom:1.2rem">
           <div class="fgi"><label>Date</label><input type="date" id="roundDate"></div>
           <div class="fgi"><label>Notes</label><input type="text" id="roundNotes" placeholder="Weather, conditions…"></div>
-          <div class="fgi full"><label>Tee</label><div class="tee-sel" id="teeSelector"></div></div>
         </div>
         <div class="fgi" style="margin-bottom:1.2rem">
-          <label>Select all players you are scoring for</label>
+          <label>Select all players you are scoring for <span style="font-size:0.72rem;color:rgba(255,255,255,0.35)">(tap tee dots to set individual tees)</span></label>
           <div id="playerCheckboxes" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px"></div>
         </div>
         <div class="fgi" style="margin-bottom:1.2rem">
@@ -577,7 +576,7 @@ const COLORS=['#e8534a','#4a7fe8','#e8a93a','#6cb86c','#a06be8','#e86ca0','#4ab8
 
 let players=[],allRounds=[],activeId=null,selColor=0;
 let selTeeId='platinum',erSelTeeId='platinum',editingHcpPlayerId=null,editingRoundId=null;
-let groupPlayerIds=[];
+let groupPlayerIds=[],playerTees={};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const ini=n=>n.trim().split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
@@ -733,7 +732,7 @@ function showView(id,btn){
   if(id==='leaderboard'){renderTodayLb();populateYearSelects();renderSeasonLb();renderDreamCard();}
   if(id==='history'){renderMyRounds();const b=document.getElementById('myHcpBtn');if(b)b.style.display=activeId?'inline-block':'none';}
   if(id==='players')renderGrid();
-  if(id==='log'){buildTeeSelectorEl('teeSelector',selTeeId,'selTeeId');buildPlayerCheckboxes();checkForResumableRounds();}
+  if(id==='log'){buildPlayerCheckboxes();checkForResumableRounds();}
   if(id==='admin'){renderPendingApprovals();renderAdmin();renderBulkEntry();}
   if(id==='rules')renderRules();
 }
@@ -759,7 +758,7 @@ function showLb(id,btn){document.querySelectorAll('.lb-view').forEach(v=>v.class
 
 // ── Tee selectors ─────────────────────────────────────────────────────────────
 function buildTeeSelectorEl(cid,active,sv){const el=document.getElementById(cid);if(!el)return;el.innerHTML=TEES.map(t=>`<div class="tee-opt${t.id===active?' selected':''}" onclick="selectTee('${cid}','${t.id}','${sv}')"><span class="tee-dot" style="background:${t.color};border:1px solid rgba(255,255,255,0.25)"></span>${t.name} <span style="font-size:0.68rem;color:rgba(255,255,255,0.32)">${t.rating}/${t.slope}</span></div>`).join('');}
-function selectTee(cid,teeId,sv){if(sv==='selTeeId')selTeeId=teeId;if(sv==='erSelTeeId'){erSelTeeId=teeId;buildEditScorecard();}if(sv==='beTeeId'){BE.teeId=teeId;}buildTeeSelectorEl(cid,teeId,sv);}
+function selectTee(cid,teeId,sv){if(sv==='selTeeId'){selTeeId=teeId;groupPlayerIds.forEach(pid=>{playerTees[pid]=teeId;});buildPlayerCheckboxes();}if(sv==='erSelTeeId'){erSelTeeId=teeId;buildEditScorecard();}if(sv==='beTeeId'){BE.teeId=teeId;}buildTeeSelectorEl(cid,teeId,sv);}
 
 // ── Scorecard builder (for edit modal) ───────────────────────────────────────
 function buildScorecardHTML(pfx,tee,phcp,existing){
@@ -829,16 +828,19 @@ function setStartHole(val){
   }
 }
 
-async function heInit(playerList,tee,teeId,date,notes,startHole){
+async function heInit(playerList,date,notes,startHole){
   const scores={},roundIds={};
   setLoading(true,'Starting round…');
   try{
-    for(const{p,phcp,index}of playerList){
+    for(const entry of playerList){
+      const{p,index}=entry;
+      const tee=getTee(entry.teeId||'platinum');
+      entry.tee=tee;
+      const courseHcp=index!=null?calcCourseHcp(index,tee):null;
+      entry.phcp=index!=null?calcPlayingHcp(index,tee):null;
       scores[p.id]=Array(18).fill(null);
       const holes=Array.from({length:18},(_,i)=>({hole:i+1,score:null,par:HOLE_PARS[i],hcp:HOLE_HCP[i]}));
-      const courseHcp=index!=null?calcCourseHcp(index,tee):null;
-      const playingHcp=index!=null?calcPlayingHcp(index,tee):null;
-      const payload={id:Date.now()+Math.floor(Math.random()*100000),player_id:p.id,course:'Royal Golf Club, Copenhagen',date,tee_id:teeId,tee_name:tee.name,tee_color:tee.color,rating:tee.rating,slope:tee.slope,hcp_index:index,course_hcp:courseHcp,playing_hcp:playingHcp,notes,holes};
+      const payload={id:Date.now()+Math.floor(Math.random()*100000),player_id:p.id,course:'Royal Golf Club, Copenhagen',date,tee_id:entry.teeId,tee_name:tee.name,tee_color:tee.color,rating:tee.rating,slope:tee.slope,hcp_index:index,course_hcp:courseHcp,playing_hcp:entry.phcp,notes,holes};
       const[saved]=await sbInsert('rounds',payload);
       const rec=saved||payload;
       roundIds[p.id]=rec.id;
@@ -846,7 +848,7 @@ async function heInit(playerList,tee,teeId,date,notes,startHole){
     }
   }catch(e){alert('Error creating rounds: '+e.message);setLoading(false);return;}
   setLoading(false);
-  HE={playerList,scores,roundIds,currentHole:startHole,currentPidx:0,startHole,tee,teeId,date,notes};
+  HE={playerList,scores,roundIds,currentHole:startHole,currentPidx:0,startHole,date,notes};
   heRender();
 }
 
@@ -876,7 +878,9 @@ async function hePatchAll(){
 }
 
 function heRender(){
-  const s=HE,hole=s.currentHole,hi=hole-1,tee=s.tee;
+  const s=HE,hole=s.currentHole,hi=hole-1;
+  const curPl=s.playerList[s.currentPidx]||s.playerList[0];
+  const tee=curPl?.tee||getTee('platinum');
   const par=HOLE_PARS[hi],si=HOLE_HCP[hi],dist=tee.dist[hi];
   const order=heOrderedHoles(s.startHole);
   const pos=order.indexOf(hole); // 0-based position in play sequence
@@ -903,15 +907,16 @@ function heRender(){
     return`<div style="display:flex;align-items:center;gap:6px;padding:5px 10px;border-radius:8px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07)"><div style="width:18px;height:18px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.55rem;font-weight:600;color:#fff">${ini(p.name)}</div><span style="font-size:0.78rem;font-weight:500">${p.name}</span><span style="font-size:0.7rem;color:rgba(255,255,255,0.35)">${filled}/18</span>${phcp!=null?`<span style="font-size:0.7rem;color:#82aaf0;margin-left:2px">${totalPts}pts</span>`:''}</div>`;
   }).join('');
 
-  const inputs=s.playerList.map(({p,phcp},pidx)=>{
+  const inputs=s.playerList.map(({p,phcp,tee:pTee},pidx)=>{
     const str=phcp!=null?strokesOnHole(phcp,hi):0;
     const val=s.scores[p.id][hi];
     const isCur=pidx===s.currentPidx;
     const pts=val!=null?stablefordPts(val,par,str):null;
     const nett=val!=null?val-str:null;
+    const teeDot=pTee?`<span title="${pTee.name}" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${pTee.color};margin-right:3px;vertical-align:middle"></span>`:'';
     return`<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:10px;border:1px solid ${isCur?'rgba(130,170,240,0.5)':'rgba(255,255,255,0.08)'};background:${isCur?'rgba(130,170,240,0.07)':'rgba(0,0,0,0.2)'};transition:all 0.15s">
       <div style="width:26px;height:26px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.65rem;font-weight:600;color:#fff;flex-shrink:0">${ini(p.name)}</div>
-      <div style="flex:1"><div style="font-size:0.85rem;font-weight:500">${p.name}</div><div style="font-size:0.7rem;color:rgba(255,255,255,0.35)">${phcp!=null?`HCP ${phcp} · ${str>0?`<span style="color:#f0d58c">+${str} stroke${str>1?'s':''}</span>`:'no strokes'}`:'no handicap'}</div></div>
+      <div style="flex:1"><div style="font-size:0.85rem;font-weight:500">${p.name}</div><div style="font-size:0.7rem;color:rgba(255,255,255,0.35)">${phcp!=null?`${teeDot}HCP ${phcp} · ${str>0?`<span style="color:#f0d58c">+${str} stroke${str>1?'s':''}</span>`:'no strokes'}`:'no handicap'}</div></div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px">
         <input type="number" id="he_${p.id}" value="${val!=null?val:''}" min="1" max="15"
           style="width:60px;text-align:center;font-family:'DM Mono',monospace;font-size:1.3rem;font-weight:600;padding:6px 4px;background:rgba(0,0,0,0.4);border:1px solid ${isCur?'rgba(130,170,240,0.6)':'rgba(255,255,255,0.15)'};border-radius:8px;color:var(--cream);outline:none">
@@ -1073,9 +1078,19 @@ function buildPlayerCheckboxes(){
   const isPending=activePlayer&&activePlayer.approved===false;
   if(isPending){groupPlayerIds=[activeId];}
   const list=isPending?players.filter(p=>p.id===activeId):players;
-  wrap.innerHTML=list.map(p=>{const checked=groupPlayerIds.includes(p.id);return`<div ${isPending?'':'onclick="toggleGroupPlayer('+p.id+')"'} style="display:flex;align-items:center;gap:7px;padding:7px 12px;border-radius:8px;${isPending?'':'cursor:pointer;'}border:1px solid ${checked?'rgba(201,168,76,0.5)':'rgba(255,255,255,0.12)'};background:${checked?'rgba(201,168,76,0.1)':'rgba(0,0,0,0.2)'};transition:all 0.15s;user-select:none"><div style="width:18px;height:18px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.58rem;font-weight:600;color:#fff">${ini(p.name)}</div><span style="font-size:0.83rem;font-weight:${checked?500:400};color:${checked?'var(--gold-l)':'var(--cream)'}">${p.name}</span>${checked?'<span style="color:var(--gold);font-size:0.8rem">✓</span>':''}</div>`;}).join('');
+  wrap.innerHTML=list.map(p=>{
+    const checked=groupPlayerIds.includes(p.id);
+    const ptee=playerTees[p.id]||selTeeId;
+    const teeDots=checked?`<div style="margin-left:auto;display:flex;gap:5px;align-items:center">${TEES.map(t=>`<div onclick="event.stopPropagation();selectPlayerTee(${p.id},'${t.id}')" title="${t.name}" style="width:14px;height:14px;border-radius:50%;background:${t.color};cursor:pointer;border:2px solid ${ptee===t.id?'rgba(255,255,255,0.9)':'rgba(255,255,255,0.15)'};transition:border-color 0.15s;flex-shrink:0"></div>`).join('')}</div>`:'';
+    return`<div ${isPending?'':'onclick="toggleGroupPlayer('+p.id+')"'} style="display:flex;align-items:center;gap:7px;padding:7px 12px;border-radius:8px;${isPending?'':'cursor:pointer;'}border:1px solid ${checked?'rgba(201,168,76,0.5)':'rgba(255,255,255,0.12)'};background:${checked?'rgba(201,168,76,0.1)':'rgba(0,0,0,0.2)'};transition:all 0.15s;user-select:none"><div style="width:18px;height:18px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.58rem;font-weight:600;color:#fff">${ini(p.name)}</div><span style="font-size:0.83rem;font-weight:${checked?500:400};color:${checked?'var(--gold-l)':'var(--cream)'}">${p.name}</span>${checked?'<span style="color:var(--gold);font-size:0.8rem">✓</span>':''}${teeDots}</div>`;
+  }).join('');
 }
-function toggleGroupPlayer(id){if(groupPlayerIds.includes(id))groupPlayerIds=groupPlayerIds.filter(x=>x!==id);else groupPlayerIds.push(id);buildPlayerCheckboxes();}
+function selectPlayerTee(pid,teeId){playerTees[pid]=teeId;buildPlayerCheckboxes();}
+function toggleGroupPlayer(id){
+  if(groupPlayerIds.includes(id)){groupPlayerIds=groupPlayerIds.filter(x=>x!==id);delete playerTees[id];}
+  else{groupPlayerIds.push(id);if(!playerTees[id])playerTees[id]=selTeeId;}
+  buildPlayerCheckboxes();
+}
 async function startGroupEntry(){
   if(!groupPlayerIds.length){alert('Select at least one player.');return;}
   const date=document.getElementById('roundDate').value;if(!date){alert('Enter a date.');return;}
@@ -1088,10 +1103,9 @@ async function startGroupEntry(){
   } else {
     startHole=parseInt(selectedStartHole)||1;
   }
-  const tee=getTee(selTeeId);
-  const playerList=groupPlayerIds.map(pid=>{const p=players.find(x=>x.id===pid);if(!p)return null;const index=hcpOnDate(p,date);const phcp=index!=null?calcPlayingHcp(index,tee):null;return{p,phcp,index};}).filter(Boolean);
+  const playerList=groupPlayerIds.map(pid=>{const p=players.find(x=>x.id===pid);if(!p)return null;const teeId=playerTees[pid]||selTeeId;const index=hcpOnDate(p,date);return{p,index,teeId};}).filter(Boolean);
   document.getElementById('logStep1').style.display='none';document.getElementById('logStep2').style.display='block';
-  await heInit(playerList,tee,selTeeId,date,document.getElementById('roundNotes').value.trim(),startHole);
+  await heInit(playerList,date,document.getElementById('roundNotes').value.trim(),startHole);
 }
 function backToSetup(){document.getElementById('logStep2').style.display='none';document.getElementById('logStep1').style.display='block';}
 async function saveGroupRound(){
