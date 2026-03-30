@@ -1087,30 +1087,30 @@ function resumeRound(roundId){
 
 function buildResumePlayerCheckboxes(){
   const wrap=document.getElementById('resumePlayerCheckboxes');if(!wrap)return;
-  const otherPlayers=players.filter(p=>p.id!==activeId&&p.approved!==false);
-  if(!otherPlayers.length){wrap.innerHTML='<span style="font-size:0.8rem;color:rgba(255,255,255,0.35)">No other players available.</span>';return;}
-  const defaultTeeId=resumingRound?.r?.tee_id||'57';
-  wrap.innerHTML=otherPlayers.map(p=>{
+  const td=today();
+  // Only show players who have their own partial round today
+  const otherRounds=allRounds.filter(ar=>{
+    if(ar.date!==td||ar.player_id===activeId)return false;
+    const scored=ar.holes.filter(h=>h&&h.score!=null).length;
+    return scored>0&&scored<18;
+  });
+  if(!otherRounds.length){wrap.innerHTML='<span style="font-size:0.8rem;color:rgba(255,255,255,0.35)">No other players have an unfinished round today.</span>';return;}
+  wrap.innerHTML=otherRounds.map(ar=>{
+    const p=players.find(x=>x.id===ar.player_id);if(!p)return'';
     const checked=resumeGroupPlayerIds.includes(p.id);
-    const ptee=resumePlayerTees[p.id]||defaultTeeId;
-    const dropdown=checked?`<div style="margin-left:auto" onclick="event.stopPropagation()"><select onchange="resumePlayerTees[${p.id}]=this.value" style="background:rgba(0,0,0,0.35);border:1px solid rgba(255,255,255,0.18);border-radius:6px;color:var(--cream);font-size:0.78rem;padding:4px 6px;outline:none;cursor:pointer">${TEES.map(t=>`<option value="${t.id}" ${ptee===t.id?'selected':''}>${t.name}</option>`).join('')}</select></div>`:'';
+    const scored=ar.holes.filter(h=>h&&h.score!=null).length;
+    const nextH=ar.holes.find(h=>h&&h.score==null);
     return`<div onclick="toggleResumePlayer(${p.id})" style="display:flex;align-items:center;gap:7px;padding:7px 12px;border-radius:8px;cursor:pointer;border:1px solid ${checked?'rgba(201,168,76,0.5)':'rgba(255,255,255,0.12)'};background:${checked?'rgba(201,168,76,0.1)':'rgba(0,0,0,0.2)'};transition:all 0.15s;user-select:none;width:100%">
       <div style="width:18px;height:18px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.58rem;font-weight:600;color:#fff;flex-shrink:0">${ini(p.name)}</div>
-      <span style="font-size:0.83rem;font-weight:${checked?500:400};color:${checked?'var(--gold-l)':'var(--cream)'}">${p.name}</span>
+      <div style="flex:1"><span style="font-size:0.83rem;font-weight:${checked?500:400};color:${checked?'var(--gold-l)':'var(--cream)'}">${p.name}</span><span style="font-size:0.72rem;color:rgba(255,255,255,0.4);margin-left:8px">${scored}/18 holes · ${ar.tee_name||'—'}</span></div>
       ${checked?'<span style="color:var(--gold);font-size:0.8rem">✓</span>':''}
-      ${dropdown}
     </div>`;
   }).join('');
 }
 
 function toggleResumePlayer(id){
-  if(resumeGroupPlayerIds.includes(id)){
-    resumeGroupPlayerIds=resumeGroupPlayerIds.filter(x=>x!==id);
-    delete resumePlayerTees[id];
-  } else {
-    resumeGroupPlayerIds.push(id);
-    if(!resumePlayerTees[id]) resumePlayerTees[id]=resumingRound?.r?.tee_id||'57';
-  }
+  if(resumeGroupPlayerIds.includes(id))resumeGroupPlayerIds=resumeGroupPlayerIds.filter(x=>x!==id);
+  else resumeGroupPlayerIds.push(id);
   buildResumePlayerCheckboxes();
 }
 
@@ -1132,28 +1132,18 @@ async function startResumeEntry(){
   const firstUnscored=r.holes.find(h=>h&&h.score==null);
   const startAtHole=firstUnscored?firstUnscored.hole:1;
 
-  // Create new rounds for any additional players
-  if(resumeGroupPlayerIds.length){
-    setLoading(true,'Adding players…');
-    try{
-      for(const pid of resumeGroupPlayerIds){
-        const ap=players.find(x=>x.id===pid);if(!ap)continue;
-        const aTeeId=resumePlayerTees[pid]||r.tee_id||'57';
-        const aTee=getTee(aTeeId);
-        const aIndex=hcpOnDate(ap,r.date);
-        const aPhcp=aIndex!=null?calcPlayingHcp(aIndex,aTee):null;
-        const aCourseHcp=aIndex!=null?calcCourseHcp(aIndex,aTee):null;
-        scores[ap.id]=Array(18).fill(null);
-        const holes=Array.from({length:18},(_,i)=>({hole:i+1,score:null,par:HOLE_PARS[i],hcp:HOLE_HCP[i]}));
-        const payload={id:Date.now()+Math.floor(Math.random()*100000),player_id:ap.id,course:'Royal Golf Club, Copenhagen',date:r.date,tee_id:aTeeId,tee_name:aTee.name,tee_color:aTee.color,rating:aTee.rating,slope:aTee.slope,hcp_index:aIndex,course_hcp:aCourseHcp,playing_hcp:aPhcp,notes:r.notes||'',holes};
-        const[saved]=await sbInsert('rounds',payload);
-        const rec=saved||payload;
-        roundIds[ap.id]=rec.id;
-        allRounds.unshift(rec);
-        playerList.push({p:ap,phcp:aPhcp,index:aIndex,tee:aTee,teeId:aTeeId});
-      }
-    }catch(e){alert('Error adding players: '+e.message);setLoading(false);return;}
-    setLoading(false);
+  // Restore existing rounds for additional players — no new rounds created
+  const td=today();
+  for(const pid of resumeGroupPlayerIds){
+    const ap=players.find(x=>x.id===pid);if(!ap)continue;
+    const apr=allRounds.find(ar=>ar.player_id===pid&&ar.date===td&&ar.holes.filter(h=>h&&h.score!=null).length>0);
+    if(!apr)continue;
+    const aTee=getTee(apr.tee_id||'57');
+    const aIndex=hcpOnDate(ap,apr.date);
+    const aPhcp=aIndex!=null?calcPlayingHcp(aIndex,aTee):null;
+    scores[ap.id]=apr.holes.map(h=>h?h.score:null);
+    roundIds[ap.id]=apr.id;
+    playerList.push({p:ap,phcp:aPhcp,index:aIndex,tee:aTee,teeId:apr.tee_id||'57'});
   }
 
   groupPlayerIds=playerList.map(x=>x.p.id);
