@@ -191,6 +191,7 @@ select option { background: #1a3a2a; }
     <button class="nav-tab" onclick="showView('log',this)">Log Round</button>
     <button class="nav-tab" id="tabHistory" onclick="showView('history',this)">My Rounds</button>
     <button class="nav-tab" id="tabPlayers" onclick="showView('players',this)">Players</button>
+    <button class="nav-tab" onclick="showView('rules',this)">Rules</button>
     <button class="nav-tab" id="adminTab" style="display:none" onclick="requireAdminPin(this)">⚙ Admin</button>
   </div>
 
@@ -295,6 +296,97 @@ select option { background: #1a3a2a; }
       <div class="ph"><span class="pt">Club Roster</span><button class="btn btn-ghost btn-sm" id="addPlayerBtn" style="display:none" onclick="showAddPlayer()">+ Add Player</button></div>
       <div class="pb"><div class="player-grid" id="playerGrid"></div></div>
     </div>
+  </div>
+
+  <!-- RULES -->
+  <div class="view" id="view-rules">
+
+    <!-- General -->
+    <div class="panel" style="margin-bottom:1.25rem">
+      <div class="ph"><span class="pt">General Rules</span></div>
+      <div class="pb" style="display:flex;flex-direction:column;gap:0.6rem;font-size:0.88rem;line-height:1.6;color:rgba(240,213,140,0.85)">
+        <p>All scoring is <strong>nett</strong> (handicap adjusted).</p>
+        <p>Playing Handicap = Course Handicap × 95%, where Course Handicap = Handicap Index × (Slope ÷ 113) + (Course Rating − Par).</p>
+        <p>Handicap Index is as per the official <strong>DGA (Danish Golf Association)</strong> index. If found to be incorrect, it will be restated retroactively.</p>
+        <p>The season pot is split <strong>50/50</strong> between the Eclectic and Best 4 IPS competitions.</p>
+        <p style="font-size:0.78rem;color:rgba(255,255,255,0.3)">All payouts are made after MobilePay transaction fees.</p>
+      </div>
+    </div>
+
+    <!-- Best 4 IPS -->
+    <div class="panel" style="margin-bottom:1.25rem">
+      <div class="ph"><span class="pt">Best 4 IPS — Individual Points Score</span><span style="font-size:0.72rem;color:rgba(255,255,255,0.3)">Season Competition</span></div>
+      <div class="pb" style="font-size:0.88rem;line-height:1.7;color:rgba(240,213,140,0.85)">
+        <p style="margin-bottom:0.75rem">Stableford scoring across all rounds played during the season. Only your <strong>4 best rounds</strong> count towards your season total.</p>
+        <p style="margin-bottom:0.5rem"><strong style="color:var(--gold-l)">How points are calculated per hole:</strong></p>
+        <div style="background:rgba(0,0,0,0.2);border-radius:8px;padding:0.75rem 1rem;margin-bottom:0.75rem;font-family:'DM Mono',monospace;font-size:0.82rem">
+          Points = max(0, 2 + Par + Handicap Strokes − Gross Score)
+        </div>
+        <ul style="padding-left:1.2rem;display:flex;flex-direction:column;gap:0.35rem">
+          <li>Score 2 over nett par → <strong>0 pts</strong></li>
+          <li>Score 1 over nett par (Bogey) → <strong>1 pt</strong></li>
+          <li>Score nett par → <strong>2 pts</strong></li>
+          <li>Score 1 under nett par (Birdie) → <strong>3 pts</strong></li>
+          <li>Score 2 under nett par (Eagle) → <strong>4 pts</strong></li>
+        </ul>
+        <p style="margin-top:0.75rem">Season ranking is by total points from the 4 best rounds. Tie-break rules — TBC.</p>
+      </div>
+    </div>
+
+    <!-- Eclectic -->
+    <div class="panel" style="margin-bottom:1.25rem">
+      <div class="ph"><span class="pt">Eclectic — Dream Card</span><span style="font-size:0.72rem;color:rgba(255,255,255,0.3)">Season Competition</span></div>
+      <div class="pb" style="font-size:0.88rem;line-height:1.7;color:rgba(240,213,140,0.85)">
+        <p style="margin-bottom:0.75rem">Your personal <strong>best nett score on each individual hole</strong>, accumulated across all rounds in the season. Your dream card is built hole-by-hole — every time you play better than your previous best on a hole, it updates automatically.</p>
+        <ul style="padding-left:1.2rem;display:flex;flex-direction:column;gap:0.35rem;margin-bottom:0.75rem">
+          <li>Nett score = Gross score − Handicap strokes allocated to that hole</li>
+          <li>Lower nett score always replaces a previous best</li>
+          <li>If two rounds produce the same nett score, the one with more Stableford points is kept</li>
+          <li>You must have played a hole at least once for it to appear on your card</li>
+        </ul>
+        <p>Season ranking is by <strong>lowest total nett score</strong> across all 18 holes. Tie-break rules — TBC.</p>
+      </div>
+    </div>
+
+    <!-- Today -->
+    <div class="panel" style="margin-bottom:1.25rem">
+      <div class="ph"><span class="pt">Today's Leaderboard</span><span style="font-size:0.72rem;color:rgba(255,255,255,0.3)">Daily</span></div>
+      <div class="pb" style="font-size:0.88rem;line-height:1.7;color:rgba(240,213,140,0.85)">
+        <p>Live Stableford scoring for all rounds submitted today. Ranked by total points, with holes completed as a tiebreaker. Resets each day.</p>
+      </div>
+    </div>
+
+    <!-- Payouts -->
+    <div class="panel" style="margin-bottom:1.25rem">
+      <div class="ph"><span class="pt">Payout Structure</span></div>
+      <div class="pb" style="font-size:0.88rem;line-height:1.7;color:rgba(240,213,140,0.85)">
+
+        <p style="margin-bottom:1rem"><strong style="color:var(--gold-l)">Individual Saturday Days</strong> — Prize structure to be confirmed.</p>
+
+        <p style="margin-bottom:0.75rem"><strong style="color:var(--gold-l)">Season Competitions (IPS &amp; Eclectic)</strong></p>
+        <p style="margin-bottom:0.75rem">The season pot is split equally between the two competitions. Each competition pays out as follows:</p>
+
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:0.75rem;text-align:center">
+          <div style="background:rgba(255,215,0,0.08);border:1px solid rgba(255,215,0,0.25);border-radius:10px;padding:0.9rem 0.5rem">
+            <div style="font-size:1.5rem;margin-bottom:4px">🥇</div>
+            <div style="font-family:'DM Mono',monospace;font-size:1.1rem;color:#ffd700;font-weight:600">55%</div>
+            <div style="font-size:0.7rem;color:rgba(255,255,255,0.35);margin-top:2px">1st Place</div>
+          </div>
+          <div style="background:rgba(192,192,192,0.08);border:1px solid rgba(192,192,192,0.25);border-radius:10px;padding:0.9rem 0.5rem">
+            <div style="font-size:1.5rem;margin-bottom:4px">🥈</div>
+            <div style="font-family:'DM Mono',monospace;font-size:1.1rem;color:#c0c0c0;font-weight:600">35%</div>
+            <div style="font-size:0.7rem;color:rgba(255,255,255,0.35);margin-top:2px">2nd Place</div>
+          </div>
+          <div style="background:rgba(205,127,50,0.08);border:1px solid rgba(205,127,50,0.25);border-radius:10px;padding:0.9rem 0.5rem">
+            <div style="font-size:1.5rem;margin-bottom:4px">🥉</div>
+            <div style="font-family:'DM Mono',monospace;font-size:1.1rem;color:#cd7f32;font-weight:600">10%</div>
+            <div style="font-size:0.7rem;color:rgba(255,255,255,0.35);margin-top:2px">3rd Place</div>
+          </div>
+        </div>
+        <p style="font-size:0.78rem;color:rgba(255,255,255,0.3)">All payouts are made after MobilePay transaction fees have been deducted.</p>
+      </div>
+    </div>
+
   </div>
 
   <!-- ADMIN -->
