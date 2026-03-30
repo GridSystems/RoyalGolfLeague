@@ -575,7 +575,7 @@ const TEES=[
 const COLORS=['#e8534a','#4a7fe8','#e8a93a','#6cb86c','#a06be8','#e86ca0','#4ab8c8','#c8a060','#80b840','#e87040'];
 
 let players=[],allRounds=[],activeId=null,selColor=0;
-let selTeeId='platinum',erSelTeeId='platinum',editingHcpPlayerId=null,editingRoundId=null;
+let selTeeId='57',erSelTeeId='platinum',editingHcpPlayerId=null,editingRoundId=null;
 let groupPlayerIds=[],playerTees={};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -1082,7 +1082,7 @@ function buildPlayerCheckboxes(){
   wrap.innerHTML=list.map(p=>{
     const checked=groupPlayerIds.includes(p.id);
     const ptee=playerTees[p.id]||selTeeId;
-    const teeDots=checked?`<div style="margin-left:auto;display:flex;gap:4px;align-items:center">${TEES.map(t=>{const lbl=t.id==='champion'?'Ch':t.id==='platinum'?'Pt':t.id;return`<div onclick="event.stopPropagation();selectPlayerTee(${p.id},'${t.id}')" title="${t.name}" style="min-width:22px;height:22px;border-radius:5px;background:${t.color};cursor:pointer;border:2px solid ${ptee===t.id?'rgba(255,255,255,0.9)':'rgba(255,255,255,0.12)'};transition:border-color 0.15s;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:0.58rem;font-weight:700;color:#fff;text-shadow:0 0 3px rgba(0,0,0,0.8);padding:0 2px">${lbl}</div>`;}).join('')}</div>`:'';
+    const teeDots=checked?`<div style="margin-left:auto" onclick="event.stopPropagation()"><select onchange="selectPlayerTee(${p.id},this.value)" style="background:rgba(0,0,0,0.35);border:1px solid rgba(255,255,255,0.18);border-radius:6px;color:var(--cream);font-size:0.78rem;padding:4px 6px;outline:none;cursor:pointer">${TEES.map(t=>`<option value="${t.id}" ${ptee===t.id?'selected':''}>${t.name}</option>`).join('')}</select></div>`:'';
     return`<div ${isPending?'':'onclick="toggleGroupPlayer('+p.id+')"'} style="display:flex;align-items:center;gap:7px;padding:7px 12px;border-radius:8px;${isPending?'':'cursor:pointer;'}border:1px solid ${checked?'rgba(201,168,76,0.5)':'rgba(255,255,255,0.12)'};background:${checked?'rgba(201,168,76,0.1)':'rgba(0,0,0,0.2)'};transition:all 0.15s;user-select:none"><div style="width:18px;height:18px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.58rem;font-weight:600;color:#fff">${ini(p.name)}</div><span style="font-size:0.83rem;font-weight:${checked?500:400};color:${checked?'var(--gold-l)':'var(--cream)'}">${p.name}</span>${checked?'<span style="color:var(--gold);font-size:0.8rem">✓</span>':''}${teeDots}</div>`;
   }).join('');
 }
