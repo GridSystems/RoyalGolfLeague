@@ -258,6 +258,22 @@ select option { background: #1a3a2a; }
         <div class="fa" style="margin-top:0"><button class="btn btn-primary" onclick="startGroupEntry()">Enter Scores →</button></div>
       </div>
     </div>
+    <div id="logStep1b" style="display:none">
+      <div class="panel" style="margin-bottom:1rem">
+        <div class="ph"><span class="pt">Resume Round</span><span style="font-size:0.75rem;color:rgba(255,255,255,0.35)">Step 1b of 2</span></div>
+        <div class="pb">
+          <div id="resumeRoundInfo" style="margin-bottom:1.2rem"></div>
+          <div class="fgi" style="margin-bottom:1.2rem">
+            <label>Also scoring for other players? <span style="font-size:0.72rem;color:rgba(255,255,255,0.35)">(optional)</span></label>
+            <div id="resumePlayerCheckboxes" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px"></div>
+          </div>
+          <div class="fa" style="margin-top:0">
+            <button class="btn btn-ghost" onclick="cancelResume()">← Back</button>
+            <button class="btn btn-primary" onclick="startResumeEntry()">Continue Scoring →</button>
+          </div>
+        </div>
+      </div>
+    </div>
     <div id="logStep2" style="display:none">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:8px">
         <button class="btn btn-ghost btn-sm" onclick="backToSetup()">← Back to setup</button>
@@ -577,6 +593,7 @@ const COLORS=['#e8534a','#4a7fe8','#e8a93a','#6cb86c','#a06be8','#e86ca0','#4ab8
 let players=[],allRounds=[],activeId=null,selColor=0;
 let selTeeId='57',erSelTeeId='platinum',editingHcpPlayerId=null,editingRoundId=null;
 let groupPlayerIds=[],playerTees={};
+let resumingRound=null,resumeGroupPlayerIds=[],resumePlayerTees={};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const ini=n=>n.trim().split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
@@ -1040,35 +1057,110 @@ function checkForResumableRounds(){
   </div>`;
 }
 
-async function resumeRound(roundId){
+function resumeRound(roundId){
   const r=allRounds.find(x=>x.id===roundId);
   if(!r){alert('Round not found.');return;}
   const p=players.find(x=>x.id===r.player_id);
   if(!p){alert('Player not found.');return;}
 
-  const tee=getTee(r.tee_id||'platinum');
+  // Store resuming context and show step 1b
+  resumingRound={r,p};
+  resumeGroupPlayerIds=[];
+  resumePlayerTees={};
+
+  const scored=r.holes.filter(h=>h&&h.score!=null).length;
+  const nextHole=r.holes.find(h=>h&&h.score==null);
+  const nextHoleNum=nextHole?nextHole.hole:1;
+  document.getElementById('resumeRoundInfo').innerHTML=`
+    <div style="background:rgba(201,168,76,0.07);border:1px solid rgba(201,168,76,0.2);border-radius:8px;padding:10px 14px;font-size:0.85rem">
+      <span style="color:var(--gold-l);font-weight:500">Your round</span>
+      <span style="color:rgba(255,255,255,0.5);margin:0 8px">·</span>${scored}/18 holes scored
+      <span style="color:rgba(255,255,255,0.5);margin:0 8px">·</span>Picking up at <strong>Hole ${nextHoleNum}</strong>
+      <span style="color:rgba(255,255,255,0.5);margin:0 8px">·</span><span style="color:rgba(201,168,76,0.7)">${r.tee_name||'—'}</span>
+    </div>`;
+
+  buildResumePlayerCheckboxes();
+  document.getElementById('resumePanel').style.display='none';
+  document.getElementById('logStep1').style.display='none';
+  document.getElementById('logStep1b').style.display='block';
+}
+
+function buildResumePlayerCheckboxes(){
+  const wrap=document.getElementById('resumePlayerCheckboxes');if(!wrap)return;
+  const otherPlayers=players.filter(p=>p.id!==activeId&&p.approved!==false);
+  if(!otherPlayers.length){wrap.innerHTML='<span style="font-size:0.8rem;color:rgba(255,255,255,0.35)">No other players available.</span>';return;}
+  const defaultTeeId=resumingRound?.r?.tee_id||'57';
+  wrap.innerHTML=otherPlayers.map(p=>{
+    const checked=resumeGroupPlayerIds.includes(p.id);
+    const ptee=resumePlayerTees[p.id]||defaultTeeId;
+    const dropdown=checked?`<div style="margin-left:auto" onclick="event.stopPropagation()"><select onchange="resumePlayerTees[${p.id}]=this.value" style="background:rgba(0,0,0,0.35);border:1px solid rgba(255,255,255,0.18);border-radius:6px;color:var(--cream);font-size:0.78rem;padding:4px 6px;outline:none;cursor:pointer">${TEES.map(t=>`<option value="${t.id}" ${ptee===t.id?'selected':''}>${t.name}</option>`).join('')}</select></div>`:'';
+    return`<div onclick="toggleResumePlayer(${p.id})" style="display:flex;align-items:center;gap:7px;padding:7px 12px;border-radius:8px;cursor:pointer;border:1px solid ${checked?'rgba(201,168,76,0.5)':'rgba(255,255,255,0.12)'};background:${checked?'rgba(201,168,76,0.1)':'rgba(0,0,0,0.2)'};transition:all 0.15s;user-select:none;width:100%">
+      <div style="width:18px;height:18px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.58rem;font-weight:600;color:#fff;flex-shrink:0">${ini(p.name)}</div>
+      <span style="font-size:0.83rem;font-weight:${checked?500:400};color:${checked?'var(--gold-l)':'var(--cream)'}">${p.name}</span>
+      ${checked?'<span style="color:var(--gold);font-size:0.8rem">✓</span>':''}
+      ${dropdown}
+    </div>`;
+  }).join('');
+}
+
+function toggleResumePlayer(id){
+  if(resumeGroupPlayerIds.includes(id)){
+    resumeGroupPlayerIds=resumeGroupPlayerIds.filter(x=>x!==id);
+    delete resumePlayerTees[id];
+  } else {
+    resumeGroupPlayerIds.push(id);
+    if(!resumePlayerTees[id]) resumePlayerTees[id]=resumingRound?.r?.tee_id||'57';
+  }
+  buildResumePlayerCheckboxes();
+}
+
+function cancelResume(){
+  document.getElementById('logStep1b').style.display='none';
+  document.getElementById('logStep1').style.display='block';
+  resumingRound=null;resumeGroupPlayerIds=[];resumePlayerTees={};
+}
+
+async function startResumeEntry(){
+  if(!resumingRound){return;}
+  const{r,p}=resumingRound;
+  const tee=getTee(r.tee_id||'57');
   const index=hcpOnDate(p,r.date);
   const phcp=index!=null?calcPlayingHcp(index,tee):null;
-  const playerList=[{p,phcp,index}];
-
-  // Restore scores from existing round
+  const playerList=[{p,phcp,index,tee,teeId:r.tee_id||'57'}];
   const scores={[p.id]:r.holes.map(h=>h?h.score:null)};
   const roundIds={[p.id]:r.id};
-
-  // Find first unscored hole
   const firstUnscored=r.holes.find(h=>h&&h.score==null);
   const startAtHole=firstUnscored?firstUnscored.hole:1;
 
-  // Set up HE state directly without creating new rounds
-  HE={mode:'group',playerList,scores,roundIds,currentHole:startAtHole,currentPidx:0,startHole:startAtHole,tee,teeId:r.tee_id||'platinum',date:r.date,notes:r.notes||''};
+  // Create new rounds for any additional players
+  if(resumeGroupPlayerIds.length){
+    setLoading(true,'Adding players…');
+    try{
+      for(const pid of resumeGroupPlayerIds){
+        const ap=players.find(x=>x.id===pid);if(!ap)continue;
+        const aTeeId=resumePlayerTees[pid]||r.tee_id||'57';
+        const aTee=getTee(aTeeId);
+        const aIndex=hcpOnDate(ap,r.date);
+        const aPhcp=aIndex!=null?calcPlayingHcp(aIndex,aTee):null;
+        const aCourseHcp=aIndex!=null?calcCourseHcp(aIndex,aTee):null;
+        scores[ap.id]=Array(18).fill(null);
+        const holes=Array.from({length:18},(_,i)=>({hole:i+1,score:null,par:HOLE_PARS[i],hcp:HOLE_HCP[i]}));
+        const payload={id:Date.now()+Math.floor(Math.random()*100000),player_id:ap.id,course:'Royal Golf Club, Copenhagen',date:r.date,tee_id:aTeeId,tee_name:aTee.name,tee_color:aTee.color,rating:aTee.rating,slope:aTee.slope,hcp_index:aIndex,course_hcp:aCourseHcp,playing_hcp:aPhcp,notes:r.notes||'',holes};
+        const[saved]=await sbInsert('rounds',payload);
+        const rec=saved||payload;
+        roundIds[ap.id]=rec.id;
+        allRounds.unshift(rec);
+        playerList.push({p:ap,phcp:aPhcp,index:aIndex,tee:aTee,teeId:aTeeId});
+      }
+    }catch(e){alert('Error adding players: '+e.message);setLoading(false);return;}
+    setLoading(false);
+  }
 
-  // Pre-select this player in groupPlayerIds
-  groupPlayerIds=[p.id];
-
-  // Switch to entry screen
-  document.getElementById('resumePanel').style.display='none';
-  document.getElementById('logStep1').style.display='none';
+  groupPlayerIds=playerList.map(x=>x.p.id);
+  HE={playerList,scores,roundIds,currentHole:startAtHole,currentPidx:0,startHole:startAtHole,date:r.date,notes:r.notes||''};
+  document.getElementById('logStep1b').style.display='none';
   document.getElementById('logStep2').style.display='block';
+  resumingRound=null;resumeGroupPlayerIds=[];resumePlayerTees={};
   heRender();
 }
 
@@ -1108,7 +1200,7 @@ async function startGroupEntry(){
   document.getElementById('logStep1').style.display='none';document.getElementById('logStep2').style.display='block';
   await heInit(playerList,date,document.getElementById('roundNotes').value.trim(),startHole);
 }
-function backToSetup(){document.getElementById('logStep2').style.display='none';document.getElementById('logStep1').style.display='block';}
+function backToSetup(){document.getElementById('logStep2').style.display='none';document.getElementById('logStep1b').style.display='none';document.getElementById('logStep1').style.display='block';}
 async function saveGroupRound(){
   heFlushInputs();
   // Validate minimum holes
