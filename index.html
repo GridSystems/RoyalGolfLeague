@@ -1095,22 +1095,23 @@ function resumeRound(roundId){
 function buildResumePlayerCheckboxes(){
   const wrap=document.getElementById('resumePlayerCheckboxes');if(!wrap)return;
   const td=today();
-  // Only show players who have their own partial round today
+  // One entry per player — take their most recent partial round today
+  const seen=new Set();
   const otherRounds=allRounds.filter(ar=>{
-    if(ar.date!==td||ar.player_id===activeId)return false;
+    if(ar.date!==td||ar.player_id===activeId||seen.has(ar.player_id))return false;
     const scored=ar.holes.filter(h=>h&&h.score!=null).length;
-    return scored>0&&scored<18;
+    if(scored>0&&scored<18){seen.add(ar.player_id);return true;}
+    return false;
   });
   if(!otherRounds.length){wrap.innerHTML='<span style="font-size:0.8rem;color:rgba(255,255,255,0.35)">No other players have an unfinished round today.</span>';return;}
   wrap.innerHTML=otherRounds.map(ar=>{
     const p=players.find(x=>x.id===ar.player_id);if(!p)return'';
     const checked=resumeGroupPlayerIds.includes(p.id);
     const scored=ar.holes.filter(h=>h&&h.score!=null).length;
-    const nextH=ar.holes.find(h=>h&&h.score==null);
     return`<div onclick="toggleResumePlayer(${p.id})" style="display:flex;align-items:center;gap:7px;padding:7px 12px;border-radius:8px;cursor:pointer;border:1px solid ${checked?'rgba(201,168,76,0.5)':'rgba(255,255,255,0.12)'};background:${checked?'rgba(201,168,76,0.1)':'rgba(0,0,0,0.2)'};transition:all 0.15s;user-select:none;width:100%">
       <div style="width:18px;height:18px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.58rem;font-weight:600;color:#fff;flex-shrink:0">${ini(p.name)}</div>
       <div style="flex:1"><span style="font-size:0.83rem;font-weight:${checked?500:400};color:${checked?'var(--gold-l)':'var(--cream)'}">${p.name}</span><span style="font-size:0.72rem;color:rgba(255,255,255,0.4);margin-left:8px">${scored}/18 holes · ${ar.tee_name||'—'}</span></div>
-      ${checked?'<span style="color:var(--gold);font-size:0.8rem">✓</span>':''}
+      <span style="width:18px;text-align:center;color:var(--gold);font-size:0.8rem">${checked?'✓':''}</span>
     </div>`;
   }).join('');
 }
