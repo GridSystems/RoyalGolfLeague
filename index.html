@@ -202,6 +202,7 @@ select option { background: #1a3a2a; }
         <button class="sub-tab active" onclick="showLb('today',this)"><span class="live-dot"></span>Today</button>
         <button class="sub-tab" onclick="showLb('season',this)">Season</button>
         <button class="sub-tab" onclick="showLb('dreamcard',this)">Eclectic</button>
+        <button class="sub-tab" onclick="showLb('fines',this)">🚨 Fines</button>
       </div>
       <div class="lb-view active" id="lb-today">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:8px">
@@ -228,6 +229,14 @@ select option { background: #1a3a2a; }
         </div>
         <div id="eclecticRankings" style="margin-bottom:1.5rem"></div>
         <div id="eclecticScorecards"></div>
+      </div>
+      <div class="lb-view" id="lb-fines">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:8px">
+          <div style="font-size:0.8rem;color:rgba(255,255,255,0.4)">DKK 10 per infraction · Pot TBC</div>
+          <select id="finesYear" onchange="renderFinesLb()" style="background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.14);border-radius:6px;color:var(--cream);font-size:0.75rem;padding:4px 8px;outline:none"></select>
+        </div>
+        <div id="finesPot" style="margin-bottom:1rem"></div>
+        <div id="finesTable" style="margin-bottom:1.5rem"></div>
       </div>
     </div>
   </div>
@@ -442,6 +451,16 @@ select option { background: #1a3a2a; }
       </div>
       <div id="adminRoundsTable"></div>
     </div>
+    <div class="panel">
+      <div class="ph">
+        <span class="pt">Fines</span>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-ghost btn-sm" onclick="document.getElementById('fineTypesModal').style.display='flex';renderFineTypesList()">Manage Fine Types</button>
+          <button class="btn btn-warn btn-sm" onclick="showAddFine(null,true)">🚨 Issue Fine</button>
+        </div>
+      </div>
+      <div id="adminFinesTable" class="pb"></div>
+    </div>
   </div>
 </div>
 
@@ -493,6 +512,43 @@ select option { background: #1a3a2a; }
   <div style="display:flex;gap:9px;justify-content:flex-end">
     <button class="btn btn-ghost btn-sm" onclick="closeModal('editEmailModal')">Cancel</button>
     <button class="btn btn-primary btn-sm" onclick="savePlayerEmail()">Save</button>
+  </div>
+</div></div>
+
+<!-- Add Fine Modal -->
+<div class="modal-bg" id="addFineModal" style="display:none"><div class="modal modal-sm">
+  <h3>🚨 Issue a Fine</h3>
+  <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:1rem">
+    <div class="fgi"><label>Player</label>
+      <select id="finePlayer" style="width:100%"></select>
+    </div>
+    <div class="fgi"><label>Infraction</label>
+      <select id="fineType" style="width:100%"></select>
+    </div>
+    <div style="display:flex;gap:10px">
+      <div class="fgi" style="flex:1"><label>Hole</label><input type="number" id="fineHole" min="1" max="18" placeholder="1–18"></div>
+      <div class="fgi" style="flex:1"><label>Date</label><input type="date" id="fineDate"></div>
+    </div>
+    <div class="fgi"><label>Notes <span style="color:rgba(255,255,255,0.3);font-size:0.75rem">(optional)</span></label><input type="text" id="fineNotes" placeholder="e.g. Lost ball on hole 7"></div>
+    <div id="fineError" style="color:#f08080;font-size:0.78rem;display:none"></div>
+  </div>
+  <div style="display:flex;gap:9px;justify-content:flex-end">
+    <button class="btn btn-ghost btn-sm" onclick="closeModal('addFineModal')">Cancel</button>
+    <button class="btn btn-warn btn-sm" onclick="submitFine()">Issue Fine DKK <span id="fineCostLabel">10</span></button>
+  </div>
+</div></div>
+
+<!-- Fine Types Admin Modal -->
+<div class="modal-bg" id="fineTypesModal" style="display:none"><div class="modal modal-sm">
+  <h3>Manage Fine Types</h3>
+  <div id="fineTypesList" style="margin-bottom:1rem"></div>
+  <div style="display:flex;gap:8px;margin-bottom:1rem">
+    <input type="text" id="newFineTypeName" placeholder="e.g. Lost Ball" style="flex:1">
+    <input type="number" id="newFineTypeAmount" placeholder="DKK" value="10" min="1" style="width:70px">
+    <button class="btn btn-primary btn-sm" onclick="addFineType()">Add</button>
+  </div>
+  <div style="display:flex;justify-content:flex-end">
+    <button class="btn btn-ghost btn-sm" onclick="closeModal('fineTypesModal')">Close</button>
   </div>
 </div></div>
 
@@ -599,6 +655,7 @@ const TEES=[
 const COLORS=['#e8534a','#4a7fe8','#e8a93a','#6cb86c','#a06be8','#e86ca0','#4ab8c8','#c8a060','#80b840','#e87040'];
 
 let players=[],allRounds=[],activeId=null,selColor=0;
+let fineTypes=[],allFines=[];
 let selTeeId='57',erSelTeeId='platinum',editingHcpPlayerId=null,editingRoundId=null;
 let groupPlayerIds=[],playerTees={};
 let resumingRound=null,resumeGroupPlayerIds=[],resumePlayerTees={};
@@ -631,7 +688,7 @@ function calcHolePoints(round,player){const tee=getTee(round.tee_id||'platinum')
 
 // ── Storage ───────────────────────────────────────────────────────────────────
 let pendingPlayers=[];
-async function loadData(){const all=await sbGet('players','order=created_at.asc');pendingPlayers=all.filter(p=>p.approved===false);players=all.filter(p=>p.approved!==false);allRounds=await sbGet('rounds','order=date.desc');}
+async function loadData(){const all=await sbGet('players','order=created_at.asc');pendingPlayers=all.filter(p=>p.approved===false);players=all.filter(p=>p.approved!==false);allRounds=await sbGet('rounds','order=date.desc');fineTypes=await sbGet('fine_types','order=name.asc');allFines=await sbGet('fines','order=created_at.desc');}
 
 // ── Admin ─────────────────────────────────────────────────────────────────────
 function adminPlayer(){return players.find(p=>p.is_admin)||players[0];}
@@ -758,7 +815,7 @@ function showView(id,btn){
   if(id==='history'){renderMyRounds();const b=document.getElementById('myHcpBtn');if(b)b.style.display=activeId?'inline-block':'none';}
   if(id==='players')renderGrid();
   if(id==='log'){buildPlayerCheckboxes();checkForResumableRounds();}
-  if(id==='admin'){renderPendingApprovals();renderAdmin();renderBulkEntry();}
+  if(id==='admin'){renderPendingApprovals();renderAdmin();renderBulkEntry();renderAdminFines();}
   if(id==='rules')renderRules();
 }
 function renderRules(){
@@ -779,7 +836,7 @@ function renderRules(){
     </div>
     <p style="font-size:0.75rem;color:rgba(255,255,255,0.3)">DKK 250 per player · ${approved} player${approved!==1?'s':''} · Total pot DKK ${total} · Split 50/50 before MobilePay fees</p>`;
 }
-function showLb(id,btn){document.querySelectorAll('.lb-view').forEach(v=>v.classList.remove('active'));document.querySelectorAll('.sub-tab').forEach(t=>t.classList.remove('active'));document.getElementById('lb-'+id).classList.add('active');if(btn)btn.classList.add('active');if(id==='today')renderTodayLb();if(id==='season')renderSeasonLb();if(id==='dreamcard'){renderDreamCard();}}
+function showLb(id,btn){document.querySelectorAll('.lb-view').forEach(v=>v.classList.remove('active'));document.querySelectorAll('.sub-tab').forEach(t=>t.classList.remove('active'));document.getElementById('lb-'+id).classList.add('active');if(btn)btn.classList.add('active');if(id==='today')renderTodayLb();if(id==='season')renderSeasonLb();if(id==='dreamcard'){renderDreamCard();}if(id==='fines')renderFinesLb();}
 
 // ── Tee selectors ─────────────────────────────────────────────────────────────
 function buildTeeSelectorEl(cid,active,sv){const el=document.getElementById(cid);if(!el)return;el.innerHTML=TEES.map(t=>`<div class="tee-opt${t.id===active?' selected':''}" onclick="selectTee('${cid}','${t.id}','${sv}')"><span class="tee-dot" style="background:${t.color};border:1px solid rgba(255,255,255,0.25)"></span>${t.name} <span style="font-size:0.68rem;color:rgba(255,255,255,0.32)">${t.rating}/${t.slope}</span></div>`).join('');}
@@ -962,8 +1019,9 @@ function heRender(){
     <div style="display:flex;gap:4px;align-items:center;margin-bottom:1.2rem;flex-wrap:wrap">${dots}</div>
     <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:1.2rem">${inputs}</div>
     <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:1rem">${summary}</div>
-    <div style="display:flex;gap:10px;justify-content:center">
+    <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
       <button class="btn btn-ghost" onclick="hePrev()" ${!prevH?'disabled style="opacity:0.3"':''}>← ${prevH?'Hole '+prevH:'Start'}</button>
+      <button class="btn btn-warn btn-sm" onclick="showAddFine(${hole})" style="font-size:0.8rem">🚨 Fine</button>
       <button class="btn btn-primary" onclick="heNext()">${nextLabel}</button>
     </div>
   </div>`;
@@ -1350,7 +1408,7 @@ function scrollToMyEclectic(){
 
 // ── Leaderboards ──────────────────────────────────────────────────────────────
 function getSeasons(){const y=[...new Set(allRounds.map(r=>r.date.slice(0,4)))].sort().reverse();return y.length?y:[new Date().getFullYear().toString()];}
-function populateYearSelects(){const seasons=getSeasons();['seasonYear','dreamYear'].forEach(id=>{const sel=document.getElementById(id);if(!sel)return;const cur=sel.value;sel.innerHTML=seasons.map(y=>`<option value="${y}">${y}</option>`).join('');if(cur&&seasons.includes(cur))sel.value=cur;});}
+function populateYearSelects(){const seasons=getSeasons();['seasonYear','dreamYear','finesYear'].forEach(id=>{const sel=document.getElementById(id);if(!sel)return;const cur=sel.value;sel.innerHTML=seasons.map(y=>`<option value="${y}">${y}</option>`).join('');if(cur&&seasons.includes(cur))sel.value=cur;});}
 
 function renderTodayLb(){
   const td=today();document.getElementById('todayDateLabel').textContent=new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
@@ -1434,6 +1492,107 @@ function renderMyDreamCard(){
     </tbody></table></div>
     <p style="font-size:0.72rem;color:rgba(255,255,255,0.28);margin-top:0.75rem">Hover a score to see the date and gross details.</p>
   </div>`;}
+
+// ── Fines ─────────────────────────────────────────────────────────────────────
+function renderFinesLb(){
+  const season=document.getElementById('finesYear')?.value||new Date().getFullYear().toString();
+  const sf=allFines.filter(f=>f.date&&f.date.startsWith(season));
+  const potEl=document.getElementById('finesPot');
+  const total=sf.reduce((s,f)=>{const ft=fineTypes.find(x=>x.id===f.fine_type_id);return s+(ft?.amount||10);},0);
+  if(potEl)potEl.innerHTML=`<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;text-align:center"><div style="background:rgba(240,160,48,0.07);border:1px solid rgba(240,160,48,0.25);border-radius:10px;padding:0.85rem"><div style="font-size:0.6rem;text-transform:uppercase;letter-spacing:0.1em;color:rgba(240,160,48,0.5);margin-bottom:4px">Total Fines</div><div style="font-family:'DM Mono',monospace;font-size:1.2rem;color:#f0a030;font-weight:600">${sf.length}</div></div><div style="background:rgba(240,160,48,0.07);border:1px solid rgba(240,160,48,0.25);border-radius:10px;padding:0.85rem"><div style="font-size:0.6rem;text-transform:uppercase;letter-spacing:0.1em;color:rgba(240,160,48,0.5);margin-bottom:4px">Fine Pot</div><div style="font-family:'DM Mono',monospace;font-size:1.2rem;color:#f0a030;font-weight:600">DKK ${total}</div></div></div>`;
+  if(!sf.length){document.getElementById('finesTable').innerHTML='<div class="empty">No fines issued in '+season+' 🎉</div>';return;}
+  const byPlayer=players.map(p=>{
+    const pf=sf.filter(f=>f.player_id===p.id);if(!pf.length)return null;
+    const total=pf.reduce((s,f)=>{const ft=fineTypes.find(x=>x.id===f.fine_type_id);return s+(ft?.amount||10);},0);
+    const breakdown=fineTypes.map(ft=>{const cnt=pf.filter(f=>f.fine_type_id===ft.id).length;return cnt?{ft,cnt}:null;}).filter(Boolean).sort((a,b)=>b.cnt-a.cnt);
+    return{p,count:pf.length,total,breakdown};
+  }).filter(Boolean).sort((a,b)=>b.count-a.count);
+  document.getElementById('finesTable').innerHTML=`<div class="rt-wrap"><table class="rt"><thead><tr><th></th><th>Player</th><th>Fines</th><th>DKK</th><th>Breakdown</th></tr></thead><tbody>${byPlayer.map((row,i)=>{
+    const rc=i===0?'rank gold':i===1?'rank silver':i===2?'rank bronze':'rank';
+    const medal=i===0?'1st':i===1?'2nd':i===2?'3rd':`${i+1}th`;
+    const bd=row.breakdown.map(x=>`<span style="font-size:0.72rem;background:rgba(240,160,48,0.1);border:1px solid rgba(240,160,48,0.2);border-radius:10px;padding:2px 8px;white-space:nowrap">${x.ft.name} ×${x.cnt}</span>`).join(' ');
+    return`<tr><td class="${rc}">${medal}</td><td><div style="display:flex;align-items:center;gap:8px"><div class="av" style="background:${clr(row.p)}">${ini(row.p.name)}</div>${row.p.name}</div></td><td style="font-family:'DM Mono',monospace;font-weight:600;color:#f0a030;font-size:1rem">${row.count}</td><td style="font-family:'DM Mono',monospace;color:#f0a030">DKK ${row.total}</td><td style="max-width:200px"><div style="display:flex;flex-wrap:wrap;gap:4px">${bd}</div></td></tr>`;
+  }).join('')}</tbody></table></div>`;
+}
+
+function showAddFine(hole=null,retroactive=false){
+  if(!fineTypes.length){alert('No fine types set up yet. Add them in Admin → Fines → Manage Fine Types.');return;}
+  const pSel=document.getElementById('finePlayer');
+  const tSel=document.getElementById('fineType');
+  pSel.innerHTML=players.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+  tSel.innerHTML=fineTypes.map(ft=>`<option value="${ft.id}">${ft.name} — DKK ${ft.amount||10}</option>`).join('');
+  document.getElementById('fineHole').value=hole||'';
+  document.getElementById('fineDate').value=HE?.date||today();
+  document.getElementById('fineNotes').value='';
+  document.getElementById('fineError').style.display='none';
+  const firstFt=fineTypes[0];
+  document.getElementById('fineCostLabel').textContent=firstFt?.amount||10;
+  tSel.onchange=()=>{const ft=fineTypes.find(x=>x.id==tSel.value);document.getElementById('fineCostLabel').textContent=ft?.amount||10;};
+  document.getElementById('addFineModal').style.display='flex';
+}
+
+async function submitFine(){
+  const player_id=parseInt(document.getElementById('finePlayer').value);
+  const fine_type_id=parseInt(document.getElementById('fineType').value);
+  const hole=parseInt(document.getElementById('fineHole').value)||null;
+  const date=document.getElementById('fineDate').value;
+  const notes=document.getElementById('fineNotes').value.trim()||null;
+  const err=document.getElementById('fineError');
+  if(!date){err.textContent='Date is required.';err.style.display='block';return;}
+  err.style.display='none';
+  const round_id=HE?.roundIds?.[player_id]||null;
+  const payload={id:Date.now()+Math.floor(Math.random()*10000),player_id,fine_type_id,round_id,hole,date,issued_by:activeId,notes};
+  setLoading(true,'Issuing fine…');
+  try{
+    const[saved]=await sbInsert('fines',payload);
+    allFines.unshift(saved||payload);
+    toast('Fine issued 🚨');
+    closeModal('addFineModal');
+    renderAdminFines();
+  }catch(e){err.textContent='Error: '+e.message;err.style.display='block';}
+  finally{setLoading(false);}
+}
+
+function renderAdminFines(){
+  const el=document.getElementById('adminFinesTable');if(!el)return;
+  if(!allFines.length){el.innerHTML='<div class="empty">No fines issued yet.</div>';return;}
+  el.innerHTML=`<div class="rt-wrap"><table class="rt"><thead><tr><th>Date</th><th>Player</th><th>Infraction</th><th>Hole</th><th>DKK</th><th>Issued By</th><th>Notes</th><th></th></tr></thead><tbody>${allFines.slice(0,50).map(f=>{
+    const p=players.find(x=>x.id===f.player_id);
+    const ft=fineTypes.find(x=>x.id===f.fine_type_id);
+    const ib=players.find(x=>x.id===f.issued_by);
+    return`<tr><td style="font-size:0.78rem;color:rgba(255,255,255,0.45)">${fd(f.date)}</td><td><div style="display:flex;align-items:center;gap:6px"><div class="av" style="background:${clr(p||{})};width:20px;height:20px;font-size:0.55rem">${ini(p?.name||'?')}</div>${p?.name||'—'}</div></td><td style="font-size:0.82rem">${ft?.name||'—'}</td><td style="font-family:'DM Mono',monospace;font-size:0.8rem">${f.hole||'—'}</td><td style="font-family:'DM Mono',monospace;color:#f0a030">DKK ${ft?.amount||10}</td><td style="font-size:0.78rem;color:rgba(255,255,255,0.4)">${ib?.name||'—'}</td><td style="font-size:0.78rem;color:rgba(255,255,255,0.4)">${f.notes||''}</td><td><button class="btn btn-danger btn-sm" onclick="deleteFine(${f.id})">✕</button></td></tr>`;
+  }).join('')}</tbody></table></div>`;
+}
+
+async function deleteFine(id){
+  if(!confirm('Delete this fine?'))return;
+  setLoading(true,'Deleting…');
+  try{await sbDelete('fines',id);allFines=allFines.filter(f=>f.id!==id);toast('Fine removed');renderAdminFines();}
+  catch(e){alert('Error: '+e.message);}finally{setLoading(false);}
+}
+
+function renderFineTypesList(){
+  const el=document.getElementById('fineTypesList');if(!el)return;
+  if(!fineTypes.length){el.innerHTML='<div style="font-size:0.82rem;color:rgba(255,255,255,0.35);padding:0.5rem 0">No fine types yet.</div>';return;}
+  el.innerHTML=fineTypes.map(ft=>`<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.06)"><span style="flex:1;font-size:0.88rem">${ft.name}</span><span style="font-family:'DM Mono',monospace;font-size:0.82rem;color:#f0a030">DKK ${ft.amount||10}</span><button class="btn btn-danger btn-sm" onclick="deleteFineType(${ft.id})">✕</button></div>`).join('');
+}
+
+async function addFineType(){
+  const name=document.getElementById('newFineTypeName').value.trim();
+  const amount=parseFloat(document.getElementById('newFineTypeAmount').value)||10;
+  if(!name){alert('Enter a name.');return;}
+  const payload={id:Date.now()+Math.floor(Math.random()*10000),name,amount};
+  setLoading(true,'Saving…');
+  try{const[saved]=await sbInsert('fine_types',payload);fineTypes.push(saved||payload);fineTypes.sort((a,b)=>a.name.localeCompare(b.name));toast('Fine type added ✓');document.getElementById('newFineTypeName').value='';renderFineTypesList();}
+  catch(e){alert('Error: '+e.message);}finally{setLoading(false);}
+}
+
+async function deleteFineType(id){
+  if(!confirm('Delete this fine type? Existing fines will lose their label.'))return;
+  setLoading(true,'Deleting…');
+  try{await sbDelete('fine_types',id);fineTypes=fineTypes.filter(f=>f.id!==id);toast('Fine type removed');renderFineTypesList();}
+  catch(e){alert('Error: '+e.message);}finally{setLoading(false);}
+}
 
 // ── My Rounds ─────────────────────────────────────────────────────────────────
 function renderMyRounds(){
