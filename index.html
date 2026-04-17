@@ -692,7 +692,7 @@ async function loadData(){const all=await sbGet('players','order=created_at.asc'
 
 // ── Admin ─────────────────────────────────────────────────────────────────────
 function adminPlayer(){return players.find(p=>p.is_admin)||players[0];}
-function isAdmin(){const ap=adminPlayer();return ap&&activeId===ap.id;}
+function isAdmin(){return players.find(p=>p.id===activeId)?.is_admin===true;}
 function updateAdminUI(){const a=isAdmin();document.getElementById('adminTab').style.display=a?'inline-block':'none';document.getElementById('adminBadge').style.display=a?'inline-flex':'none';const ab=document.getElementById('addPlayerBtn');if(ab)ab.style.display=a?'inline-block':'none';}
 function applyPendingUI(){const p=players.find(x=>x.id===activeId);const pending=p&&p.approved===false;document.getElementById('pendingBanner').style.display=pending?'block':'none';document.getElementById('tabLeaderboard').style.display=pending?'none':'';document.getElementById('tabHistory').style.display=pending?'none':'';document.getElementById('tabPlayers').style.display=pending?'none':'';if(pending){showView('log',document.querySelector('.nav-tab'));document.querySelector('.nav-tab').classList.remove('active');}}
 
@@ -1611,9 +1611,9 @@ function renderMyRounds(){
 
 // ── Players ───────────────────────────────────────────────────────────────────
 function showPicker(){
-  const list=document.getElementById('pickerList');const ap=adminPlayer();
+  const list=document.getElementById('pickerList');
   if(!players.length){list.innerHTML='<div style="color:rgba(255,255,255,0.4);font-size:0.85rem">No players yet.</div>';}
-  else{list.innerHTML=players.map(p=>`<div onclick="requirePin(${p.id})" style="display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:10px;cursor:pointer;background:${p.id===activeId?'rgba(201,168,76,0.12)':'rgba(255,255,255,0.04)'};border:1px solid ${p.id===activeId?'rgba(201,168,76,0.4)':'rgba(255,255,255,0.08)'}"><div style="width:30px;height:30px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.72rem;font-weight:600;color:#fff">${ini(p.name)}</div><div style="flex:1"><div style="font-weight:500;font-size:0.88rem;display:flex;align-items:center;gap:6px">${p.name}${p.id===ap?.id?'<span class="tag tag-admin">Admin</span>':''}${p.id===activeId?'<span class="tag tag-you">You</span>':''}</div><div style="font-size:0.7rem;color:rgba(255,255,255,0.36)">${currentHcp(p)!=null?'HCP '+currentHcp(p)+' · ':''}${allRounds.filter(r=>r.player_id===p.id).length} rounds</div></div></div>`).join('');}
+  else{list.innerHTML=players.map(p=>`<div onclick="requirePin(${p.id})" style="display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:10px;cursor:pointer;background:${p.id===activeId?'rgba(201,168,76,0.12)':'rgba(255,255,255,0.04)'};border:1px solid ${p.id===activeId?'rgba(201,168,76,0.4)':'rgba(255,255,255,0.08)'}"><div style="width:30px;height:30px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.72rem;font-weight:600;color:#fff">${ini(p.name)}</div><div style="flex:1"><div style="font-weight:500;font-size:0.88rem;display:flex;align-items:center;gap:6px">${p.name}${p.is_admin?'<span class="tag tag-admin">Admin</span>':''}${p.id===activeId?'<span class="tag tag-you">You</span>':''}</div><div style="font-size:0.7rem;color:rgba(255,255,255,0.36)">${currentHcp(p)!=null?'HCP '+currentHcp(p)+' · ':''}${allRounds.filter(r=>r.player_id===p.id).length} rounds</div></div></div>`).join('');}
   document.getElementById('pickerModal').style.display='flex';
 }
 let pendingPinId=null;
@@ -1687,8 +1687,8 @@ async function addPlayer(){
   catch(e){alert('Error: '+e.message);}finally{setLoading(false);}
 }
 async function deletePlayer(id){
-  if(!isAdmin()){alert('Only the admin can remove players.');return;}
-  const ap=adminPlayer();if(ap&&ap.id===id){alert('Cannot remove the admin player.');return;}
+  if(!isAdmin()){alert('Only admins can remove players.');return;}
+  const admins=players.filter(p=>p.is_admin);if(admins.length===1&&admins[0].id===id){alert('Cannot remove the only admin.');return;}
   if(!confirm('Remove this player?'))return;
   setLoading(true,'Removing…');
   try{await sbDelete('players',id);players=players.filter(p=>p.id!==id);if(activeId===id){activeId=null;document.getElementById('playerName').textContent='Select player';document.getElementById('playerAvatar').style.background='#555';document.getElementById('playerAvatar').textContent='';}toast('Player removed');renderGrid();}
@@ -1703,7 +1703,7 @@ function renderGrid(){
       <div style="flex:1;min-width:0">
         <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
           <span style="font-weight:500;font-size:0.9rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.name}</span>
-          ${p.id===ap?.id?'<span class="tag tag-admin" style="font-size:0.6rem;padding:1px 6px">Admin</span>':''}
+          ${p.is_admin?'<span class="tag tag-admin" style="font-size:0.6rem;padding:1px 6px">Admin</span>':''}
         </div>
         <div style="font-size:0.7rem;color:rgba(255,255,255,0.36)">${currentHcp(p)!=null?'HCP '+currentHcp(p)+' · ':''}${allRounds.filter(r=>r.player_id===p.id).length} rounds</div>
       </div>
@@ -1714,10 +1714,22 @@ function renderGrid(){
     </div>`).join('')+(admin?`<div class="pc add-pc" onclick="showAddPlayer()"><span style="font-size:1.1rem">+</span> Add player</div>`:'');
 }
 async function makeAdmin(id){
-  if(!confirm('Make this player the admin?'))return;
+  const p=players.find(x=>x.id===id);if(!p)return;
+  const willRemove=p.is_admin;
+  if(willRemove){
+    const admins=players.filter(x=>x.is_admin);
+    if(admins.length<=1){alert('At least one admin is required.');return;}
+    if(!confirm(`Remove admin rights from ${p.name}?`))return;
+  } else {
+    if(!confirm(`Grant admin rights to ${p.name}?`))return;
+  }
   setLoading(true,'Updating…');
-  try{for(const p of players){if(p.is_admin){p.is_admin=false;await sbUpdate('players',p.id,{is_admin:false});}}const p=players.find(x=>x.id===id);if(p){p.is_admin=true;await sbUpdate('players',p.id,{is_admin:true});}toast('Admin updated ✓');renderGrid();updateAdminUI();}
-  catch(e){alert('Error: '+e.message);}finally{setLoading(false);}
+  try{
+    p.is_admin=!willRemove;
+    await sbUpdate('players',p.id,{is_admin:p.is_admin});
+    toast(willRemove?`${p.name} is no longer an admin`:`${p.name} is now an admin ✓`);
+    renderGrid();renderAdmin();updateAdminUI();
+  }catch(e){alert('Error: '+e.message);}finally{setLoading(false);}
 }
 
 // ── Self-service HCP ──────────────────────────────────────────────────────────
@@ -1744,7 +1756,7 @@ async function saveMyHcp(){
 function renderAdmin(){
   const panel=document.getElementById('adminHcpPanel');const ap=adminPlayer();
   if(!players.length){panel.innerHTML='<div class="empty">No players.</div>';return;}
-  panel.innerHTML=players.map(p=>{const hist=[...(p.hcp_history||[])].sort((a,b)=>b.date.localeCompare(a.date));const isAP=p.id===ap?.id;return`<div style="margin-bottom:1.5rem;padding-bottom:1.5rem;border-bottom:1px solid rgba(255,255,255,0.06)"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.7rem;flex-wrap:wrap;gap:8px"><div style="display:flex;align-items:center;gap:10px"><div class="av" style="background:${clr(p)}">${ini(p.name)}</div><div><div style="font-weight:500">${p.name} ${isAP?'<span class="tag tag-admin">Admin</span>':''}</div><div style="font-size:0.72rem;color:rgba(255,255,255,0.38)">Current: <strong style="color:var(--gold-l)">${currentHcp(p)!=null?currentHcp(p):'not set'}</strong></div></div></div><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn btn-warn btn-sm" onclick="openHcpEdit(${p.id})">+ Update Index</button><button class="btn btn-ghost btn-sm" onclick="openEditEmail(${p.id})">Edit Email</button><button class="btn btn-ghost btn-sm" onclick="resetPlayerPin(${p.id})">Reset PIN</button></div></div>${hist.length?`<table class="hcp-hist"><thead><tr><th>Effective Date</th><th>HCP Index</th><th>Note</th><th></th></tr></thead><tbody>${hist.map((e,i)=>`<tr class="${i===0?'current-hcp':''}"><td style="font-family:'DM Mono',monospace;font-size:0.8rem">${fd(e.date)}</td><td style="font-family:'DM Mono',monospace;font-weight:${i===0?600:400};color:${i===0?'var(--gold-l)':'inherit'}">${e.value}</td><td style="color:rgba(255,255,255,0.4);font-size:0.78rem">${e.note||'—'}</td><td><button class="btn btn-danger btn-sm" onclick="deleteHcpEntry(${p.id},'${e.date}',${e.value})">✕</button></td></tr>`).join('')}</tbody></table></div>`:'<div style="font-size:0.8rem;color:rgba(255,255,255,0.3);padding:6px 0">No history.</div>'}</div>`;}).join('');
+  panel.innerHTML=players.map(p=>{const hist=[...(p.hcp_history||[])].sort((a,b)=>b.date.localeCompare(a.date));return`<div style="margin-bottom:1.5rem;padding-bottom:1.5rem;border-bottom:1px solid rgba(255,255,255,0.06)"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.7rem;flex-wrap:wrap;gap:8px"><div style="display:flex;align-items:center;gap:10px"><div class="av" style="background:${clr(p)}">${ini(p.name)}</div><div><div style="font-weight:500">${p.name} ${p.is_admin?'<span class="tag tag-admin">Admin</span>':''}</div><div style="font-size:0.72rem;color:rgba(255,255,255,0.38)">Current: <strong style="color:var(--gold-l)">${currentHcp(p)!=null?currentHcp(p):'not set'}</strong></div></div></div><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn btn-warn btn-sm" onclick="openHcpEdit(${p.id})">+ Update Index</button><button class="btn btn-ghost btn-sm" onclick="openEditEmail(${p.id})">Edit Email</button><button class="btn btn-ghost btn-sm" onclick="resetPlayerPin(${p.id})">Reset PIN</button><button class="btn btn-ghost btn-sm" onclick="makeAdmin(${p.id})">${p.is_admin?'Remove Admin':'Make Admin'}</button></div></div>${hist.length?`<table class="hcp-hist"><thead><tr><th>Effective Date</th><th>HCP Index</th><th>Note</th><th></th></tr></thead><tbody>${hist.map((e,i)=>`<tr class="${i===0?'current-hcp':''}"><td style="font-family:'DM Mono',monospace;font-size:0.8rem">${fd(e.date)}</td><td style="font-family:'DM Mono',monospace;font-weight:${i===0?600:400};color:${i===0?'var(--gold-l)':'inherit'}">${e.value}</td><td style="color:rgba(255,255,255,0.4);font-size:0.78rem">${e.note||'—'}</td><td><button class="btn btn-danger btn-sm" onclick="deleteHcpEntry(${p.id},'${e.date}',${e.value})">✕</button></td></tr>`).join('')}</tbody></table></div>`:'<div style="font-size:0.8rem;color:rgba(255,255,255,0.3);padding:6px 0">No history.</div>'}</div>`;}).join('');
   const rsel=document.getElementById('adminRoundPlayer');rsel.innerHTML=`<option value="all">All players</option>`+players.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
   renderAdminRounds();
 }
