@@ -1519,7 +1519,9 @@ function showAddFine(hole=null,retroactive=false){
   if(!fineTypes.length){alert('No fine types set up yet. Add them in Admin → Fines → Manage Fine Types.');return;}
   const pSel=document.getElementById('finePlayer');
   const tSel=document.getElementById('fineType');
-  pSel.innerHTML=players.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+  const roundPlayers=HE?.playerList?.length?HE.playerList.map(x=>x.p):null;
+  const playerPool=retroactive||!roundPlayers?players:roundPlayers;
+  pSel.innerHTML=playerPool.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
   tSel.innerHTML=fineTypes.map(ft=>`<option value="${ft.id}">${ft.name} — DKK ${ft.amount||10}</option>`).join('');
   document.getElementById('fineHole').value=hole||'';
   document.getElementById('fineDate').value=HE?.date||today();
