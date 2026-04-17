@@ -961,68 +961,127 @@ async function hePatchAll(){
 
 function heRender(){
   const s=HE,hole=s.currentHole,hi=hole-1;
-  const curPl=s.playerList[s.currentPidx]||s.playerList[0];
-  const tee=curPl?.tee||getTee('platinum');
-  const par=HOLE_PARS[hi],si=HOLE_HCP[hi],dist=tee.dist[hi];
   const order=heOrderedHoles(s.startHole);
-  const pos=order.indexOf(hole); // 0-based position in play sequence
+  const pos=order.indexOf(hole);
   const isLast=pos===17;
   const nextH=isLast?null:order[pos+1];
   const prevH=pos>0?order[pos-1]:null;
-  const cardId='holeEntryCard';
-  const card=document.getElementById(cardId);if(!card)return;
+  const card=document.getElementById('holeEntryCard');if(!card)return;
+
+  const firstTee=s.playerList[0]?.tee||getTee('platinum');
+  const startLabel=s.startHole!==1?`<span style="font-size:0.68rem;background:rgba(201,168,76,0.12);border:1px solid rgba(201,168,76,0.25);color:var(--gold-l);padding:2px 8px;border-radius:10px;margin-left:6px">Starting H${s.startHole}</span>`:'';
+  const nextLabel=nextH?'Hole '+nextH+' →':'Done ✓';
 
   // Progress dots in play order
-  const dots=order.map((h)=>{
+  const dots=order.map(h=>{
     const isCur=h===hole;
-    let filled,partial;
-      filled=s.playerList.every(({p})=>s.scores[p.id][h-1]!==null);
-      partial=s.playerList.some(({p})=>s.scores[p.id][h-1]!==null);
+    const filled=s.playerList.every(({p})=>s.scores[p.id][h-1]!==null);
+    const partial=s.playerList.some(({p})=>s.scores[p.id][h-1]!==null);
     let bg=filled?'var(--gold)':partial?'rgba(201,168,76,0.4)':'rgba(255,255,255,0.15)';
     if(isCur)bg='#82aaf0';
     return`<div onclick="heJump(${h})" style="width:${isCur?'24px':'10px'};height:10px;border-radius:5px;background:${bg};cursor:pointer;transition:all 0.2s;flex-shrink:0;display:flex;align-items:center;justify-content:center">${isCur?`<span style="font-size:0.55rem;font-weight:600;color:#fff">${h}</span>`:''}</div>`;
   }).join('');
 
-  const summary=s.playerList.map(({p,phcp})=>{
-    const filled=s.scores[p.id].filter(x=>x!==null).length;
-    const totalPts=s.scores[p.id].reduce((sum,score,i)=>{if(score===null)return sum;return sum+(stablefordPts(score,HOLE_PARS[i],strokesOnHole(phcp||0,i))||0);},0);
-    return`<div style="display:flex;align-items:center;gap:6px;padding:5px 10px;border-radius:8px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07)"><div style="width:18px;height:18px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.55rem;font-weight:600;color:#fff">${ini(p.name)}</div><span style="font-size:0.78rem;font-weight:500">${p.name}</span><span style="font-size:0.7rem;color:rgba(255,255,255,0.35)">${filled}/18</span>${phcp!=null?`<span style="font-size:0.7rem;color:#82aaf0;margin-left:2px">${totalPts}pts</span>`:''}</div>`;
-  }).join('');
+  // Scorecard table setup
+  const F=[1,2,3,4,5,6,7,8,9],B=[10,11,12,13,14,15,16,17,18];
+  const outPar=F.reduce((a,h)=>a+HOLE_PARS[h-1],0);
+  const inPar=B.reduce((a,h)=>a+HOLE_PARS[h-1],0);
+  const TH=`padding:5px 4px;font-size:0.7rem;font-weight:600;color:rgba(255,255,255,0.45);text-align:center;white-space:nowrap;`;
+  const TD=`padding:4px 4px;font-size:0.8rem;text-align:center;white-space:nowrap;`;
+  const SEP=`border-left:1px solid rgba(255,255,255,0.12);`;
+  const curBg=`background:rgba(130,170,240,0.13);`;
 
-  const inputs=s.playerList.map(({p,phcp,tee:pTee},pidx)=>{
-    const str=phcp!=null?strokesOnHole(phcp,hi):0;
-    const val=s.scores[p.id][hi];
-    const isCur=pidx===s.currentPidx;
-    const pts=val!=null?stablefordPts(val,par,str):null;
-    const nett=val!=null?val-str:null;
+  const hTH=h=>`<th style="${TH}${h===hole?'color:#82aaf0;'+curBg:''}">${h}</th>`;
+  const distTD=h=>`<td style="${TD}${h===hole?curBg:''}color:rgba(255,255,255,0.3);font-size:0.67rem">${firstTee.dist[h-1]}</td>`;
+  const siTD=h=>`<td style="${TD}${h===hole?curBg:''}color:rgba(255,255,255,0.3);font-size:0.67rem">${HOLE_HCP[h-1]}</td>`;
+  const parTD=h=>`<td style="${TD}${h===hole?curBg:''}font-weight:600;color:rgba(255,255,255,0.55)">${HOLE_PARS[h-1]}</td>`;
+
+  const playerRows=s.playerList.map(({p,phcp,tee:pTee},pidx)=>{
+    const isCurPlayer=pidx===s.currentPidx;
+    const rowBg=isCurPlayer?'background:rgba(130,170,240,0.05);':'';
     const teeLbl=pTee?(pTee.id==='champion'?'Ch':pTee.id==='platinum'?'Pt':pTee.id):'';
-    const teeDot=pTee?`<span title="${pTee.name}" style="display:inline-block;background:${pTee.color};color:#fff;text-shadow:0 0 3px rgba(0,0,0,0.8);font-size:0.58rem;font-weight:700;border-radius:3px;padding:1px 3px;margin-right:4px;vertical-align:middle">${teeLbl}</span>`:'';
-    return`<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:10px;border:1px solid ${isCur?'rgba(130,170,240,0.5)':'rgba(255,255,255,0.08)'};background:${isCur?'rgba(130,170,240,0.07)':'rgba(0,0,0,0.2)'};transition:all 0.15s">
-      <div style="width:26px;height:26px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.65rem;font-weight:600;color:#fff;flex-shrink:0">${ini(p.name)}</div>
-      <div style="flex:1"><div style="font-size:0.85rem;font-weight:500">${p.name}</div><div style="font-size:0.7rem;color:rgba(255,255,255,0.35)">${phcp!=null?`${teeDot}HCP ${phcp} · ${str>0?`<span style="color:#f0d58c">+${str} stroke${str>1?'s':''}</span>`:'no strokes'}`:'no handicap'}</div></div>
-      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px">
-        <input type="number" id="he_${p.id}" value="${val!=null?val:''}" min="1" max="15"
-          style="width:60px;text-align:center;font-family:'DM Mono',monospace;font-size:1.3rem;font-weight:600;padding:6px 4px;background:rgba(0,0,0,0.4);border:1px solid ${isCur?'rgba(130,170,240,0.6)':'rgba(255,255,255,0.15)'};border-radius:8px;color:var(--cream);outline:none">
-        <div style="font-size:0.72rem;color:${pts!=null?ptC(pts):'rgba(255,255,255,0.2)'}">${pts!=null?pts+' pts'+(nett!=null?' · nett '+nett:''):'—'}</div>
-      </div>
-    </div>`;
+    const teeDot=pTee?`<span style="background:${pTee.color};color:#fff;font-size:0.52rem;font-weight:700;border-radius:3px;padding:1px 3px;margin-left:3px;vertical-align:middle">${teeLbl}</span>`:'';
+    const scoreTD=h=>{
+      const isCur=h===hole;
+      const val=s.scores[p.id][h-1];
+      if(isCur){
+        return`<td style="${TD}${curBg}padding:2px 2px"><input type="number" id="he_${p.id}" value="${val!=null?val:''}" min="1" max="15" style="width:40px;text-align:center;font-family:'DM Mono',monospace;font-size:0.9rem;font-weight:600;padding:4px 1px;background:rgba(0,0,0,0.45);border:1px solid ${isCurPlayer?'rgba(130,170,240,0.85)':'rgba(130,170,240,0.4)'};border-radius:6px;color:var(--cream);outline:none"></td>`;
+      }
+      if(val===null)return`<td style="${TD}color:rgba(255,255,255,0.18)">·</td>`;
+      const diff=val-HOLE_PARS[h-1];
+      return`<td style="${TD}font-family:'DM Mono',monospace;font-weight:600;color:${vpC(diff)}">${val}</td>`;
+    };
+    const fS=F.map(h=>s.scores[p.id][h-1]).filter(x=>x!==null);
+    const bS=B.map(h=>s.scores[p.id][h-1]).filter(x=>x!==null);
+    const aS=[...fS,...bS];
+    const outSum=fS.length?fS.reduce((a,b)=>a+b,0):'';
+    const inSum=bS.length?bS.reduce((a,b)=>a+b,0):'';
+    const totSum=aS.length?aS.reduce((a,b)=>a+b,0):'';
+    const totPts=s.scores[p.id].reduce((sum,score,i)=>{if(score===null)return sum;return sum+(stablefordPts(score,HOLE_PARS[i],phcp!=null?strokesOnHole(phcp,i):0)||0);},0);
+    return`<tr style="${rowBg}">
+      <td style="padding:4px 8px;font-size:0.8rem;font-weight:${isCurPlayer?'600':'500'};white-space:nowrap;border-bottom:1px solid rgba(255,255,255,0.05)">
+        <div style="display:flex;align-items:center;gap:5px">
+          <div style="width:20px;height:20px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.58rem;font-weight:700;color:#fff;flex-shrink:0">${ini(p.name)}</div>
+          <span>${p.name.split(' ')[0]}</span>${teeDot}
+        </div>
+      </td>
+      ${F.map(h=>scoreTD(h)).join('')}
+      <td style="${TD}${SEP}font-weight:600;color:rgba(255,255,255,0.55)">${outSum}</td>
+      ${B.map(h=>scoreTD(h)).join('')}
+      <td style="${TD}${SEP}font-weight:600;color:rgba(255,255,255,0.55)">${inSum}</td>
+      <td style="${TD}${SEP}font-weight:700;color:var(--gold-l)">${totSum}${totPts?`<div style="font-size:0.62rem;color:#82aaf0;line-height:1.2">${totPts}pts</div>`:''}</td>
+    </tr>`;
   }).join('');
 
-  const curPlayerLabel = '';
-  const startLabel = s.startHole!==1 ? `<span style="font-size:0.68rem;background:rgba(201,168,76,0.12);border:1px solid rgba(201,168,76,0.25);color:var(--gold-l);padding:2px 8px;border-radius:10px;margin-left:6px">Starting H${s.startHole}</span>` : '';
-  const nextLabel = nextH ? 'Hole '+nextH+' →' : 'Done ✓';
-
-  card.innerHTML=`<div class="panel"><div class="ph">
-    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span class="pt">Hole ${hole}</span><span style="font-size:0.8rem;color:rgba(255,255,255,0.45)">Par ${par} &nbsp;·&nbsp; SI ${si} &nbsp;·&nbsp; ${dist}m &nbsp;·&nbsp; <span style="color:rgba(201,168,76,0.7)">${tee.name}</span>${curPlayerLabel}</span>${startLabel}</div>
-    <div style="font-size:0.72rem;color:rgba(255,255,255,0.3)">${pos+1} of 18</div>
-  </div><div class="pb">
-    <div style="display:flex;gap:4px;align-items:center;margin-bottom:1.2rem;flex-wrap:wrap">${dots}</div>
-    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:1.2rem">${inputs}</div>
-    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:1rem">${summary}</div>
-    <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
-      <button class="btn btn-ghost" onclick="hePrev()" ${!prevH?'disabled style="opacity:0.3"':''}>← ${prevH?'Hole '+prevH:'Start'}</button>
-      <button class="btn btn-warn btn-sm" onclick="showAddFine(${hole})" style="font-size:0.8rem">🚨 Fine</button>
-      <button class="btn btn-primary" onclick="heNext()">${nextLabel}</button>
+  card.innerHTML=`<div class="panel">
+    <div class="ph">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span class="pt">Hole ${hole}</span>
+        <span style="font-size:0.8rem;color:rgba(255,255,255,0.45)">Par ${HOLE_PARS[hi]} &nbsp;·&nbsp; SI ${HOLE_HCP[hi]} &nbsp;·&nbsp; ${firstTee.dist[hi]}m</span>
+        ${startLabel}
+      </div>
+      <div style="font-size:0.72rem;color:rgba(255,255,255,0.3)">${pos+1} of 18</div>
+    </div>
+    <div class="pb" style="padding:14px 12px">
+      <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-bottom:1rem">
+        <button class="btn btn-ghost" style="min-width:90px" onclick="hePrev()" ${!prevH?'disabled style="opacity:0.3;min-width:90px"':''}>← ${prevH?'Hole '+prevH:'Start'}</button>
+        <button class="btn btn-warn btn-sm" onclick="showAddFine(${hole})" style="font-size:0.8rem">🚨 Fine</button>
+        <button class="btn btn-primary" style="min-width:90px" onclick="heNext()">${nextLabel}</button>
+      </div>
+      <div style="display:flex;gap:4px;align-items:center;margin-bottom:1rem;flex-wrap:wrap">${dots}</div>
+      <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -4px">
+        <table style="border-collapse:collapse;white-space:nowrap;width:100%">
+          <thead><tr>
+            <th style="${TH}text-align:left;min-width:80px;padding-left:8px">Hole</th>
+            ${F.map(hTH).join('')}
+            <th style="${TH}${SEP}">Out</th>
+            ${B.map(hTH).join('')}
+            <th style="${TH}${SEP}">In</th>
+            <th style="${TH}${SEP}">Tot</th>
+          </tr></thead>
+          <tbody>
+            <tr>
+              <td style="${TD}text-align:left;padding-left:8px;color:rgba(255,255,255,0.3);font-size:0.67rem">Dist</td>
+              ${F.map(distTD).join('')}<td style="${TD}${SEP}color:rgba(255,255,255,0.2)">—</td>
+              ${B.map(distTD).join('')}<td style="${TD}${SEP}color:rgba(255,255,255,0.2)">—</td>
+              <td style="${TD}${SEP}color:rgba(255,255,255,0.2)">—</td>
+            </tr>
+            <tr>
+              <td style="${TD}text-align:left;padding-left:8px;color:rgba(255,255,255,0.3);font-size:0.67rem">SI</td>
+              ${F.map(siTD).join('')}<td style="${TD}${SEP}color:rgba(255,255,255,0.2)">—</td>
+              ${B.map(siTD).join('')}<td style="${TD}${SEP}color:rgba(255,255,255,0.2)">—</td>
+              <td style="${TD}${SEP}color:rgba(255,255,255,0.2)">—</td>
+            </tr>
+            <tr style="border-bottom:2px solid rgba(255,255,255,0.1)">
+              <td style="${TD}text-align:left;padding-left:8px;font-weight:600;color:rgba(255,255,255,0.6)">Par</td>
+              ${F.map(parTD).join('')}<td style="${TD}${SEP}font-weight:600;color:rgba(255,255,255,0.6)">${outPar}</td>
+              ${B.map(parTD).join('')}<td style="${TD}${SEP}font-weight:600;color:rgba(255,255,255,0.6)">${inPar}</td>
+              <td style="${TD}${SEP}font-weight:700;color:rgba(255,255,255,0.65)">${outPar+inPar}</td>
+            </tr>
+            ${playerRows}
+          </tbody>
+        </table>
+      </div>
     </div>
   </div>`;
 
