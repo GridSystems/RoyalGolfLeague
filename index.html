@@ -240,6 +240,7 @@ select option { background: #1a3a2a; }
       <div class="pb">
         <div class="fg" style="margin-bottom:1.2rem">
           <div class="fgi"><label>Date</label><input type="date" id="roundDate"></div>
+          <div class="fgi"><label>Tee Time</label><input type="time" id="roundTeeTime" placeholder="e.g. 09:30"></div>
           <div class="fgi"><label>Notes</label><input type="text" id="roundNotes" placeholder="Weather, conditions…"></div>
         </div>
         <div class="fgi" style="margin-bottom:1.2rem">
@@ -864,7 +865,7 @@ async function heInit(playerList,date,notes,startHole){
       entry.phcp=index!=null?calcPlayingHcp(index,tee):null;
       scores[p.id]=Array(18).fill(null);
       const holes=Array.from({length:18},(_,i)=>({hole:i+1,score:null,par:HOLE_PARS[i],hcp:HOLE_HCP[i]}));
-      const payload={id:Date.now()+Math.floor(Math.random()*100000),player_id:p.id,course:'Royal Golf Club, Copenhagen',date,tee_id:entry.teeId,tee_name:tee.name,tee_color:tee.color,rating:tee.rating,slope:tee.slope,hcp_index:index,course_hcp:courseHcp,playing_hcp:entry.phcp,notes,holes};
+      const payload={id:Date.now()+Math.floor(Math.random()*100000),player_id:p.id,course:'Royal Golf Club, Copenhagen',date,tee_time:HE.teeTime||null,tee_id:entry.teeId,tee_name:tee.name,tee_color:tee.color,rating:tee.rating,slope:tee.slope,hcp_index:index,course_hcp:courseHcp,playing_hcp:entry.phcp,notes,holes};
       const[saved]=await sbInsert('rounds',payload);
       const rec=saved||payload;
       roundIds[p.id]=rec.id;
@@ -872,7 +873,7 @@ async function heInit(playerList,date,notes,startHole){
     }
   }catch(e){alert('Error creating rounds: '+e.message);setLoading(false);return;}
   setLoading(false);
-  HE={playerList,scores,roundIds,currentHole:startHole,currentPidx:0,startHole,date,notes};
+  HE={playerList,scores,roundIds,currentHole:startHole,currentPidx:0,startHole,date,notes,teeTime:HE.teeTime||null};
   heRender();
 }
 
@@ -1084,6 +1085,7 @@ function resumeRound(roundId){
       <span style="color:rgba(255,255,255,0.5);margin:0 8px">·</span>${scored}/18 holes scored
       <span style="color:rgba(255,255,255,0.5);margin:0 8px">·</span>Picking up at <strong>Hole ${nextHoleNum}</strong>
       <span style="color:rgba(255,255,255,0.5);margin:0 8px">·</span><span style="color:rgba(201,168,76,0.7)">${r.tee_name||'—'}</span>
+      ${r.tee_time?`<span style="color:rgba(255,255,255,0.5);margin:0 8px">·</span><span style="color:rgba(201,168,76,0.7)">🕐 ${r.tee_time}</span>`:''}
     </div>`;
 
   buildResumePlayerCheckboxes();
@@ -1095,15 +1097,17 @@ function resumeRound(roundId){
 function buildResumePlayerCheckboxes(){
   const wrap=document.getElementById('resumePlayerCheckboxes');if(!wrap)return;
   const td=today();
-  // One entry per player — take their most recent partial round today
+  const myTeeTime=resumingRound?.r?.tee_time||null;
+  // One entry per player — match tee time if set, take most recent partial round today
   const seen=new Set();
   const otherRounds=allRounds.filter(ar=>{
     if(ar.date!==td||ar.player_id===activeId||seen.has(ar.player_id))return false;
+    if(myTeeTime&&ar.tee_time&&ar.tee_time!==myTeeTime)return false;
     const scored=ar.holes.filter(h=>h&&h.score!=null).length;
     if(scored>0&&scored<18){seen.add(ar.player_id);return true;}
     return false;
   });
-  if(!otherRounds.length){wrap.innerHTML='<span style="font-size:0.8rem;color:rgba(255,255,255,0.35)">No other players have an unfinished round today.</span>';return;}
+  if(!otherRounds.length){wrap.innerHTML=`<span style="font-size:0.8rem;color:rgba(255,255,255,0.35)">No other players have an unfinished round today${myTeeTime?' at '+myTeeTime:''}.</span>`;return;}
   wrap.innerHTML=otherRounds.map(ar=>{
     const p=players.find(x=>x.id===ar.player_id);if(!p)return'';
     const checked=resumeGroupPlayerIds.includes(p.id);
@@ -1194,8 +1198,10 @@ async function startGroupEntry(){
   } else {
     startHole=parseInt(selectedStartHole)||1;
   }
+  const teeTime=document.getElementById('roundTeeTime').value||null;
   const playerList=groupPlayerIds.map(pid=>{const p=players.find(x=>x.id===pid);if(!p)return null;const teeId=playerTees[pid]||selTeeId;const index=hcpOnDate(p,date);return{p,index,teeId};}).filter(Boolean);
   document.getElementById('logStep1').style.display='none';document.getElementById('logStep2').style.display='block';
+  HE.teeTime=teeTime;
   await heInit(playerList,date,document.getElementById('roundNotes').value.trim(),startHole);
 }
 function backToSetup(){document.getElementById('logStep2').style.display='none';document.getElementById('logStep1b').style.display='none';document.getElementById('logStep1').style.display='block';}
@@ -1441,7 +1447,7 @@ function renderMyRounds(){
   const rec=[...mr].sort((a,b)=>a.date.localeCompare(b.date)).slice(-10);const rd=rec.map(r=>calcRoundPoints(r,p)||0);const mn=Math.min(...rd),mx=Math.max(...rd),rng=mx-mn||1;
   document.getElementById('myStats').innerHTML=`<div class="sc"><div class="sl">Rounds</div><div class="sv">${mr.length}</div><div class="ss">total</div></div><div class="sc"><div class="sl">Best Pts</div><div class="sv" style="color:#82aaf0">${bPts!=null?bPts:'—'}</div><div class="ss">stableford</div></div><div class="sc"><div class="sl">Avg Pts</div><div class="sv" style="color:#82aaf0">${aPts!=null?aPts:'—'}</div><div class="ss">per round</div></div><div class="sc"><div class="sl">Best Stroke</div><div class="sv">${ds(best)}</div><div class="ss">vs par</div></div><div class="sc"><div class="sl">Trend</div><div class="tbar">${rd.map((d,i)=>`<div class="tbi" style="height:${Math.round(8+((d-mn)/rng)*28)}px;background:#82aaf0;opacity:0.65" title="${fd(rec[i].date)}: ${d} pts"></div>`).join('')}</div>`;
   const sort=document.getElementById('sortSel').value;const sorted=[...mr].sort((a,b)=>{if(sort==='date-desc')return b.date.localeCompare(a.date);if(sort==='date-asc')return a.date.localeCompare(b.date);if(sort==='pts-desc')return(calcRoundPoints(b,p)||0)-(calcRoundPoints(a,p)||0);return(tS(a.holes)-tP(a.holes))-(tS(b.holes)-tP(b.holes));});
-  document.getElementById('myTable').innerHTML=`<div class="rt-wrap"><table class="rt"><thead><tr><th>Date</th><th>Tee</th><th>Index</th><th>Playing HCP</th><th>Points</th><th>Out</th><th>In</th><th>Total</th><th>vs Par</th></tr></thead><tbody>${sorted.map(r=>{const f=r.holes.slice(0,9),b=r.holes.slice(9);const tot=tS(r.holes),diff=tot-tP(r.holes);const rpts=calcRoundPoints(r,p);return`<tr><td style="color:rgba(255,255,255,0.45);font-size:0.78rem">${fd(r.date)}</td><td><span style="display:inline-flex;align-items:center;gap:4px;font-size:0.76rem"><span class="tee-dot" style="background:${r.tee_color||'#888'}"></span>${r.tee_name||'—'}</span></td><td style="font-family:'DM Mono',monospace;font-size:0.79rem;color:rgba(255,255,255,0.45)">${r.hcp_index!=null?r.hcp_index:'—'}</td><td style="font-family:'DM Mono',monospace;font-size:0.79rem;color:rgba(255,255,255,0.45)">${r.playing_hcp!=null?r.playing_hcp:'—'}</td><td style="font-family:'DM Mono',monospace;font-weight:600;font-size:1rem;color:#82aaf0">${rpts!=null?rpts:'—'}</td><td style="font-family:'DM Mono',monospace;font-size:0.84rem">${f.some(h=>h.score)?tS(f):'—'}<span style="font-size:0.67rem;color:rgba(255,255,255,0.27)">/p${tP(f)}</span></td><td style="font-family:'DM Mono',monospace;font-size:0.84rem">${b.some(h=>h.score)?tS(b):'—'}<span style="font-size:0.67rem;color:rgba(255,255,255,0.27)">/p${tP(b)}</span></td><td style="font-family:'DM Mono',monospace;font-weight:500">${tot}</td><td><span class="sp ${scC(diff)}">${ds(diff)}</span></td></tr>`;}).join('')}</tbody></table></div>`;
+  document.getElementById('myTable').innerHTML=`<div class="rt-wrap"><table class="rt"><thead><tr><th>Date</th><th>Tee Time</th><th>Tee</th><th>Index</th><th>Playing HCP</th><th>Points</th><th>Out</th><th>In</th><th>Total</th><th>vs Par</th></tr></thead><tbody>${sorted.map(r=>{const f=r.holes.slice(0,9),b=r.holes.slice(9);const tot=tS(r.holes),diff=tot-tP(r.holes);const rpts=calcRoundPoints(r,p);return`<tr><td style="color:rgba(255,255,255,0.45);font-size:0.78rem">${fd(r.date)}</td><td style="font-family:'DM Mono',monospace;font-size:0.78rem;color:rgba(255,255,255,0.45)">${r.tee_time||'—'}</td><td><span style="display:inline-flex;align-items:center;gap:4px;font-size:0.76rem"><span class="tee-dot" style="background:${r.tee_color||'#888'}"></span>${r.tee_name||'—'}</span></td><td style="font-family:'DM Mono',monospace;font-size:0.79rem;color:rgba(255,255,255,0.45)">${r.hcp_index!=null?r.hcp_index:'—'}</td><td style="font-family:'DM Mono',monospace;font-size:0.79rem;color:rgba(255,255,255,0.45)">${r.playing_hcp!=null?r.playing_hcp:'—'}</td><td style="font-family:'DM Mono',monospace;font-weight:600;font-size:1rem;color:#82aaf0">${rpts!=null?rpts:'—'}</td><td style="font-family:'DM Mono',monospace;font-size:0.84rem">${f.some(h=>h.score)?tS(f):'—'}<span style="font-size:0.67rem;color:rgba(255,255,255,0.27)">/p${tP(f)}</span></td><td style="font-family:'DM Mono',monospace;font-size:0.84rem">${b.some(h=>h.score)?tS(b):'—'}<span style="font-size:0.67rem;color:rgba(255,255,255,0.27)">/p${tP(b)}</span></td><td style="font-family:'DM Mono',monospace;font-weight:500">${tot}</td><td><span class="sp ${scC(diff)}">${ds(diff)}</span></td></tr>`;}).join('')}</tbody></table></div>`;
   renderMyDreamCard();}
 
 // ── Players ───────────────────────────────────────────────────────────────────
