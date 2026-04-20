@@ -694,7 +694,7 @@ async function loadData(){const all=await sbGet('players','order=created_at.asc'
 function adminPlayer(){return players.find(p=>p.is_admin)||players[0];}
 function isAdmin(){return players.find(p=>p.id===activeId)?.is_admin===true;}
 function updateAdminUI(){const a=isAdmin();document.getElementById('adminTab').style.display=a?'inline-block':'none';document.getElementById('adminBadge').style.display=a?'inline-flex':'none';const ab=document.getElementById('addPlayerBtn');if(ab)ab.style.display=a?'inline-block':'none';}
-function applyPendingUI(){const p=players.find(x=>x.id===activeId);const pending=p&&p.approved===false;document.getElementById('pendingBanner').style.display=pending?'block':'none';document.getElementById('tabLeaderboard').style.display=pending?'none':'';document.getElementById('tabHistory').style.display=pending?'none':'';document.getElementById('tabPlayers').style.display=pending?'none':'';if(pending){showView('log',document.querySelector('.nav-tab'));document.querySelector('.nav-tab').classList.remove('active');}}
+function applyPendingUI(){const p=players.find(x=>x.id===activeId)||pendingPlayers.find(x=>x.id===activeId);const pending=p&&p.approved===false;document.getElementById('pendingBanner').style.display=pending?'block':'none';document.getElementById('tabLeaderboard').style.display=pending?'none':'';document.getElementById('tabHistory').style.display=pending?'none':'';document.getElementById('tabPlayers').style.display=pending?'none':'';if(pending){showView('log',document.querySelector('.nav-tab'));document.querySelector('.nav-tab').classList.remove('active');}}
 
 // ── Email + PIN Login ─────────────────────────────────────────────────────────
 let lockLoginPlayer=null;
@@ -1286,7 +1286,7 @@ async function startResumeEntry(){
 
 function buildPlayerCheckboxes(){
   const wrap=document.getElementById('playerCheckboxes');if(!wrap)return;
-  const activePlayer=players.find(x=>x.id===activeId);
+  const activePlayer=players.find(x=>x.id===activeId)||pendingPlayers.find(x=>x.id===activeId);
   const isPending=activePlayer&&activePlayer.approved===false;
   if(isPending){groupPlayerIds=[activeId];}
   const list=isPending?players.filter(p=>p.id===activeId):players;
@@ -1891,7 +1891,7 @@ async function init(){
   populateYearSelects();renderTodayLb();renderGrid();
   // Restore last selected player
   const savedId=localStorage.getItem('sl_active_player');
-  if(savedId){const saved=players.find(p=>p.id==savedId);if(saved){activeId=saved.id;document.getElementById('playerName').textContent=saved.name;const av=document.getElementById('playerAvatar');av.textContent=ini(saved.name);av.style.background=clr(saved);const hb=document.getElementById('myHcpBtn');if(hb)hb.style.display='inline-block';}}
+  if(savedId){const saved=players.find(p=>p.id==savedId)||pendingPlayers.find(p=>p.id==savedId);if(saved){activeId=saved.id;document.getElementById('playerName').textContent=saved.name;const av=document.getElementById('playerAvatar');av.textContent=ini(saved.name);av.style.background=clr(saved);const hb=document.getElementById('myHcpBtn');if(hb)hb.style.display='inline-block';}}
   updateAdminUI();applyPendingUI();buildPlayerCheckboxes();checkForResumableRounds();
 
   setLoading(false);
