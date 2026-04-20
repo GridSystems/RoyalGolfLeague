@@ -1141,17 +1141,16 @@ function checkForResumableRounds(){
   const panel=document.getElementById('resumePanel');
   if(!panel)return;
   const td=today();
-  // Only check current player's rounds for today
+  // Include rounds with 0 scores — they may have been pre-created when another group member started
   const partial=allRounds.filter(r=>{
-    if(r.date!==td)return false;
-    if(r.player_id!==activeId)return false;
+    if(r.date!==td||r.player_id!==activeId)return false;
     const scored=r.holes.filter(h=>h&&h.score!=null).length;
-    return scored>0&&scored<18;
+    return scored<18;
   });
   if(!partial.length){panel.style.display='none';return;}
 
   const items=partial.map(r=>{
-    const p=players.find(x=>x.id===r.player_id);
+    const p=players.find(x=>x.id===r.player_id)||pendingPlayers.find(x=>x.id===r.player_id);
     const scored=r.holes.filter(h=>h&&h.score!=null).length;
     const nextHole=r.holes.find(h=>h&&h.score==null);
     const nextHoleNum=nextHole?nextHole.hole:1;
@@ -1164,18 +1163,18 @@ function checkForResumableRounds(){
   panel.innerHTML=`<div style="background:rgba(201,168,76,0.09);border:2px solid rgba(201,168,76,0.4);border-radius:12px;padding:1.1rem 1.2rem">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:0.85rem">
       <span style="font-size:1.1rem">🏌️</span>
-      <span style="font-weight:600;font-size:0.95rem;color:var(--gold-l)">You have an unfinished round today</span>
+      <span style="font-weight:600;font-size:0.95rem;color:var(--gold-l)">You have ${items.length>1?'unfinished rounds':'an unfinished round'} today</span>
     </div>
     <div style="display:flex;flex-direction:column;gap:8px">
       ${items.map(({r,p,scored,nextHoleNum})=>`
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;background:rgba(0,0,0,0.2);border-radius:8px;padding:8px 12px">
           <div>
-            <div style="font-size:0.85rem;font-weight:500;color:var(--cream)">${scored}/18 holes scored · picking up at Hole ${nextHoleNum}</div>
-            <div style="font-size:0.72rem;color:rgba(255,255,255,0.4);margin-top:2px">Tee: ${r.tee_name||'—'}</div>
+            <div style="font-size:0.85rem;font-weight:500;color:var(--cream)">${scored===0?'Round set up — ready to start from Hole 1':`${scored}/18 holes scored · picking up at Hole ${nextHoleNum}`}</div>
+            <div style="font-size:0.72rem;color:rgba(255,255,255,0.4);margin-top:2px">${r.tee_name||'—'}${r.tee_time?` · 🕐 ${r.tee_time}`:''}</div>
           </div>
           <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <button class="btn btn-ghost btn-sm" onclick="document.getElementById('resumePanel').style.display='none'">Start new</button>
-            <button class="btn btn-primary btn-sm" onclick="resumeRound(${r.id})">Continue round →</button>
+            ${scored>0?`<button class="btn btn-ghost btn-sm" onclick="document.getElementById('resumePanel').style.display='none'">Start new</button>`:''}
+            <button class="btn btn-primary btn-sm" onclick="resumeRound(${r.id})">Continue →</button>
           </div>
         </div>`).join('')}
     </div>
@@ -1221,7 +1220,10 @@ function buildResumePlayerCheckboxes(){
     if(ar.date!==td||ar.player_id===activeId||seen.has(ar.player_id))return false;
     if(myTeeTime&&ar.tee_time&&ar.tee_time!==myTeeTime)return false;
     const scored=ar.holes.filter(h=>h&&h.score!=null).length;
-    if(scored>0&&scored<18){seen.add(ar.player_id);return true;}
+    // Include partial rounds OR 0-scored rounds that were pre-created in the same tee time group
+    const isPartial=scored>0&&scored<18;
+    const isGrouped=scored===0&&myTeeTime&&ar.tee_time===myTeeTime;
+    if(isPartial||isGrouped){seen.add(ar.player_id);return true;}
     return false;
   });
   if(!otherRounds.length){wrap.innerHTML=`<span style="font-size:0.8rem;color:rgba(255,255,255,0.35)">No other players have an unfinished round today${myTeeTime?' at '+myTeeTime:''}.</span>`;return;}
@@ -1231,7 +1233,7 @@ function buildResumePlayerCheckboxes(){
     const scored=ar.holes.filter(h=>h&&h.score!=null).length;
     return`<div onclick="toggleResumePlayer(${p.id})" style="display:flex;align-items:center;gap:7px;padding:7px 12px;border-radius:8px;cursor:pointer;border:1px solid ${checked?'rgba(201,168,76,0.5)':'rgba(255,255,255,0.12)'};background:${checked?'rgba(201,168,76,0.1)':'rgba(0,0,0,0.2)'};transition:all 0.15s;user-select:none;width:100%">
       <div style="width:18px;height:18px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.58rem;font-weight:600;color:#fff;flex-shrink:0">${ini(p.name)}</div>
-      <div style="flex:1"><span style="font-size:0.83rem;font-weight:${checked?500:400};color:${checked?'var(--gold-l)':'var(--cream)'}">${p.name}</span><span style="font-size:0.72rem;color:rgba(255,255,255,0.4);margin-left:8px">${scored}/18 holes · ${ar.tee_name||'—'}</span></div>
+      <div style="flex:1"><span style="font-size:0.83rem;font-weight:${checked?500:400};color:${checked?'var(--gold-l)':'var(--cream)'}">${p.name}</span><span style="font-size:0.72rem;color:rgba(255,255,255,0.4);margin-left:8px">${scored?`${scored}/18 holes · `:''}${ar.tee_name||'—'}</span></div>
       <span style="width:18px;text-align:center;color:var(--gold);font-size:0.8rem">${checked?'✓':''}</span>
     </div>`;
   }).join('');
@@ -1265,7 +1267,7 @@ async function startResumeEntry(){
   const td=today();
   for(const pid of resumeGroupPlayerIds){
     const ap=players.find(x=>x.id===pid);if(!ap)continue;
-    const apr=allRounds.find(ar=>ar.player_id===pid&&ar.date===td&&ar.holes.filter(h=>h&&h.score!=null).length>0);
+    const apr=allRounds.find(ar=>ar.player_id===pid&&ar.date===td&&ar.holes.filter(h=>h&&h.score!=null).length<18);
     if(!apr)continue;
     const aTee=getTee(apr.tee_id||'57');
     const aIndex=hcpOnDate(ap,apr.date);
