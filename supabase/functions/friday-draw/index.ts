@@ -11,28 +11,16 @@
  *  4. Reads configured tee times from saturday_events (falls back to defaults)
  *  5. Shuffles players randomly and distributes across groups
  *  6. Saves assignments to saturday_signups + locks saturday_events
- *  7. Emails every signed-up player their tee time and playing partners via AWS SES
  *
- * Secrets required:
- *   AWS_ACCESS_KEY_ID      — IAM key with ses:SendEmail permission
- *   AWS_SECRET_ACCESS_KEY  — IAM secret
- *   AWS_REGION             — SES region, e.g. eu-west-1
- *   FROM_EMAIL             — Verified SES sender, e.g. "Royal Golf League <league@yourdomain.com>"
- *
- * SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are injected automatically by the runtime.
+ * No secrets required beyond the automatic SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY.
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { AwsClient }    from 'https://esm.sh/aws4fetch@1.0.20';
 
 // ── Config ───────────────────────────────────────────────────────────────────
 
 const SUPABASE_URL              = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const AWS_ACCESS_KEY_ID         = Deno.env.get('AWS_ACCESS_KEY_ID')!;
-const AWS_SECRET_ACCESS_KEY     = Deno.env.get('AWS_SECRET_ACCESS_KEY')!;
-const AWS_REGION                = Deno.env.get('AWS_REGION') ?? 'eu-west-1';
-const FROM_EMAIL                = Deno.env.get('FROM_EMAIL')!;
 
 /** Default tee times used when none have been pre-configured in saturday_events */
 const DEFAULT_TEE_TIMES = ['08:30', '08:40', '08:50'];
@@ -71,53 +59,12 @@ function groupCount(n: number): number {
   return 3;
 }
 
-// ── SES email sender ─────────────────────────────────────────────────────────
-
-async function sendEmail(
-  aws: AwsClient,
-  to: string,
-  subject: string,
-  html: string,
-): Promise<number> {
-  const url = `https://email.${AWS_REGION}.amazonaws.com/v2/email/outbound-emails`;
-
-  const res = await aws.fetch(url, {
-    method:  'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      FromEmailAddress: FROM_EMAIL,
-      Destination: { ToAddresses: [to] },
-      Content: {
-        Simple: {
-          Subject: { Data: subject, Charset: 'UTF-8' },
-          Body:    { Html: { Data: html, Charset: 'UTF-8' } },
-        },
-      },
-    }),
-  });
-
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`SES error ${res.status}: ${body}`);
-  }
-
-  return res.status;
-}
-
 // ── Main handler ─────────────────────────────────────────────────────────────
 
 Deno.serve(async (_req) => {
   try {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const nextSat  = getNextSaturday();
-
-    // Initialise AWS client (aws4fetch handles SigV4 signing automatically)
-    const aws = new AwsClient({
-      accessKeyId:     AWS_ACCESS_KEY_ID,
-      secretAccessKey: AWS_SECRET_ACCESS_KEY,
-      region:          AWS_REGION,
-      service:         'ses',
-    });
 
     console.log(`[friday-draw] Running for ${nextSat}`);
 
@@ -200,99 +147,14 @@ Deno.serve(async (_req) => {
 
     console.log('[friday-draw] Draw saved and event locked');
 
-    // 7. Load player details for email ────────────────────────────────────
-
-    const playerIds = [...new Set(signups.map((s: { player_id: string }) => s.player_id))];
-
-    const { data: players, error: playersErr } = await supabase
-      .from('players')
-      .select('id, name, email, handicap_index')
-      .in('id', playerIds);
-
-    if (playersErr) throw new Error(`players query: ${playersErr.message}`);
-
-    const playerMap = new Map(
-      (players ?? []).map((p: { id: string; name: string; email: string | null; handicap_index: number | null }) =>
-        [p.id, p],
-      ),
-    );
-
-    // Build group → player-name list for email content
-    const groupNames: Record<number, string[]> = {};
-    for (const a of assignments) {
-      const p = playerMap.get(a.playerId);
-      const name = p?.name ?? 'Unknown';
-      (groupNames[a.groupNum] ??= []).push(name);
-    }
-
-    // 8. Send emails via AWS SES ───────────────────────────────────────────
-
-    const emailResults: string[] = [];
-
-    for (const a of assignments) {
-      const player = playerMap.get(a.playerId);
-      if (!player?.email) {
-        console.warn(`[friday-draw] No email for player ${a.playerId} — skipping`);
-        continue;
-      }
-
-      const firstName    = player.name.split(' ')[0];
-      const partners     = (groupNames[a.groupNum] ?? []).filter(n => n !== player.name);
-      const partnersHtml = partners.length > 0
-        ? partners.map(n => `<strong>${n}</strong>`).join(', ')
-        : '<em>No other players in your group yet</em>';
-
-      const html = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <style>
-    body { font-family: Arial, sans-serif; color: #222; background: #f5f5f5; margin: 0; padding: 0; }
-    .wrap { max-width: 520px; margin: 32px auto; background: #fff; border-radius: 10px;
-            padding: 32px; box-shadow: 0 2px 12px rgba(0,0,0,.08); }
-    h2 { color: #2a6535; margin-top: 0; }
-    table { border-collapse: collapse; margin: 20px 0; width: 100%; }
-    td { padding: 10px 14px; border: 1px solid #e0e0e0; }
-    td:first-child { font-weight: bold; color: #555; width: 42%; }
-    .footer { color: #aaa; font-size: 0.8rem; margin-top: 28px; border-top: 1px solid #eee;
-              padding-top: 14px; }
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <h2>⛳ Saturday Draw Confirmed</h2>
-    <p>Hi ${firstName},</p>
-    <p>Your tee time for <strong>Saturday ${nextSat}</strong> has been set!</p>
-    <table>
-      <tr><td>Tee time</td><td><strong style="font-size:1.1rem">${a.teeTime}</strong></td></tr>
-      <tr><td>Group</td><td>${a.groupNum}</td></tr>
-      <tr><td>Playing with</td><td>${partnersHtml}</td></tr>
-    </table>
-    <p>Open the app to see the full tee sheet. See you on the course! 🏆</p>
-    <div class="footer">Royal Golf Club Saturday League</div>
-  </div>
-</body>
-</html>`;
-
-      try {
-        const status = await sendEmail(aws, player.email, `⛳ Saturday Draw — Your tee time is ${a.teeTime}`, html);
-        const result = `${player.name}: HTTP ${status}`;
-        console.log(`[friday-draw] Email sent — ${result}`);
-        emailResults.push(result);
-      } catch (emailErr) {
-        const result = `${player.name}: FAILED — ${emailErr}`;
-        console.error(`[friday-draw] ${result}`);
-        emailResults.push(result);
-      }
-    }
-
     return json({
-      message: 'Draw completed and emails sent',
+      message: 'Draw completed',
       date:    nextSat,
       players: signups.length,
-      groups:  groupNames,
-      emails:  emailResults,
+      groups:  assignments.reduce((acc, a) => {
+        (acc[a.groupNum] ??= []).push(a.playerId);
+        return acc;
+      }, {} as Record<number, string[]>),
     });
 
   } catch (err) {
