@@ -687,6 +687,7 @@ let fineTypes=[],allFines=[];
 let saturdayEvents=[],saturdaySignups=[];
 const MOBILEPAY_FINES_URL='https://qr.mobilepay.dk/box/19b8d876-6c09-4fbd-b471-6d46df7c61e5/pay-in';
 let pendingDraw={};
+let satSignupForm=null; // date string of the Saturday currently showing the sign-up form
 let selTeeId='57',erSelTeeId='platinum',editingHcpPlayerId=null,editingRoundId=null;
 let groupPlayerIds=[],playerTees={};
 let resumingRound=null,resumeGroupPlayerIds=[],resumePlayerTees={};
@@ -1342,42 +1343,67 @@ function renderSaturdayView(){
     const groupNum=mySignup?.group_num||null;
     const dateObj=new Date(date+'T00:00:00');
     const dateLabel=dateObj.toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'});
-    const playerRow=s=>{const p=allP.find(x=>x.id===s.player_id);if(!p)return'';return`<div style="display:flex;align-items:center;gap:6px;padding:3px 0"><div style="width:18px;height:18px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.55rem;font-weight:700;color:#fff">${ini(p.name)}</div><span style="font-size:0.82rem">${p.name}</span>${s.tee_time?`<span style="font-size:0.68rem;color:#82aaf0;background:rgba(130,170,240,0.12);border-radius:4px;padding:1px 5px">${s.tee_time}</span>`:''}</div>`;};
+    const playerRow=s=>{const p=allP.find(x=>x.id===s.player_id);if(!p)return'';const earlyBadge=s.early_tee_request?`<span style="font-size:0.62rem;color:#f0c060" title="${s.early_tee_reason||'Early tee requested'}">⏰</span>`:'';return`<div style="display:flex;align-items:center;gap:6px;padding:3px 0"><div style="width:18px;height:18px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.55rem;font-weight:700;color:#fff">${ini(p.name)}</div><span style="font-size:0.82rem">${p.name}</span>${earlyBadge}${s.tee_time?`<span style="font-size:0.68rem;color:#82aaf0;background:rgba(130,170,240,0.12);border-radius:4px;padding:1px 5px">${s.tee_time}</span>`:''}</div>`;};
+    const myEarlyRequest=mySignup?.early_tee_request;
+    const showingForm=satSignupForm===date;
     return`<div style="background:rgba(255,255,255,0.03);border:1px solid ${isSignedUp?'rgba(201,168,76,0.4)':'rgba(255,255,255,0.1)'};border-radius:12px;padding:1rem 1.2rem;margin-bottom:0.85rem">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:${signups.length?'0.85rem':'0.4rem'}">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:${signups.length||showingForm?'0.85rem':'0.4rem'}">
         <div>
           <div style="font-size:0.95rem;font-weight:600;color:var(--gold-l)">${dateLabel}</div>
           <div style="font-size:0.75rem;color:rgba(255,255,255,0.35);margin-top:2px">${signups.length} player${signups.length!==1?'s':''} signed up${locked?' · 🔒 Closed':''}</div>
           ${teeTime?`<div style="font-size:0.8rem;color:#82aaf0;margin-top:4px">⛳ Your tee time: <strong>${teeTime}</strong>${groupNum?` (Group ${groupNum})`:''}</div>`:''}
+          ${isSignedUp&&myEarlyRequest?`<div style="font-size:0.75rem;color:#f0c060;margin-top:2px">⏰ Early tee requested${mySignup.early_tee_reason?' — '+mySignup.early_tee_reason:''}</div>`:''}
         </div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          ${!locked&&!isSignedUp&&activeId?`<button class="btn btn-primary btn-sm" onclick="toggleSaturdaySignup('${date}')">Sign up ✓</button>`:''}
+          ${!locked&&!isSignedUp&&activeId&&!showingForm?`<button class="btn btn-primary btn-sm" onclick="showSignupForm('${date}')">Sign up ✓</button>`:''}
           ${!locked&&isSignedUp?`<button class="btn btn-ghost btn-sm" onclick="toggleSaturdaySignup('${date}')">Withdraw</button>`:''}
           ${locked&&isSignedUp?`<span style="font-size:0.8rem;color:var(--gold-l)">✓ You're in</span>`:''}
           ${locked&&!isSignedUp?`<span style="font-size:0.78rem;color:rgba(255,255,255,0.3)">Sign-ups closed</span>`:''}
           ${!activeId?`<span style="font-size:0.75rem;color:rgba(255,255,255,0.3)">Select your player to sign up</span>`:''}
         </div>
       </div>
+      ${showingForm?`<div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:0.75rem;margin-bottom:0.75rem">
+        <label style="display:flex;align-items:center;gap:7px;font-size:0.82rem;margin-bottom:0.5rem;cursor:pointer">
+          <input type="checkbox" id="earlyChk_${date}" style="accent-color:var(--gold-l);width:15px;height:15px">
+          ⏰ Request early tee time
+        </label>
+        <input type="text" id="earlyReason_${date}" placeholder="Reason (e.g. need to leave by 12:00)" style="width:100%;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:var(--cream);font-size:0.78rem;padding:5px 8px;outline:none;margin-bottom:0.55rem;box-sizing:border-box">
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-primary btn-sm" onclick="confirmSignup('${date}')">Confirm ✓</button>
+          <button class="btn btn-ghost btn-sm" onclick="cancelSignup()">Cancel</button>
+        </div>
+      </div>`:''}
       ${signups.length?`<div style="display:flex;flex-direction:column;gap:2px">${signups.map(s=>playerRow(s)).join('')}</div>`:`<div style="font-size:0.78rem;color:rgba(255,255,255,0.25)">No sign-ups yet — be the first!</div>`}
     </div>`;
   }).join('');
+}
+function showSignupForm(date){satSignupForm=date;renderSaturdayView();}
+function cancelSignup(){satSignupForm=null;renderSaturdayView();}
+async function confirmSignup(date){
+  if(!activeId){alert('Please select your player first.');return;}
+  const event=saturdayEvents.find(e=>e.date===date);
+  if(event?.locked){alert('Sign-ups are closed for this Saturday.');return;}
+  const earlyReq=document.getElementById(`earlyChk_${date}`)?.checked||false;
+  const earlyReason=document.getElementById(`earlyReason_${date}`)?.value.trim()||null;
+  try{
+    const payload={id:Date.now()+Math.floor(Math.random()*9999),player_id:activeId,date,early_tee_request:earlyReq,early_tee_reason:earlyReason||null};
+    const[saved]=await sbInsert('saturday_signups',payload);
+    saturdaySignups.push(saved||payload);
+    satSignupForm=null;
+    toast('Signed up for '+new Date(date+'T00:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'})+(earlyReq?' ⏰':'')+' ✓');
+    renderSaturdayView();renderSaturdayAdmin();
+  }catch(e){alert('Error: '+e.message);}
 }
 async function toggleSaturdaySignup(date){
   if(!activeId){alert('Please select your player first.');return;}
   const event=saturdayEvents.find(e=>e.date===date);
   if(event?.locked){alert('Sign-ups are closed for this Saturday.');return;}
   const existing=saturdaySignups.find(s=>s.player_id===activeId&&s.date===date);
+  if(!existing)return; // sign-up now goes via confirmSignup
   try{
-    if(existing){
-      await sbDelete('saturday_signups',existing.id);
-      saturdaySignups=saturdaySignups.filter(s=>s.id!==existing.id);
-      toast('Withdrawn from '+date);
-    } else {
-      const payload={id:Date.now()+Math.floor(Math.random()*9999),player_id:activeId,date};
-      const[saved]=await sbInsert('saturday_signups',payload);
-      saturdaySignups.push(saved||payload);
-      toast('Signed up for '+new Date(date+'T00:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'})+' ✓');
-    }
+    await sbDelete('saturday_signups',existing.id);
+    saturdaySignups=saturdaySignups.filter(s=>s.id!==existing.id);
+    toast('Withdrawn from '+date);
     renderSaturdayView();renderSaturdayAdmin();
   }catch(e){alert('Error: '+e.message);}
 }
@@ -1398,7 +1424,7 @@ function renderSaturdayAdmin(){
     const hasAlloc=signups.some(s=>s.tee_time);
     const groupBlocks=hasAlloc?Array.from({length:numGroups},(_,gi)=>{
       const gP=signups.filter(s=>s.group_num===gi+1);if(!gP.length)return'';
-      return`<div style="margin-bottom:0.5rem"><div style="font-size:0.7rem;font-weight:600;color:#82aaf0;margin-bottom:3px">Group ${gi+1} · 🕐 ${teeTimes[gi]||teeTimes[0]}</div><div style="display:flex;flex-wrap:wrap;gap:5px">${gP.map(s=>{const p=allP.find(x=>x.id===s.player_id);return p?`<div style="display:flex;align-items:center;gap:4px;font-size:0.78rem;background:rgba(130,170,240,0.1);border-radius:6px;padding:3px 8px"><div style="width:14px;height:14px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.48rem;font-weight:700;color:#fff">${ini(p.name)}</div>${p.name.split(' ')[0]}</div>`:''}).join('')}</div></div>`;
+      return`<div style="margin-bottom:0.5rem"><div style="font-size:0.7rem;font-weight:600;color:#82aaf0;margin-bottom:3px">Group ${gi+1} · 🕐 ${teeTimes[gi]||teeTimes[0]}</div><div style="display:flex;flex-wrap:wrap;gap:5px">${gP.map(s=>{const p=allP.find(x=>x.id===s.player_id);return p?`<div style="display:flex;align-items:center;gap:4px;font-size:0.78rem;background:rgba(130,170,240,0.1);border-radius:6px;padding:3px 8px"><div style="width:14px;height:14px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.48rem;font-weight:700;color:#fff">${ini(p.name)}</div>${p.name.split(' ')[0]}${s.early_tee_request?` <span title="${s.early_tee_reason||'Early tee'}">⏰</span>`:''}</div>`:''}).join('')}</div></div>`;
     }).join(''):'';
     return`<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:1rem;margin-bottom:0.75rem">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:0.75rem">
@@ -1419,7 +1445,7 @@ function renderSaturdayAdmin(){
       </div>
       ${n?`<div style="font-size:0.7rem;color:rgba(255,255,255,0.35);margin-bottom:5px">Signed up (${n})</div>
         <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:${hasAlloc?'0.75rem':'0.65rem'}">
-          ${signups.map(s=>{const p=allP.find(x=>x.id===s.player_id);return p?`<div style="display:flex;align-items:center;gap:4px;font-size:0.78rem;background:rgba(255,255,255,0.05);border-radius:6px;padding:3px 8px"><div style="width:14px;height:14px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.48rem;font-weight:700;color:#fff">${ini(p.name)}</div>${p.name}</div>`:''}).join('')}
+          ${signups.map(s=>{const p=allP.find(x=>x.id===s.player_id);return p?`<div style="display:flex;align-items:center;gap:4px;font-size:0.78rem;background:rgba(255,255,255,0.05);border-radius:6px;padding:3px 8px"><div style="width:14px;height:14px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.48rem;font-weight:700;color:#fff">${ini(p.name)}</div>${p.name}${s.early_tee_request?` <span title="${s.early_tee_reason||'Early tee requested'}">⏰</span>`:''}</div>`:''}).join('')}
         </div>
         ${hasAlloc?`<div style="border-top:1px solid rgba(255,255,255,0.08);padding-top:0.6rem;margin-bottom:0.65rem">${groupBlocks}</div>`:''}`
       :''}
@@ -1497,7 +1523,7 @@ function renderTeeSheet(){
               <span style="font-size:0.78rem;color:rgba(255,255,255,0.4)">Group ${gi} · ${gSignups.length} player${gSignups.length!==1?'s':''}</span>
             </div>
             <div style="display:flex;flex-direction:column;gap:6px">
-              ${gSignups.map(s=>{const p=allP.find(x=>x.id===s.player_id);if(!p)return'';const hcp=currentHcp(p);const isMe=s.player_id===activeId;return`<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:${isMe?'rgba(201,168,76,0.08)':'rgba(255,255,255,0.03)'};border:1px solid ${isMe?'rgba(201,168,76,0.3)':'rgba(255,255,255,0.06)'};border-radius:8px"><div style="width:26px;height:26px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.62rem;font-weight:700;color:#fff;flex-shrink:0">${ini(p.name)}</div><div style="flex:1"><div style="font-size:0.88rem;font-weight:${isMe?600:500}">${p.name}${isMe?' <span style="font-size:0.68rem;color:var(--gold-l)">(you)</span>':''}</div>${hcp!=null?`<div style="font-size:0.7rem;color:rgba(255,255,255,0.35)">HCP ${hcp}</div>`:''}</div></div>`;}).join('')}
+              ${gSignups.map(s=>{const p=allP.find(x=>x.id===s.player_id);if(!p)return'';const hcp=currentHcp(p);const isMe=s.player_id===activeId;const earlyBadge=s.early_tee_request?`<span style="font-size:0.68rem;color:#f0c060;background:rgba(240,192,96,0.1);border-radius:4px;padding:1px 5px" title="${s.early_tee_reason||'Early tee requested'}">⏰ Early</span>`:'';return`<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:${isMe?'rgba(201,168,76,0.08)':'rgba(255,255,255,0.03)'};border:1px solid ${isMe?'rgba(201,168,76,0.3)':'rgba(255,255,255,0.06)'};border-radius:8px"><div style="width:26px;height:26px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.62rem;font-weight:700;color:#fff;flex-shrink:0">${ini(p.name)}</div><div style="flex:1"><div style="font-size:0.88rem;font-weight:${isMe?600:500};display:flex;align-items:center;gap:6px">${p.name}${isMe?' <span style="font-size:0.68rem;color:var(--gold-l)">(you)</span>':''}${earlyBadge}</div>${hcp!=null?`<div style="font-size:0.7rem;color:rgba(255,255,255,0.35)">HCP ${hcp}</div>`:''}</div></div>`;}).join('')}
             </div>
           </div>`).join('')}
       </div>
@@ -1510,11 +1536,22 @@ function generateDraw(date){
   const ttInput=document.getElementById(`satTT_${date}`);
   const teeTimes=(ttInput?.value||'08:30,08:40,08:50').split(',').map(t=>t.trim()).filter(Boolean);
   const numGroups=n<=4?1:n<=8?2:3;
-  const shuffled=[...signups].sort(()=>Math.random()-0.5);
-  const groups=Array.from({length:numGroups},()=>[]);
-  shuffled.forEach((s,i)=>groups[i%numGroups].push(s));
-  groups.forEach((g,gi)=>g.forEach(s=>{s.tee_time=teeTimes[gi]||teeTimes[0];s.group_num=gi+1;}));
-  pendingDraw[date]={groups,teeTimes};
+  // Early requesters are always pinned to group 1 (first tee time); rest are shuffled
+  const early=signups.filter(s=>s.early_tee_request);
+  const pool=[...signups.filter(s=>!s.early_tee_request)].sort(()=>Math.random()-0.5);
+  // Assign early requesters to group 1
+  early.forEach(s=>{s.tee_time=teeTimes[0]||'';s.group_num=1;});
+  // Fill groups evenly with remaining players (group 1 topped up first)
+  const baseSize=Math.floor(n/numGroups);const extra=n%numGroups;
+  let pi=0;
+  for(let gi=0;gi<numGroups;gi++){
+    const target=baseSize+(gi<extra?1:0);
+    const alreadyIn=gi===0?early.length:0;
+    for(let j=alreadyIn;j<target&&pi<pool.length;j++){const s=pool[pi++];s.tee_time=teeTimes[gi]||teeTimes[0];s.group_num=gi+1;}
+  }
+  // Any pool overflow (edge case: more early requesters than group 1 capacity)
+  while(pi<pool.length){const s=pool[pi++];s.tee_time=teeTimes[numGroups-1]||teeTimes[0];s.group_num=numGroups;}
+  pendingDraw[date]={teeTimes};
   renderSaturdayAdmin();
 }
 async function saveDraw(date){

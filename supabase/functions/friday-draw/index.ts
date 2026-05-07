@@ -109,21 +109,36 @@ Deno.serve(async (_req) => {
     console.log(`[friday-draw] ${numGroups} group(s), tee times: ${activeTimes.join(', ')}`);
 
     // 4. Shuffle & assign ─────────────────────────────────────────────────
+    //    Early tee requesters are always pinned to group 1 (first tee time).
+    //    Remaining players are shuffled and distributed evenly across all groups.
 
-    const shuffled = shuffle(signups);
+    const earlySignups  = signups.filter((s: { early_tee_request: boolean }) => s.early_tee_request);
+    const otherSignups  = shuffle(signups.filter((s: { early_tee_request: boolean }) => !s.early_tee_request));
 
-    // Distribute evenly by cycling through group numbers.
-    // e.g. 7 players, 2 groups → group 1 gets 4, group 2 gets 3
-    const assignments: Array<{ signupId: number; playerId: string; teeTime: string; groupNum: number }> =
-      shuffled.map((s, i) => {
-        const groupNum = (i % numGroups) + 1; // 1-indexed
-        return {
-          signupId: s.id,
-          playerId: s.player_id,
-          teeTime:  activeTimes[groupNum - 1],
-          groupNum,
-        };
-      });
+    const assignments: Array<{ signupId: number; playerId: string; teeTime: string; groupNum: number }> = [];
+
+    // Pin early requesters to group 1
+    for (const s of earlySignups) {
+      assignments.push({ signupId: s.id, playerId: s.player_id, teeTime: activeTimes[0], groupNum: 1 });
+    }
+
+    // Distribute remaining players to fill groups evenly
+    const baseSize  = Math.floor(signups.length / numGroups);
+    const extra     = signups.length % numGroups;
+    let pi = 0;
+    for (let gi = 0; gi < numGroups; gi++) {
+      const target    = baseSize + (gi < extra ? 1 : 0);
+      const alreadyIn = gi === 0 ? earlySignups.length : 0;
+      for (let j = alreadyIn; j < target && pi < otherSignups.length; j++) {
+        const s = otherSignups[pi++];
+        assignments.push({ signupId: s.id, playerId: s.player_id, teeTime: activeTimes[gi] ?? activeTimes[0], groupNum: gi + 1 });
+      }
+    }
+    // Overflow safety (more early requesters than group 1 capacity — edge case)
+    while (pi < otherSignups.length) {
+      const s = otherSignups[pi++];
+      assignments.push({ signupId: s.id, playerId: s.player_id, teeTime: activeTimes[numGroups - 1], groupNum: numGroups });
+    }
 
     // 5. Persist assignments to saturday_signups ──────────────────────────
 
