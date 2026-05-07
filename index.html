@@ -203,6 +203,7 @@ select option { background: #1a3a2a; }
         <button class="sub-tab" onclick="showLb('season',this)">Season</button>
         <button class="sub-tab" onclick="showLb('dreamcard',this)">Eclectic</button>
         <button class="sub-tab" onclick="showLb('fines',this)">🚨 Fines</button>
+        <button class="sub-tab" onclick="showLb('saturday',this)">📅 Saturday</button>
       </div>
       <div class="lb-view active" id="lb-today">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:8px">
@@ -235,8 +236,19 @@ select option { background: #1a3a2a; }
           <div style="font-size:0.8rem;color:rgba(255,255,255,0.4)">DKK 10 per infraction · Pot TBC</div>
           <select id="finesYear" onchange="renderFinesLb()" style="background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.14);border-radius:6px;color:var(--cream);font-size:0.75rem;padding:4px 8px;outline:none"></select>
         </div>
+        <a href="https://qr.mobilepay.dk/box/19b8d876-6c09-4fbd-b471-6d46df7c61e5/pay-in" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:8px;background:rgba(90,180,100,0.1);border:1px solid rgba(90,180,100,0.3);border-radius:10px;padding:10px 14px;text-decoration:none;color:var(--cream);margin-bottom:1rem">
+          <span style="font-size:1.3rem">📱</span>
+          <div>
+            <div style="font-size:0.85rem;font-weight:600;color:#7fcc9e">Pay Fines via MobilePay</div>
+            <div style="font-size:0.72rem;color:rgba(255,255,255,0.4)">Tap to open MobilePay and pay outstanding fines</div>
+          </div>
+          <span style="margin-left:auto;font-size:0.8rem;color:rgba(255,255,255,0.3)">→</span>
+        </a>
         <div id="finesPot" style="margin-bottom:1rem"></div>
         <div id="finesTable" style="margin-bottom:1.5rem"></div>
+      </div>
+      <div class="lb-view" id="lb-saturday">
+        <div id="saturdayView"></div>
       </div>
     </div>
   </div>
@@ -244,6 +256,7 @@ select option { background: #1a3a2a; }
   <!-- LOG ROUND -->
   <div class="view" id="view-log">
     <div id="resumePanel" style="display:none;margin-bottom:1rem"></div>
+    <div id="satDrawBanner" style="display:none;margin-bottom:1rem"></div>
     <div class="panel" id="logStep1">
       <div class="ph"><span class="pt">Round Setup — Royal Golf Club</span><span style="font-size:0.75rem;color:rgba(255,255,255,0.35)">Step 1 of 2</span></div>
       <div class="pb">
@@ -461,6 +474,10 @@ select option { background: #1a3a2a; }
       </div>
       <div id="adminFinesTable" class="pb"></div>
     </div>
+    <div class="panel">
+      <div class="ph"><span class="pt">Saturday Draw</span><span style="font-size:0.75rem;color:rgba(255,255,255,0.35)">Manage sign-ups and allocate tee times</span></div>
+      <div class="pb" id="saturdayAdminBody"></div>
+    </div>
   </div>
 </div>
 
@@ -656,6 +673,9 @@ const COLORS=['#e8534a','#4a7fe8','#e8a93a','#6cb86c','#a06be8','#e86ca0','#4ab8
 
 let players=[],allRounds=[],activeId=null,selColor=0;
 let fineTypes=[],allFines=[];
+let saturdayEvents=[],saturdaySignups=[];
+const MOBILEPAY_FINES_URL='https://qr.mobilepay.dk/box/19b8d876-6c09-4fbd-b471-6d46df7c61e5/pay-in';
+let pendingDraw={};
 let selTeeId='57',erSelTeeId='platinum',editingHcpPlayerId=null,editingRoundId=null;
 let groupPlayerIds=[],playerTees={};
 let resumingRound=null,resumeGroupPlayerIds=[],resumePlayerTees={};
@@ -688,12 +708,12 @@ function calcHolePoints(round,player){const tee=getTee(round.tee_id||'platinum')
 
 // ── Storage ───────────────────────────────────────────────────────────────────
 let pendingPlayers=[];
-async function loadData(){const all=await sbGet('players','order=created_at.asc');pendingPlayers=all.filter(p=>p.approved===false);players=all.filter(p=>p.approved!==false);allRounds=await sbGet('rounds','order=date.desc');fineTypes=await sbGet('fine_types','order=name.asc');allFines=await sbGet('fines','order=created_at.desc');}
+async function loadData(){const all=await sbGet('players','order=created_at.asc');pendingPlayers=all.filter(p=>p.approved===false);players=all.filter(p=>p.approved!==false);allRounds=await sbGet('rounds','order=date.desc');fineTypes=await sbGet('fine_types','order=name.asc');allFines=await sbGet('fines','order=created_at.desc');try{saturdayEvents=await sbGet('saturday_events','order=date.asc');}catch(e){saturdayEvents=[];}try{saturdaySignups=await sbGet('saturday_signups','order=created_at.asc');}catch(e){saturdaySignups=[];}}
 
 // ── Admin ─────────────────────────────────────────────────────────────────────
 function adminPlayer(){return players.find(p=>p.is_admin)||players[0];}
 function isAdmin(){return players.find(p=>p.id===activeId)?.is_admin===true;}
-function updateAdminUI(){const a=isAdmin();document.getElementById('adminTab').style.display=a?'inline-block':'none';document.getElementById('adminBadge').style.display=a?'inline-flex':'none';const ab=document.getElementById('addPlayerBtn');if(ab)ab.style.display=a?'inline-block':'none';}
+function updateAdminUI(){const a=isAdmin();document.getElementById('adminTab').style.display=a?'inline-block':'none';document.getElementById('adminBadge').style.display=a?'inline-flex':'none';const ab=document.getElementById('addPlayerBtn');if(ab)ab.style.display=a?'inline-block':'none';if(a)renderSaturdayAdmin();}
 function applyPendingUI(){const p=players.find(x=>x.id===activeId)||pendingPlayers.find(x=>x.id===activeId);const pending=p&&p.approved===false;document.getElementById('pendingBanner').style.display=pending?'block':'none';document.getElementById('tabLeaderboard').style.display=pending?'none':'';document.getElementById('tabHistory').style.display=pending?'none':'';document.getElementById('tabPlayers').style.display=pending?'none':'';if(pending){showView('log',document.querySelector('.nav-tab'));document.querySelector('.nav-tab').classList.remove('active');}}
 
 // ── Email + PIN Login ─────────────────────────────────────────────────────────
@@ -814,7 +834,7 @@ function showView(id,btn){
   if(id==='leaderboard'){renderTodayLb();populateYearSelects();renderSeasonLb();renderDreamCard();}
   if(id==='history'){renderMyRounds();const b=document.getElementById('myHcpBtn');if(b)b.style.display=activeId?'inline-block':'none';}
   if(id==='players')renderGrid();
-  if(id==='log'){buildPlayerCheckboxes();checkForResumableRounds();}
+  if(id==='log'){buildPlayerCheckboxes();checkForResumableRounds();applySaturdayDraw();}
   if(id==='admin'){renderPendingApprovals();renderAdmin();renderBulkEntry();renderAdminFines();}
   if(id==='rules')renderRules();
 }
@@ -836,7 +856,7 @@ function renderRules(){
     </div>
     <p style="font-size:0.75rem;color:rgba(255,255,255,0.3)">DKK 250 per player · ${approved} player${approved!==1?'s':''} · Total pot DKK ${total} · Split 50/50 before MobilePay fees</p>`;
 }
-function showLb(id,btn){document.querySelectorAll('.lb-view').forEach(v=>v.classList.remove('active'));document.querySelectorAll('.sub-tab').forEach(t=>t.classList.remove('active'));document.getElementById('lb-'+id).classList.add('active');if(btn)btn.classList.add('active');if(id==='today')renderTodayLb();if(id==='season')renderSeasonLb();if(id==='dreamcard'){renderDreamCard();}if(id==='fines')renderFinesLb();}
+function showLb(id,btn){document.querySelectorAll('.lb-view').forEach(v=>v.classList.remove('active'));document.querySelectorAll('.sub-tab').forEach(t=>t.classList.remove('active'));document.getElementById('lb-'+id).classList.add('active');if(btn)btn.classList.add('active');if(id==='today')renderTodayLb();if(id==='season')renderSeasonLb();if(id==='dreamcard'){renderDreamCard();}if(id==='fines')renderFinesLb();if(id==='saturday')renderSaturdayView();}
 
 // ── Tee selectors ─────────────────────────────────────────────────────────────
 function buildTeeSelectorEl(cid,active,sv){const el=document.getElementById(cid);if(!el)return;el.innerHTML=TEES.map(t=>`<div class="tee-opt${t.id===active?' selected':''}" onclick="selectTee('${cid}','${t.id}','${sv}')"><span class="tee-dot" style="background:${t.color};border:1px solid rgba(255,255,255,0.25)"></span>${t.name} <span style="font-size:0.68rem;color:rgba(255,255,255,0.32)">${t.rating}/${t.slope}</span></div>`).join('');}
@@ -1286,6 +1306,189 @@ async function startResumeEntry(){
 }
 
 
+// ── Saturday Sign-up & Draw ───────────────────────────────────────────────────
+function getNextSaturdays(n=4){
+  const result=[];
+  const d=new Date();
+  const day=d.getDay();
+  const daysToSat=day===6?0:(6-day);
+  for(let i=0;i<n;i++){const sat=new Date(d);sat.setDate(d.getDate()+daysToSat+(i*7));result.push(sat.toISOString().split('T')[0]);}
+  return result;
+}
+function renderSaturdayView(){
+  const el=document.getElementById('saturdayView');if(!el)return;
+  const sats=getNextSaturdays(4);
+  const allP=[...players,...pendingPlayers];
+  el.innerHTML=sats.map(date=>{
+    const event=saturdayEvents.find(e=>e.date===date);
+    const locked=event?.locked||false;
+    const signups=saturdaySignups.filter(s=>s.date===date);
+    const mySignup=signups.find(s=>s.player_id===activeId);
+    const isSignedUp=!!mySignup;
+    const teeTime=mySignup?.tee_time||null;
+    const groupNum=mySignup?.group_num||null;
+    const dateObj=new Date(date+'T00:00:00');
+    const dateLabel=dateObj.toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'});
+    const playerRow=s=>{const p=allP.find(x=>x.id===s.player_id);if(!p)return'';return`<div style="display:flex;align-items:center;gap:6px;padding:3px 0"><div style="width:18px;height:18px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.55rem;font-weight:700;color:#fff">${ini(p.name)}</div><span style="font-size:0.82rem">${p.name}</span>${s.tee_time?`<span style="font-size:0.68rem;color:#82aaf0;background:rgba(130,170,240,0.12);border-radius:4px;padding:1px 5px">${s.tee_time}</span>`:''}</div>`;};
+    return`<div style="background:rgba(255,255,255,0.03);border:1px solid ${isSignedUp?'rgba(201,168,76,0.4)':'rgba(255,255,255,0.1)'};border-radius:12px;padding:1rem 1.2rem;margin-bottom:0.85rem">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:${signups.length?'0.85rem':'0.4rem'}">
+        <div>
+          <div style="font-size:0.95rem;font-weight:600;color:var(--gold-l)">${dateLabel}</div>
+          <div style="font-size:0.75rem;color:rgba(255,255,255,0.35);margin-top:2px">${signups.length} player${signups.length!==1?'s':''} signed up${locked?' · 🔒 Closed':''}</div>
+          ${teeTime?`<div style="font-size:0.8rem;color:#82aaf0;margin-top:4px">⛳ Your tee time: <strong>${teeTime}</strong>${groupNum?` (Group ${groupNum})`:''}</div>`:''}
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          ${!locked&&!isSignedUp&&activeId?`<button class="btn btn-primary btn-sm" onclick="toggleSaturdaySignup('${date}')">Sign up ✓</button>`:''}
+          ${!locked&&isSignedUp?`<button class="btn btn-ghost btn-sm" onclick="toggleSaturdaySignup('${date}')">Withdraw</button>`:''}
+          ${locked&&isSignedUp?`<span style="font-size:0.8rem;color:var(--gold-l)">✓ You're in</span>`:''}
+          ${locked&&!isSignedUp?`<span style="font-size:0.78rem;color:rgba(255,255,255,0.3)">Sign-ups closed</span>`:''}
+          ${!activeId?`<span style="font-size:0.75rem;color:rgba(255,255,255,0.3)">Select your player to sign up</span>`:''}
+        </div>
+      </div>
+      ${signups.length?`<div style="display:flex;flex-direction:column;gap:2px">${signups.map(s=>playerRow(s)).join('')}</div>`:`<div style="font-size:0.78rem;color:rgba(255,255,255,0.25)">No sign-ups yet — be the first!</div>`}
+    </div>`;
+  }).join('');
+}
+async function toggleSaturdaySignup(date){
+  if(!activeId){alert('Please select your player first.');return;}
+  const event=saturdayEvents.find(e=>e.date===date);
+  if(event?.locked){alert('Sign-ups are closed for this Saturday.');return;}
+  const existing=saturdaySignups.find(s=>s.player_id===activeId&&s.date===date);
+  try{
+    if(existing){
+      await sbDelete('saturday_signups',existing.id);
+      saturdaySignups=saturdaySignups.filter(s=>s.id!==existing.id);
+      toast('Withdrawn from '+date);
+    } else {
+      const payload={id:Date.now()+Math.floor(Math.random()*9999),player_id:activeId,date};
+      const[saved]=await sbInsert('saturday_signups',payload);
+      saturdaySignups.push(saved||payload);
+      toast('Signed up for '+new Date(date+'T00:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'})+' ✓');
+    }
+    renderSaturdayView();renderSaturdayAdmin();
+  }catch(e){alert('Error: '+e.message);}
+}
+function renderSaturdayAdmin(){
+  const el=document.getElementById('saturdayAdminBody');if(!el)return;
+  const sats=getNextSaturdays(4);
+  const allP=[...players,...pendingPlayers];
+  if(!sats.length){el.innerHTML='<div class="empty">No upcoming Saturdays</div>';return;}
+  el.innerHTML=sats.map(date=>{
+    const event=saturdayEvents.find(e=>e.date===date);
+    const locked=event?.locked||false;
+    const teeTimes=event?.tee_times||['08:30','08:40','08:50'];
+    const signups=saturdaySignups.filter(s=>s.date===date);
+    const n=signups.length;
+    const numGroups=n<=4?1:n<=8?2:3;
+    const dateObj=new Date(date+'T00:00:00');
+    const dateLabel=dateObj.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'});
+    const hasAlloc=signups.some(s=>s.tee_time);
+    const groupBlocks=hasAlloc?Array.from({length:numGroups},(_,gi)=>{
+      const gP=signups.filter(s=>s.group_num===gi+1);if(!gP.length)return'';
+      return`<div style="margin-bottom:0.5rem"><div style="font-size:0.7rem;font-weight:600;color:#82aaf0;margin-bottom:3px">Group ${gi+1} · 🕐 ${teeTimes[gi]||teeTimes[0]}</div><div style="display:flex;flex-wrap:wrap;gap:5px">${gP.map(s=>{const p=allP.find(x=>x.id===s.player_id);return p?`<div style="display:flex;align-items:center;gap:4px;font-size:0.78rem;background:rgba(130,170,240,0.1);border-radius:6px;padding:3px 8px"><div style="width:14px;height:14px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.48rem;font-weight:700;color:#fff">${ini(p.name)}</div>${p.name.split(' ')[0]}</div>`:''}).join('')}</div></div>`;
+    }).join(''):'';
+    return`<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:1rem;margin-bottom:0.75rem">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:0.75rem">
+        <div>
+          <div style="font-size:0.9rem;font-weight:600;color:var(--gold-l)">${dateLabel}</div>
+          <div style="font-size:0.72rem;color:rgba(255,255,255,0.35);margin-top:1px">${n} signed up · ${numGroups} group${numGroups!==1?'s':''}</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn btn-ghost btn-sm" onclick="toggleSatLock('${date}')" style="font-size:0.75rem">${locked?'🔓 Unlock':'🔒 Lock sign-ups'}</button>
+          ${n?`<button class="btn btn-primary btn-sm" onclick="generateDraw('${date}')" style="font-size:0.75rem">🎲 Randomise</button>`:''}
+          ${hasAlloc?`<button class="btn btn-warn btn-sm" onclick="saveDraw('${date}')" style="font-size:0.75rem">💾 Save Draw</button>`:''}
+        </div>
+      </div>
+      <div style="margin-bottom:0.75rem">
+        <label style="font-size:0.65rem">Tee Times (comma separated)</label>
+        <input type="text" id="satTT_${date}" value="${teeTimes.join(', ')}" placeholder="08:30, 08:40, 08:50"
+          style="margin-top:4px;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:var(--cream);font-size:0.8rem;padding:5px 8px;width:100%;outline:none">
+      </div>
+      ${n?`<div style="font-size:0.7rem;color:rgba(255,255,255,0.35);margin-bottom:5px">Signed up (${n})</div>
+        <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:${hasAlloc?'0.75rem':'0'}">
+          ${signups.map(s=>{const p=allP.find(x=>x.id===s.player_id);return p?`<div style="display:flex;align-items:center;gap:4px;font-size:0.78rem;background:rgba(255,255,255,0.05);border-radius:6px;padding:3px 8px"><div style="width:14px;height:14px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.48rem;font-weight:700;color:#fff">${ini(p.name)}</div>${p.name}</div>`:''}).join('')}
+        </div>
+        ${hasAlloc?`<div style="border-top:1px solid rgba(255,255,255,0.08);padding-top:0.6rem">${groupBlocks}</div>`:''}`
+      :'<div style="font-size:0.78rem;color:rgba(255,255,255,0.25)">No sign-ups yet</div>'}
+    </div>`;
+  }).join('');
+}
+function generateDraw(date){
+  const signups=saturdaySignups.filter(s=>s.date===date);
+  const n=signups.length;if(!n){alert('No sign-ups to allocate.');return;}
+  const ttInput=document.getElementById(`satTT_${date}`);
+  const teeTimes=(ttInput?.value||'08:30,08:40,08:50').split(',').map(t=>t.trim()).filter(Boolean);
+  const numGroups=n<=4?1:n<=8?2:3;
+  const shuffled=[...signups].sort(()=>Math.random()-0.5);
+  const groups=Array.from({length:numGroups},()=>[]);
+  shuffled.forEach((s,i)=>groups[i%numGroups].push(s));
+  groups.forEach((g,gi)=>g.forEach(s=>{s.tee_time=teeTimes[gi]||teeTimes[0];s.group_num=gi+1;}));
+  pendingDraw[date]={groups,teeTimes};
+  renderSaturdayAdmin();
+}
+async function saveDraw(date){
+  if(!pendingDraw[date]){alert('Randomise first.');return;}
+  const signups=saturdaySignups.filter(s=>s.date===date);
+  const ttInput=document.getElementById(`satTT_${date}`);
+  const teeTimes=(ttInput?.value||'08:30,08:40,08:50').split(',').map(t=>t.trim()).filter(Boolean);
+  let event=saturdayEvents.find(e=>e.date===date);
+  setLoading(true,'Saving draw…');
+  try{
+    if(!event){const payload={id:Date.now()+Math.floor(Math.random()*9999),date,locked:false,tee_times:teeTimes};const[saved]=await sbInsert('saturday_events',payload);saturdayEvents.push(event=saved||payload);}
+    else{await sbUpdate('saturday_events',event.id,{tee_times:teeTimes});event.tee_times=teeTimes;}
+    await Promise.all(signups.map(s=>sbUpdate('saturday_signups',s.id,{tee_time:s.tee_time||null,group_num:s.group_num||null})));
+    delete pendingDraw[date];
+    toast('Draw saved ✓');renderSaturdayView();renderSaturdayAdmin();
+  }catch(e){alert('Error: '+e.message);}finally{setLoading(false);}
+}
+async function toggleSatLock(date){
+  const ttInput=document.getElementById(`satTT_${date}`);
+  const teeTimes=(ttInput?.value||'08:30,08:40,08:50').split(',').map(t=>t.trim()).filter(Boolean);
+  let event=saturdayEvents.find(e=>e.date===date);
+  const newLocked=!event?.locked;
+  try{
+    if(!event){const payload={id:Date.now()+Math.floor(Math.random()*9999),date,locked:newLocked,tee_times:teeTimes};const[saved]=await sbInsert('saturday_events',payload);saturdayEvents.push(saved||payload);}
+    else{await sbUpdate('saturday_events',event.id,{locked:newLocked,tee_times:teeTimes});event.locked=newLocked;}
+    toast(newLocked?'Sign-ups locked 🔒':'Sign-ups unlocked 🔓');renderSaturdayAdmin();renderSaturdayView();
+  }catch(e){alert('Error: '+e.message);}
+}
+function applySaturdayDraw(){
+  if(!activeId)return;
+  const td=today();
+  if(new Date(td+'T00:00:00').getDay()!==6)return;
+  const mySignup=saturdaySignups.find(s=>s.player_id===activeId&&s.date===td&&s.tee_time);
+  const banner=document.getElementById('satDrawBanner');
+  if(!mySignup){if(banner)banner.style.display='none';return;}
+  const groupSignups=saturdaySignups.filter(s=>s.date===td&&s.tee_time===mySignup.tee_time&&s.player_id!==activeId);
+  const allP=[...players,...pendingPlayers];
+  const groupNames=groupSignups.map(s=>allP.find(x=>x.id===s.player_id)?.name.split(' ')[0]).filter(Boolean);
+  if(banner){
+    banner.innerHTML=`<div style="background:rgba(130,170,240,0.08);border:1px solid rgba(130,170,240,0.3);border-radius:10px;padding:10px 14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <span style="font-size:1rem">⛳</span>
+      <div style="flex:1">
+        <div style="font-size:0.85rem;font-weight:600;color:#82aaf0">Your tee time today: ${mySignup.tee_time} · Group ${mySignup.group_num}</div>
+        <div style="font-size:0.75rem;color:rgba(255,255,255,0.45);margin-top:2px">Playing with: ${groupNames.length?groupNames.join(', '):'solo'}</div>
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="applySaturdayDrawToSetup()">Use this group →</button>
+    </div>`;
+    banner.style.display='block';
+  }
+}
+function applySaturdayDrawToSetup(){
+  const td=today();
+  const mySignup=saturdaySignups.find(s=>s.player_id===activeId&&s.date===td&&s.tee_time);
+  if(!mySignup)return;
+  const ttEl=document.getElementById('roundTeeTime');if(ttEl)ttEl.value=mySignup.tee_time;
+  const groupSignups=saturdaySignups.filter(s=>s.date===td&&s.tee_time===mySignup.tee_time);
+  groupPlayerIds=[];
+  groupSignups.forEach(s=>{
+    const p=[...players,...pendingPlayers].find(x=>x.id===s.player_id);
+    if(p){groupPlayerIds.push(p.id);if(!playerTees[p.id])playerTees[p.id]=selTeeId;}
+  });
+  if(!groupPlayerIds.includes(activeId))groupPlayerIds.unshift(activeId);
+  buildPlayerCheckboxes();
+  toast('Group pre-filled from Saturday draw ✓');
+}
 function buildPlayerCheckboxes(){
   const wrap=document.getElementById('playerCheckboxes');if(!wrap)return;
   const activePlayer=players.find(x=>x.id===activeId)||pendingPlayers.find(x=>x.id===activeId);
