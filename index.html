@@ -189,6 +189,8 @@ select option { background: #1a3a2a; }
   <div class="nav">
     <button class="nav-tab active" id="tabLeaderboard" onclick="showView('leaderboard',this)">Leaderboards</button>
     <button class="nav-tab" onclick="showView('log',this)">Log Round</button>
+    <button class="nav-tab" onclick="showView('signup',this)">Sign Up</button>
+    <button class="nav-tab" onclick="showView('teesheet',this)">Tee Sheet</button>
     <button class="nav-tab" id="tabHistory" onclick="showView('history',this)">My Rounds</button>
     <button class="nav-tab" id="tabPlayers" onclick="showView('players',this)">Players</button>
     <button class="nav-tab" onclick="showView('rules',this)">Rules</button>
@@ -203,7 +205,6 @@ select option { background: #1a3a2a; }
         <button class="sub-tab" onclick="showLb('season',this)">Season</button>
         <button class="sub-tab" onclick="showLb('dreamcard',this)">Eclectic</button>
         <button class="sub-tab" onclick="showLb('fines',this)">🚨 Fines</button>
-        <button class="sub-tab" onclick="showLb('saturday',this)">📅 Saturday</button>
       </div>
       <div class="lb-view active" id="lb-today">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:8px">
@@ -246,9 +247,6 @@ select option { background: #1a3a2a; }
         </a>
         <div id="finesPot" style="margin-bottom:1rem"></div>
         <div id="finesTable" style="margin-bottom:1.5rem"></div>
-      </div>
-      <div class="lb-view" id="lb-saturday">
-        <div id="saturdayView"></div>
       </div>
     </div>
   </div>
@@ -308,6 +306,19 @@ select option { background: #1a3a2a; }
         <button class="btn btn-primary" onclick="saveGroupRound()">Save All Rounds</button>
       </div>
     </div>
+  </div>
+
+  <!-- SIGN UP -->
+  <div class="view" id="view-signup">
+    <div class="panel">
+      <div class="ph"><span class="pt">Saturday Sign Up</span><span style="font-size:0.75rem;color:rgba(255,255,255,0.35)">Register for upcoming Saturday rounds</span></div>
+      <div class="pb"><div id="saturdayView"></div></div>
+    </div>
+  </div>
+
+  <!-- TEE SHEET -->
+  <div class="view" id="view-teesheet">
+    <div id="teeSheetBody"></div>
   </div>
 
   <!-- MY ROUNDS -->
@@ -835,8 +846,10 @@ function showView(id,btn){
   if(id==='history'){renderMyRounds();const b=document.getElementById('myHcpBtn');if(b)b.style.display=activeId?'inline-block':'none';}
   if(id==='players')renderGrid();
   if(id==='log'){buildPlayerCheckboxes();checkForResumableRounds();applySaturdayDraw();}
-  if(id==='admin'){renderPendingApprovals();renderAdmin();renderBulkEntry();renderAdminFines();}
+  if(id==='admin'){renderPendingApprovals();renderAdmin();renderBulkEntry();renderAdminFines();renderSaturdayAdmin();}
   if(id==='rules')renderRules();
+  if(id==='signup')renderSaturdayView();
+  if(id==='teesheet')renderTeeSheet();
 }
 function renderRules(){
   const approved=players.filter(p=>p.approved!==false).length;
@@ -1405,11 +1418,89 @@ function renderSaturdayAdmin(){
           style="margin-top:4px;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:var(--cream);font-size:0.8rem;padding:5px 8px;width:100%;outline:none">
       </div>
       ${n?`<div style="font-size:0.7rem;color:rgba(255,255,255,0.35);margin-bottom:5px">Signed up (${n})</div>
-        <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:${hasAlloc?'0.75rem':'0'}">
+        <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:${hasAlloc?'0.75rem':'0.65rem'}">
           ${signups.map(s=>{const p=allP.find(x=>x.id===s.player_id);return p?`<div style="display:flex;align-items:center;gap:4px;font-size:0.78rem;background:rgba(255,255,255,0.05);border-radius:6px;padding:3px 8px"><div style="width:14px;height:14px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.48rem;font-weight:700;color:#fff">${ini(p.name)}</div>${p.name}</div>`:''}).join('')}
         </div>
-        ${hasAlloc?`<div style="border-top:1px solid rgba(255,255,255,0.08);padding-top:0.6rem">${groupBlocks}</div>`:''}`
-      :'<div style="font-size:0.78rem;color:rgba(255,255,255,0.25)">No sign-ups yet</div>'}
+        ${hasAlloc?`<div style="border-top:1px solid rgba(255,255,255,0.08);padding-top:0.6rem;margin-bottom:0.65rem">${groupBlocks}</div>`:''}`
+      :''}
+      <div style="display:flex;gap:6px;align-items:center;border-top:1px solid rgba(255,255,255,0.06);padding-top:0.65rem">
+        <select id="satAddPlayer_${date}" style="flex:1;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:var(--cream);font-size:0.8rem;padding:5px 8px;outline:none">
+          <option value="">— Add player —</option>
+          ${allP.filter(p=>!signups.find(s=>s.player_id===p.id)).map(p=>`<option value="${p.id}">${p.name}</option>`).join('')}
+        </select>
+        <button class="btn btn-primary btn-sm" onclick="adminAddSaturdayPlayer('${date}')" style="white-space:nowrap">Add ✓</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+async function adminAddSaturdayPlayer(date){
+  const sel=document.getElementById(`satAddPlayer_${date}`);
+  const pid=parseInt(sel?.value);if(!pid){return;}
+  const already=saturdaySignups.find(s=>s.player_id===pid&&s.date===date);
+  if(already){toast('Player already signed up');return;}
+  try{
+    const payload={id:Date.now()+Math.floor(Math.random()*9999),player_id:pid,date};
+    const[saved]=await sbInsert('saturday_signups',payload);
+    saturdaySignups.push(saved||payload);
+    toast('Player added ✓');
+    renderSaturdayAdmin();renderSaturdayView();renderTeeSheet();
+  }catch(e){alert('Error: '+e.message);}
+}
+function renderTeeSheet(){
+  const el=document.getElementById('teeSheetBody');if(!el)return;
+  const sats=getNextSaturdays(4);
+  const allP=[...players,...pendingPlayers];
+  el.innerHTML=sats.map(date=>{
+    const event=saturdayEvents.find(e=>e.date===date);
+    const teeTimes=event?.tee_times||['08:30','08:40','08:50'];
+    const signups=saturdaySignups.filter(s=>s.date===date);
+    const dateObj=new Date(date+'T00:00:00');
+    const isToday=date===today();
+    const dateLabel=dateObj.toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+    const hasAlloc=signups.some(s=>s.tee_time);
+    const n=signups.length;
+    if(!hasAlloc){
+      // No draw yet — show sign-up list
+      return`<div class="panel" style="margin-bottom:1.25rem">
+        <div class="ph">
+          <div style="display:flex;align-items:center;gap:10px">
+            <span class="pt">${dateLabel}</span>
+            ${isToday?`<span style="font-size:0.68rem;background:rgba(130,170,240,0.15);border:1px solid rgba(130,170,240,0.3);color:#82aaf0;padding:2px 8px;border-radius:10px">Today</span>`:''}
+          </div>
+          <span style="font-size:0.75rem;color:rgba(255,255,255,0.35)">${n} signed up · Tee times TBC</span>
+        </div>
+        <div class="pb">
+          ${n?`<div style="display:flex;flex-wrap:wrap;gap:8px">${signups.map(s=>{const p=allP.find(x=>x.id===s.player_id);if(!p)return'';const hcp=currentHcp(p);return`<div style="display:flex;align-items:center;gap:7px;padding:6px 12px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px"><div style="width:22px;height:22px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.6rem;font-weight:700;color:#fff">${ini(p.name)}</div><div><div style="font-size:0.85rem;font-weight:500">${p.name}</div>${hcp!=null?`<div style="font-size:0.68rem;color:rgba(255,255,255,0.35)">HCP ${hcp}</div>`:''}</div></div>`;}).join('')}</div>`
+          :`<div style="font-size:0.82rem;color:rgba(255,255,255,0.3);text-align:center;padding:1rem">No sign-ups yet</div>`}
+        </div>
+      </div>`;
+    }
+    // Draw saved — show groups by tee time
+    const groups=teeTimes.map((tt,gi)=>{
+      const gSignups=signups.filter(s=>s.tee_time===tt);
+      if(!gSignups.length)return null;
+      return{tt,gi:gi+1,gSignups};
+    }).filter(Boolean);
+    return`<div class="panel" style="margin-bottom:1.25rem">
+      <div class="ph">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span class="pt">${dateLabel}</span>
+          ${isToday?`<span style="font-size:0.68rem;background:rgba(130,170,240,0.15);border:1px solid rgba(130,170,240,0.3);color:#82aaf0;padding:2px 8px;border-radius:10px">Today</span>`:''}
+        </div>
+        <span style="font-size:0.75rem;color:rgba(255,255,255,0.35)">${n} players · ${groups.length} group${groups.length!==1?'s':''}</span>
+      </div>
+      <div class="pb" style="padding:0">
+        ${groups.map(({tt,gi,gSignups},idx)=>`
+          <div style="padding:1rem 1.25rem;${idx<groups.length-1?'border-bottom:1px solid rgba(255,255,255,0.06)':''}">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:0.75rem">
+              <div style="background:rgba(130,170,240,0.15);border:1px solid rgba(130,170,240,0.3);border-radius:8px;padding:4px 12px;font-family:'DM Mono',monospace;font-size:0.95rem;font-weight:600;color:#82aaf0">🕐 ${tt}</div>
+              <span style="font-size:0.78rem;color:rgba(255,255,255,0.4)">Group ${gi} · ${gSignups.length} player${gSignups.length!==1?'s':''}</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px">
+              ${gSignups.map(s=>{const p=allP.find(x=>x.id===s.player_id);if(!p)return'';const hcp=currentHcp(p);const isMe=s.player_id===activeId;return`<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:${isMe?'rgba(201,168,76,0.08)':'rgba(255,255,255,0.03)'};border:1px solid ${isMe?'rgba(201,168,76,0.3)':'rgba(255,255,255,0.06)'};border-radius:8px"><div style="width:26px;height:26px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.62rem;font-weight:700;color:#fff;flex-shrink:0">${ini(p.name)}</div><div style="flex:1"><div style="font-size:0.88rem;font-weight:${isMe?600:500}">${p.name}${isMe?' <span style="font-size:0.68rem;color:var(--gold-l)">(you)</span>':''}</div>${hcp!=null?`<div style="font-size:0.7rem;color:rgba(255,255,255,0.35)">HCP ${hcp}</div>`:''}</div></div>`;}).join('')}
+            </div>
+          </div>`).join('')}
+      </div>
     </div>`;
   }).join('');
 }
