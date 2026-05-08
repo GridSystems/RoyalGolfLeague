@@ -1454,9 +1454,10 @@ function renderSaturdayAdmin(){
     const dateObj=new Date(date+'T00:00:00');
     const dateLabel=dateObj.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'});
     const hasAlloc=signups.some(s=>s.tee_time);
-    const groupBlocks=hasAlloc?Array.from({length:numGroups},(_,gi)=>{
-      const gP=signups.filter(s=>s.group_num===gi+1);if(!gP.length)return'';
-      return`<div style="margin-bottom:0.5rem"><div style="font-size:0.7rem;font-weight:600;color:#82aaf0;margin-bottom:3px">Group ${gi+1} · 🕐 ${teeTimes[gi]||teeTimes[0]}</div><div style="display:flex;flex-wrap:wrap;gap:5px">${gP.map(s=>{const p=allP.find(x=>x.id===s.player_id);return p?`<div style="display:flex;align-items:center;gap:4px;font-size:0.78rem;background:rgba(130,170,240,0.1);border-radius:6px;padding:3px 8px"><div style="width:14px;height:14px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.48rem;font-weight:700;color:#fff">${ini(p.name)}</div>${p.name.split(' ')[0]}${s.early_tee_request?` <span title="${s.early_tee_reason||'Early tee'}">⏰</span>`:''}<select onchange="adminMoveTeeTime(${s.id},'${date}',this.value)" style="font-size:0.65rem;background:rgba(0,0,0,0.4);border:1px solid rgba(255,255,255,0.18);border-radius:4px;color:var(--cream);padding:1px 3px;cursor:pointer;margin-left:2px" onclick="event.stopPropagation()">${teeTimes.map(tt=>`<option value="${tt}" ${s.tee_time===tt?'selected':''}>${tt}</option>`).join('')}</select><span onclick="adminRemoveSaturdayPlayer(${s.id},'${date}')" style="color:rgba(255,100,100,0.6);cursor:pointer;font-size:1rem;line-height:1;margin-left:3px" title="Remove">×</span></div>`:''}).join('')}</div></div>`;
+    // Drive groupBlocks off tee_time (source of truth), not group_num — keeps ordering correct
+    const groupBlocks=hasAlloc?teeTimes.map((tt,gi)=>{
+      const gP=signups.filter(s=>s.tee_time===tt);if(!gP.length)return'';
+      return`<div style="margin-bottom:0.5rem"><div style="font-size:0.7rem;font-weight:600;color:#82aaf0;margin-bottom:3px">Group ${gi+1} · 🕐 ${tt}</div><div style="display:flex;flex-wrap:wrap;gap:5px">${gP.map(s=>{const p=allP.find(x=>x.id===s.player_id);return p?`<div style="display:flex;align-items:center;gap:4px;font-size:0.78rem;background:rgba(130,170,240,0.1);border-radius:6px;padding:3px 8px"><div style="width:14px;height:14px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.48rem;font-weight:700;color:#fff">${ini(p.name)}</div>${p.name.split(' ')[0]}${s.early_tee_request?` <span title="${s.early_tee_reason||'Early tee'}">⏰</span>`:''}<select onchange="adminMoveTeeTime(${s.id},'${date}',this.value)" style="font-size:0.65rem;background:rgba(0,0,0,0.4);border:1px solid rgba(255,255,255,0.18);border-radius:4px;color:var(--cream);padding:1px 3px;cursor:pointer;margin-left:2px" onclick="event.stopPropagation()">${teeTimes.map(t=>`<option value="${t}" ${s.tee_time===t?'selected':''}>${t}</option>`).join('')}</select><span onclick="adminRemoveSaturdayPlayer(${s.id},'${date}')" style="color:rgba(255,100,100,0.6);cursor:pointer;font-size:1rem;line-height:1;margin-left:3px" title="Remove">×</span></div>`:''}).join('')}</div></div>`;
     }).join(''):'';
     return`<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:1rem;margin-bottom:0.75rem">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:0.75rem">
@@ -1627,7 +1628,12 @@ async function saveDraw(date){
   try{
     if(!event){const payload={id:Date.now()+Math.floor(Math.random()*9999),date,locked:false,tee_times:teeTimes};const[saved]=await sbInsert('saturday_events',payload);saturdayEvents.push(event=saved||payload);}
     else{await sbUpdate('saturday_events',event.id,{tee_times:teeTimes});event.tee_times=teeTimes;}
-    await Promise.all(signups.map(s=>sbUpdate('saturday_signups',s.id,{tee_time:s.tee_time||null,group_num:s.group_num||null})));
+    // Always derive group_num from tee_time position — never trust stale group_num in memory
+    await Promise.all(signups.map(s=>{
+      const gn=s.tee_time?Math.max(1,teeTimes.indexOf(s.tee_time)+1):null;
+      s.group_num=gn; // keep memory in sync too
+      return sbUpdate('saturday_signups',s.id,{tee_time:s.tee_time||null,group_num:gn});
+    }));
     delete pendingDraw[date];
     toast('Draw saved ✓');renderSaturdayView();renderSaturdayAdmin();
   }catch(e){alert('Error: '+e.message);}finally{setLoading(false);}
