@@ -687,7 +687,8 @@ let fineTypes=[],allFines=[];
 let saturdayEvents=[],saturdaySignups=[];
 const MOBILEPAY_FINES_URL='https://qr.mobilepay.dk/box/19b8d876-6c09-4fbd-b471-6d46df7c61e5/pay-in';
 let pendingDraw={};
-let satSignupForm=null; // date string of the Saturday currently showing the sign-up form
+let satSignupForm=null;   // date currently showing the sign-up form
+let satEditSignupForm=null; // date currently showing the edit-signup form
 let selTeeId='57',erSelTeeId='platinum',editingHcpPlayerId=null,editingRoundId=null;
 let groupPlayerIds=[],playerTees={};
 let resumingRound=null,resumeGroupPlayerIds=[],resumePlayerTees={};
@@ -1346,8 +1347,11 @@ function renderSaturdayView(){
     const playerRow=s=>{const p=allP.find(x=>x.id===s.player_id);if(!p)return'';const earlyBadge=s.early_tee_request?`<span style="font-size:0.62rem;color:#f0c060" title="${s.early_tee_reason||'Early tee requested'}">⏰</span>`:'';return`<div style="display:flex;align-items:center;gap:6px;padding:3px 0"><div style="width:18px;height:18px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.55rem;font-weight:700;color:#fff">${ini(p.name)}</div><span style="font-size:0.82rem">${p.name}</span>${earlyBadge}${s.tee_time?`<span style="font-size:0.68rem;color:#82aaf0;background:rgba(130,170,240,0.12);border-radius:4px;padding:1px 5px">${s.tee_time}</span>`:''}</div>`;};
     const myEarlyRequest=mySignup?.early_tee_request;
     const showingForm=satSignupForm===date;
+    const showingEditForm=satEditSignupForm===date;
+    const canEdit=isSignedUp&&!locked&&!teeTime&&activeId&&!showingForm&&!showingEditForm;
+    const inlineFormStyle='background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:0.75rem;margin-bottom:0.75rem';
     return`<div style="background:rgba(255,255,255,0.03);border:1px solid ${isSignedUp?'rgba(201,168,76,0.4)':'rgba(255,255,255,0.1)'};border-radius:12px;padding:1rem 1.2rem;margin-bottom:0.85rem">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:${signups.length||showingForm?'0.85rem':'0.4rem'}">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:${signups.length||showingForm||showingEditForm?'0.85rem':'0.4rem'}">
         <div>
           <div style="font-size:0.95rem;font-weight:600;color:var(--gold-l)">${dateLabel}</div>
           <div style="font-size:0.75rem;color:rgba(255,255,255,0.35);margin-top:2px">${signups.length} player${signups.length!==1?'s':''} signed up${locked?' · 🔒 Closed':''}</div>
@@ -1356,13 +1360,14 @@ function renderSaturdayView(){
         </div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
           ${!locked&&!isSignedUp&&activeId&&!showingForm?`<button class="btn btn-primary btn-sm" onclick="showSignupForm('${date}')">Sign up ✓</button>`:''}
+          ${canEdit?`<button class="btn btn-ghost btn-sm" style="font-size:0.75rem" onclick="showEditSignupForm('${date}')">✏️ Edit</button>`:''}
           ${!locked&&isSignedUp?`<button class="btn btn-ghost btn-sm" onclick="toggleSaturdaySignup('${date}')">Withdraw</button>`:''}
           ${locked&&isSignedUp?`<span style="font-size:0.8rem;color:var(--gold-l)">✓ You're in</span>`:''}
           ${locked&&!isSignedUp?`<span style="font-size:0.78rem;color:rgba(255,255,255,0.3)">Sign-ups closed</span>`:''}
           ${!activeId?`<span style="font-size:0.75rem;color:rgba(255,255,255,0.3)">Select your player to sign up</span>`:''}
         </div>
       </div>
-      ${showingForm?`<div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:0.75rem;margin-bottom:0.75rem">
+      ${showingForm?`<div style="${inlineFormStyle}">
         <label style="display:flex;align-items:center;gap:7px;font-size:0.82rem;margin-bottom:0.5rem;cursor:pointer">
           <input type="checkbox" id="earlyChk_${date}" style="accent-color:var(--gold-l);width:15px;height:15px">
           ⏰ Request early tee time
@@ -1373,12 +1378,39 @@ function renderSaturdayView(){
           <button class="btn btn-ghost btn-sm" onclick="cancelSignup()">Cancel</button>
         </div>
       </div>`:''}
+      ${showingEditForm?`<div style="${inlineFormStyle}">
+        <div style="font-size:0.72rem;color:rgba(255,255,255,0.45);margin-bottom:0.5rem">Update your early tee request</div>
+        <label style="display:flex;align-items:center;gap:7px;font-size:0.82rem;margin-bottom:0.5rem;cursor:pointer">
+          <input type="checkbox" id="editEarlyChk_${date}" style="accent-color:var(--gold-l);width:15px;height:15px" ${mySignup?.early_tee_request?'checked':''}>
+          ⏰ Request early tee time
+        </label>
+        <input type="text" id="editEarlyReason_${date}" value="${mySignup?.early_tee_reason||''}" placeholder="Reason (e.g. need to leave by 12:00)" style="width:100%;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:var(--cream);font-size:0.78rem;padding:5px 8px;outline:none;margin-bottom:0.55rem;box-sizing:border-box">
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-primary btn-sm" onclick="updateSignupEarlyTee('${date}')">Save ✓</button>
+          <button class="btn btn-ghost btn-sm" onclick="cancelEditSignup()">Cancel</button>
+        </div>
+      </div>`:''}
       ${signups.length?`<div style="display:flex;flex-direction:column;gap:2px">${signups.map(s=>playerRow(s)).join('')}</div>`:`<div style="font-size:0.78rem;color:rgba(255,255,255,0.25)">No sign-ups yet — be the first!</div>`}
     </div>`;
   }).join('');
 }
-function showSignupForm(date){satSignupForm=date;renderSaturdayView();}
+function showSignupForm(date){satSignupForm=date;satEditSignupForm=null;renderSaturdayView();}
 function cancelSignup(){satSignupForm=null;renderSaturdayView();}
+function showEditSignupForm(date){satEditSignupForm=date;satSignupForm=null;renderSaturdayView();}
+function cancelEditSignup(){satEditSignupForm=null;renderSaturdayView();}
+async function updateSignupEarlyTee(date){
+  const mySignup=saturdaySignups.find(s=>s.player_id===activeId&&s.date===date);
+  if(!mySignup)return;
+  const earlyReq=document.getElementById(`editEarlyChk_${date}`)?.checked||false;
+  const earlyReason=document.getElementById(`editEarlyReason_${date}`)?.value.trim()||null;
+  try{
+    await sbUpdate('saturday_signups',mySignup.id,{early_tee_request:earlyReq,early_tee_reason:earlyReason||null});
+    mySignup.early_tee_request=earlyReq;mySignup.early_tee_reason=earlyReason||null;
+    satEditSignupForm=null;
+    toast(earlyReq?'Early tee time requested ⏰':'Early tee request removed');
+    renderSaturdayView();renderSaturdayAdmin();
+  }catch(e){alert('Error: '+e.message);}
+}
 async function confirmSignup(date){
   if(!activeId){alert('Please select your player first.');return;}
   const event=saturdayEvents.find(e=>e.date===date);
@@ -1424,7 +1456,7 @@ function renderSaturdayAdmin(){
     const hasAlloc=signups.some(s=>s.tee_time);
     const groupBlocks=hasAlloc?Array.from({length:numGroups},(_,gi)=>{
       const gP=signups.filter(s=>s.group_num===gi+1);if(!gP.length)return'';
-      return`<div style="margin-bottom:0.5rem"><div style="font-size:0.7rem;font-weight:600;color:#82aaf0;margin-bottom:3px">Group ${gi+1} · 🕐 ${teeTimes[gi]||teeTimes[0]}</div><div style="display:flex;flex-wrap:wrap;gap:5px">${gP.map(s=>{const p=allP.find(x=>x.id===s.player_id);return p?`<div style="display:flex;align-items:center;gap:4px;font-size:0.78rem;background:rgba(130,170,240,0.1);border-radius:6px;padding:3px 8px"><div style="width:14px;height:14px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.48rem;font-weight:700;color:#fff">${ini(p.name)}</div>${p.name.split(' ')[0]}${s.early_tee_request?` <span title="${s.early_tee_reason||'Early tee'}">⏰</span>`:''}</div>`:''}).join('')}</div></div>`;
+      return`<div style="margin-bottom:0.5rem"><div style="font-size:0.7rem;font-weight:600;color:#82aaf0;margin-bottom:3px">Group ${gi+1} · 🕐 ${teeTimes[gi]||teeTimes[0]}</div><div style="display:flex;flex-wrap:wrap;gap:5px">${gP.map(s=>{const p=allP.find(x=>x.id===s.player_id);return p?`<div style="display:flex;align-items:center;gap:4px;font-size:0.78rem;background:rgba(130,170,240,0.1);border-radius:6px;padding:3px 8px"><div style="width:14px;height:14px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.48rem;font-weight:700;color:#fff">${ini(p.name)}</div>${p.name.split(' ')[0]}${s.early_tee_request?` <span title="${s.early_tee_reason||'Early tee'}">⏰</span>`:''}<select onchange="adminMoveTeeTime(${s.id},'${date}',this.value)" style="font-size:0.65rem;background:rgba(0,0,0,0.4);border:1px solid rgba(255,255,255,0.18);border-radius:4px;color:var(--cream);padding:1px 3px;cursor:pointer;margin-left:2px" onclick="event.stopPropagation()">${teeTimes.map(tt=>`<option value="${tt}" ${s.tee_time===tt?'selected':''}>${tt}</option>`).join('')}</select></div>`:''}).join('')}</div></div>`;
     }).join(''):'';
     return`<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:1rem;margin-bottom:0.75rem">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:0.75rem">
@@ -1470,6 +1502,18 @@ async function adminAddSaturdayPlayer(date){
     saturdaySignups.push(saved||payload);
     toast('Player added ✓');
     renderSaturdayAdmin();renderSaturdayView();renderTeeSheet();
+  }catch(e){alert('Error: '+e.message);}
+}
+async function adminMoveTeeTime(signupId,date,newTeeTime){
+  const event=saturdayEvents.find(e=>e.date===date);
+  const teeTimes=event?.tee_times||['08:30','08:40','08:50'];
+  const newGroupNum=teeTimes.indexOf(newTeeTime)+1||1;
+  const s=saturdaySignups.find(x=>x.id===signupId);
+  if(!s)return;
+  try{
+    await sbUpdate('saturday_signups',signupId,{tee_time:newTeeTime,group_num:newGroupNum});
+    s.tee_time=newTeeTime;s.group_num=newGroupNum;
+    renderSaturdayAdmin();renderTeeSheet();renderSaturdayView();
   }catch(e){alert('Error: '+e.message);}
 }
 function renderTeeSheet(){
