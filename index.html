@@ -1456,7 +1456,7 @@ function renderSaturdayAdmin(){
     const hasAlloc=signups.some(s=>s.tee_time);
     const groupBlocks=hasAlloc?Array.from({length:numGroups},(_,gi)=>{
       const gP=signups.filter(s=>s.group_num===gi+1);if(!gP.length)return'';
-      return`<div style="margin-bottom:0.5rem"><div style="font-size:0.7rem;font-weight:600;color:#82aaf0;margin-bottom:3px">Group ${gi+1} · 🕐 ${teeTimes[gi]||teeTimes[0]}</div><div style="display:flex;flex-wrap:wrap;gap:5px">${gP.map(s=>{const p=allP.find(x=>x.id===s.player_id);return p?`<div style="display:flex;align-items:center;gap:4px;font-size:0.78rem;background:rgba(130,170,240,0.1);border-radius:6px;padding:3px 8px"><div style="width:14px;height:14px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.48rem;font-weight:700;color:#fff">${ini(p.name)}</div>${p.name.split(' ')[0]}${s.early_tee_request?` <span title="${s.early_tee_reason||'Early tee'}">⏰</span>`:''}<select onchange="adminMoveTeeTime(${s.id},'${date}',this.value)" style="font-size:0.65rem;background:rgba(0,0,0,0.4);border:1px solid rgba(255,255,255,0.18);border-radius:4px;color:var(--cream);padding:1px 3px;cursor:pointer;margin-left:2px" onclick="event.stopPropagation()">${teeTimes.map(tt=>`<option value="${tt}" ${s.tee_time===tt?'selected':''}>${tt}</option>`).join('')}</select></div>`:''}).join('')}</div></div>`;
+      return`<div style="margin-bottom:0.5rem"><div style="font-size:0.7rem;font-weight:600;color:#82aaf0;margin-bottom:3px">Group ${gi+1} · 🕐 ${teeTimes[gi]||teeTimes[0]}</div><div style="display:flex;flex-wrap:wrap;gap:5px">${gP.map(s=>{const p=allP.find(x=>x.id===s.player_id);return p?`<div style="display:flex;align-items:center;gap:4px;font-size:0.78rem;background:rgba(130,170,240,0.1);border-radius:6px;padding:3px 8px"><div style="width:14px;height:14px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.48rem;font-weight:700;color:#fff">${ini(p.name)}</div>${p.name.split(' ')[0]}${s.early_tee_request?` <span title="${s.early_tee_reason||'Early tee'}">⏰</span>`:''}<select onchange="adminMoveTeeTime(${s.id},'${date}',this.value)" style="font-size:0.65rem;background:rgba(0,0,0,0.4);border:1px solid rgba(255,255,255,0.18);border-radius:4px;color:var(--cream);padding:1px 3px;cursor:pointer;margin-left:2px" onclick="event.stopPropagation()">${teeTimes.map(tt=>`<option value="${tt}" ${s.tee_time===tt?'selected':''}>${tt}</option>`).join('')}</select><span onclick="adminRemoveSaturdayPlayer(${s.id},'${date}')" style="color:rgba(255,100,100,0.6);cursor:pointer;font-size:1rem;line-height:1;margin-left:3px" title="Remove">×</span></div>`:''}).join('')}</div></div>`;
     }).join(''):'';
     return`<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:1rem;margin-bottom:0.75rem">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:0.75rem">
@@ -1478,15 +1478,18 @@ function renderSaturdayAdmin(){
       ${(()=>{const earlyReqs=signups.filter(s=>s.early_tee_request);return earlyReqs.length?`<div style="background:rgba(201,168,76,0.08);border:1px solid rgba(201,168,76,0.35);border-radius:8px;padding:0.6rem 0.75rem;margin-bottom:0.75rem"><div style="font-size:0.68rem;font-weight:700;color:var(--gold-l);letter-spacing:0.04em;margin-bottom:0.4rem">⏰ EARLY TEE REQUESTS (${earlyReqs.length})</div>${earlyReqs.map(s=>{const p=allP.find(x=>x.id===s.player_id);return p?`<div style="display:flex;align-items:center;gap:6px;font-size:0.8rem;padding:2px 0"><div style="width:16px;height:16px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.5rem;font-weight:700;color:#fff;flex-shrink:0">${ini(p.name)}</div><span style="font-weight:600">${p.name}</span>${s.early_tee_reason?`<span style="font-size:0.72rem;color:rgba(255,255,255,0.45)">— ${s.early_tee_reason}</span>`:''}</div>`:''}).join('')}</div>`:''})()}
       ${n?`<div style="font-size:0.7rem;color:rgba(255,255,255,0.35);margin-bottom:5px">Signed up (${n})</div>
         <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:${hasAlloc?'0.75rem':'0.65rem'}">
-          ${signups.map(s=>{const p=allP.find(x=>x.id===s.player_id);return p?`<div style="display:flex;align-items:center;gap:4px;font-size:0.78rem;background:rgba(255,255,255,0.05);border-radius:6px;padding:3px 8px"><div style="width:14px;height:14px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.48rem;font-weight:700;color:#fff">${ini(p.name)}</div>${p.name}${s.early_tee_request?` <span title="${s.early_tee_reason||'Early tee requested'}">⏰</span>`:''}</div>`:''}).join('')}
+          ${signups.map(s=>{const p=allP.find(x=>x.id===s.player_id);return p?`<div style="display:flex;align-items:center;gap:4px;font-size:0.78rem;background:rgba(255,255,255,0.05);border-radius:6px;padding:3px 8px"><div style="width:14px;height:14px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.48rem;font-weight:700;color:#fff">${ini(p.name)}</div>${p.name}${s.early_tee_request?` <span title="${s.early_tee_reason||'Early tee requested'}">⏰</span>`:''}<span onclick="adminRemoveSaturdayPlayer(${s.id},'${date}')" style="color:rgba(255,100,100,0.6);cursor:pointer;font-size:1rem;line-height:1;margin-left:3px" title="Remove">×</span></div>`:''}).join('')}
         </div>
         ${hasAlloc?`<div style="border-top:1px solid rgba(255,255,255,0.08);padding-top:0.6rem;margin-bottom:0.65rem">${groupBlocks}</div>`:''}`
       :''}
-      <div style="display:flex;gap:6px;align-items:center;border-top:1px solid rgba(255,255,255,0.06);padding-top:0.65rem">
-        <select id="satAddPlayer_${date}" style="flex:1;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:var(--cream);font-size:0.8rem;padding:5px 8px;outline:none">
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;border-top:1px solid rgba(255,255,255,0.06);padding-top:0.65rem">
+        <select id="satAddPlayer_${date}" style="flex:1;min-width:120px;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:var(--cream);font-size:0.8rem;padding:5px 8px;outline:none">
           <option value="">— Add player —</option>
           ${allP.filter(p=>!signups.find(s=>s.player_id===p.id)).map(p=>`<option value="${p.id}">${p.name}</option>`).join('')}
         </select>
+        ${hasAlloc?`<select id="satAddTeeTime_${date}" style="background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:var(--cream);font-size:0.8rem;padding:5px 8px;outline:none">
+          ${teeTimes.map(tt=>`<option value="${tt}">${tt}</option>`).join('')}
+        </select>`:''}
         <button class="btn btn-primary btn-sm" onclick="adminAddSaturdayPlayer('${date}')" style="white-space:nowrap">Add ✓</button>
       </div>
     </div>`;
@@ -1497,11 +1500,26 @@ async function adminAddSaturdayPlayer(date){
   const pid=parseInt(sel?.value);if(!pid){return;}
   const already=saturdaySignups.find(s=>s.player_id===pid&&s.date===date);
   if(already){toast('Player already signed up');return;}
+  const ttSel=document.getElementById(`satAddTeeTime_${date}`);
+  const teeTime=ttSel?.value||null;
+  const event=saturdayEvents.find(e=>e.date===date);
+  const teeTimes=event?.tee_times||['08:30','08:40','08:50'];
+  const groupNum=teeTime?(teeTimes.indexOf(teeTime)+1||1):null;
   try{
-    const payload={id:Date.now()+Math.floor(Math.random()*9999),player_id:pid,date};
+    const payload={id:Date.now()+Math.floor(Math.random()*9999),player_id:pid,date,
+      ...(teeTime?{tee_time:teeTime,group_num:groupNum}:{})};
     const[saved]=await sbInsert('saturday_signups',payload);
     saturdaySignups.push(saved||payload);
-    toast('Player added ✓');
+    toast('Player added'+(teeTime?` · ${teeTime}`:'')+' ✓');
+    renderSaturdayAdmin();renderSaturdayView();renderTeeSheet();
+  }catch(e){alert('Error: '+e.message);}
+}
+async function adminRemoveSaturdayPlayer(signupId,date){
+  if(!confirm('Remove this player from the Saturday?'))return;
+  try{
+    await sbDelete('saturday_signups',signupId);
+    saturdaySignups=saturdaySignups.filter(s=>s.id!==signupId);
+    toast('Player removed');
     renderSaturdayAdmin();renderSaturdayView();renderTeeSheet();
   }catch(e){alert('Error: '+e.message);}
 }
