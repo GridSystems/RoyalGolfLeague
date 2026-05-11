@@ -259,7 +259,7 @@ select option { background: #1a3a2a; }
       <div class="ph"><span class="pt">Round Setup — Royal Golf Club</span><span style="font-size:0.75rem;color:rgba(255,255,255,0.35)">Step 1 of 2</span></div>
       <div class="pb">
         <div class="fg" style="margin-bottom:1.2rem">
-          <div class="fgi"><label>Date</label><input type="date" id="roundDate"></div>
+          <div class="fgi"><label>Date</label><input type="date" id="roundDate" onchange="validateSaturdayDate(this)"></div>
           <div class="fgi"><label>Tee Time</label><input type="time" id="roundTeeTime" placeholder="e.g. 09:30"></div>
           <div class="fgi"><label>Notes</label><input type="text" id="roundNotes" placeholder="Weather, conditions…"></div>
         </div>
@@ -1054,7 +1054,7 @@ function heRender(){
     const totSum=aS.length?aS.reduce((a,b)=>a+b,0):'';
     const totPts=s.scores[p.id].reduce((sum,score,i)=>{if(score===null)return sum;return sum+(stablefordPts(score,HOLE_PARS[i],phcp!=null?strokesOnHole(phcp,i):0)||0);},0);
     return`<tr style="${rowBg}">
-      <td style="padding:4px 8px;font-size:0.8rem;font-weight:${isCurPlayer?'600':'500'};white-space:nowrap;border-bottom:1px solid rgba(255,255,255,0.05)">
+      <td style="padding:4px 8px;font-size:0.8rem;font-weight:${isCurPlayer?'600':'500'};white-space:nowrap;border-bottom:1px solid rgba(255,255,255,0.05);position:sticky;left:0;z-index:1;background:#1a3a2a">
         <div style="display:flex;align-items:center;gap:5px">
           <div style="width:20px;height:20px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.58rem;font-weight:700;color:#fff;flex-shrink:0">${ini(p.name)}</div>
           <span>${p.name.split(' ')[0]}</span>${teeDot}${phcp!=null?`<span style="font-size:0.68rem;color:rgba(255,255,255,0.4);margin-left:2px">(${phcp})</span>`:''}
@@ -1064,7 +1064,7 @@ function heRender(){
       <td style="${TD}${SEP}font-weight:600;color:rgba(255,255,255,0.55)">${outSum}</td>
       ${B.map(h=>scoreTD(h)).join('')}
       <td style="${TD}${SEP}font-weight:600;color:rgba(255,255,255,0.55)">${inSum}</td>
-      <td style="${TD}${SEP}font-weight:700;color:var(--gold-l)">${totSum}${totPts?`<div style="font-size:0.62rem;color:#82aaf0;line-height:1.2">${totPts}pts</div>`:''}</td>
+      <td style="${TD}${SEP}font-weight:700;color:var(--gold-l);position:sticky;right:0;z-index:1;background:#1a3a2a">${totSum}${totPts?`<div style="font-size:0.62rem;color:#82aaf0;line-height:1.2">${totPts}pts</div>`:''}</td>
     </tr>`;
   }).join('');
 
@@ -1087,28 +1087,28 @@ function heRender(){
       <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -4px">
         <table style="border-collapse:collapse;white-space:nowrap;width:100%">
           <thead><tr>
-            <th style="${TH}text-align:left;min-width:80px;padding-left:8px">Hole</th>
+            <th style="${TH}text-align:left;min-width:80px;padding-left:8px;position:sticky;left:0;z-index:3;background:#1a3a2a">Hole</th>
             ${F.map(hTH).join('')}
             <th style="${TH}${SEP}">Out</th>
             ${B.map(hTH).join('')}
             <th style="${TH}${SEP}">In</th>
-            <th style="${TH}${SEP}">Tot</th>
+            <th style="${TH}${SEP}position:sticky;right:0;z-index:3;background:#1a3a2a">Tot</th>
           </tr></thead>
           <tbody>
             <tr>
-              <td style="${TD}text-align:left;padding-left:8px;color:rgba(255,255,255,0.3);font-size:0.67rem">Dist</td>
+              <td style="${TD}text-align:left;padding-left:8px;color:rgba(255,255,255,0.3);font-size:0.67rem;position:sticky;left:0;z-index:1;background:#1a3a2a">Dist</td>
               ${F.map(distTD).join('')}<td style="${TD}${SEP}color:rgba(255,255,255,0.2)">—</td>
               ${B.map(distTD).join('')}<td style="${TD}${SEP}color:rgba(255,255,255,0.2)">—</td>
               <td style="${TD}${SEP}color:rgba(255,255,255,0.2)">—</td>
             </tr>
             <tr>
-              <td style="${TD}text-align:left;padding-left:8px;color:rgba(255,255,255,0.3);font-size:0.67rem">SI</td>
+              <td style="${TD}text-align:left;padding-left:8px;color:rgba(255,255,255,0.3);font-size:0.67rem;position:sticky;left:0;z-index:1;background:#1a3a2a">SI</td>
               ${F.map(siTD).join('')}<td style="${TD}${SEP}color:rgba(255,255,255,0.2)">—</td>
               ${B.map(siTD).join('')}<td style="${TD}${SEP}color:rgba(255,255,255,0.2)">—</td>
               <td style="${TD}${SEP}color:rgba(255,255,255,0.2)">—</td>
             </tr>
             <tr style="border-bottom:2px solid rgba(255,255,255,0.1)">
-              <td style="${TD}text-align:left;padding-left:8px;font-weight:600;color:rgba(255,255,255,0.6)">Par</td>
+              <td style="${TD}text-align:left;padding-left:8px;font-weight:600;color:rgba(255,255,255,0.6);position:sticky;left:0;z-index:1;background:#1a3a2a">Par</td>
               ${F.map(parTD).join('')}<td style="${TD}${SEP}font-weight:600;color:rgba(255,255,255,0.6)">${outPar}</td>
               ${B.map(parTD).join('')}<td style="${TD}${SEP}font-weight:600;color:rgba(255,255,255,0.6)">${inPar}</td>
               <td style="${TD}${SEP}font-weight:700;color:rgba(255,255,255,0.65)">${outPar+inPar}</td>
@@ -1124,9 +1124,9 @@ function heRender(){
     const inp=document.getElementById(`he_${p.id}`);
     if(!inp)return;
     inp.addEventListener('input',()=>heUpdateScore(p.id,pidx));
-    inp.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();heEnter(pidx);}});
+    inp.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();e.stopPropagation();heEnter(pidx);}});
   });
-  setTimeout(()=>{const inp=document.getElementById(`he_${s.playerList[s.currentPidx]?.p.id}`);if(inp){inp.focus();inp.select();}},50);
+  setTimeout(()=>{const inp=document.getElementById(`he_${s.playerList[s.currentPidx]?.p.id}`);if(inp){inp.focus();inp.select();inp.scrollIntoView({block:'nearest',inline:'center',behavior:'instant'});}},50);
 }
 
 function heUpdateScore(pid,pidx){
@@ -1594,6 +1594,23 @@ function renderTeeSheet(){
     </div>`;
   }).join('');
 }
+// ── Date helpers ─────────────────────────────────────────────────────────────
+function lastSaturday(){
+  const d=new Date();
+  const day=d.getDay(); // 0=Sun … 6=Sat
+  const daysBack=day===6?0:(day===0?1:day+1);
+  d.setDate(d.getDate()-daysBack);
+  return d.toISOString().split('T')[0];
+}
+function validateSaturdayDate(inp){
+  if(!inp.value)return;
+  const d=new Date(inp.value+'T00:00:00');
+  if(d.getDay()!==6){
+    alert('Rounds must be on a Saturday — please select a Saturday.');
+    inp.value='';
+  }
+}
+
 function generateDraw(date){
   const signups=saturdaySignups.filter(s=>s.date===date);
   const n=signups.length;if(!n){alert('No sign-ups to allocate.');return;}
@@ -1891,10 +1908,10 @@ function renderDreamCard(){
   const sr=allRounds.filter(r=>r.date.startsWith(season));
   const F=[0,1,2,3,4,5,6,7,8],B=[9,10,11,12,13,14,15,16,17];
   const pF=HOLE_PARS.slice(0,9).reduce((a,b)=>a+b,0),pB=HOLE_PARS.slice(9).reduce((a,b)=>a+b,0);
-  const playerEclectics=players.map(p=>{const pr=sr.filter(r=>r.player_id===p.id);if(!pr.length)return null;const bestPerHole=Array.from({length:18},(_,hi)=>{let best=null;for(const r of pr){const h=r.holes[hi];if(!h||h.score==null)continue;const tee=getTee(r.tee_id||'platinum');const index=hcpOnDate(p,r.date);if(index==null)continue;const phcp=calcPlayingHcp(index,tee);const str=strokesOnHole(phcp,hi);const nett=h.score-str;const pts=stablefordPts(h.score,h.par,str);if(best===null||nett<best.nett||(nett===best.nett&&(pts||0)>(best.pts||0)))best={nett,gross:h.score,pts:pts||0,str,par:HOLE_PARS[hi],date:r.date};}return best;});const filled=bestPerHole.filter(Boolean).length;const fN=F.reduce((s,i)=>s+(bestPerHole[i]?.nett??0),0),bN=B.reduce((s,i)=>s+(bestPerHole[i]?.nett??0),0);const fP=F.reduce((s,i)=>s+(bestPerHole[i]?.pts??0),0),bP=B.reduce((s,i)=>s+(bestPerHole[i]?.pts??0),0);const fF=F.filter(i=>bestPerHole[i]).length,bF=B.filter(i=>bestPerHole[i]).length;return{p,bestPerHole,filled,fN,bN,fP,bP,fF,bF,totalNett:fN+bN,totalPts:fP+bP};}).filter(Boolean).sort((a,b)=>{if(a.filled===0&&b.filled===0)return 0;if(a.filled===0)return 1;if(b.filled===0)return -1;return a.totalNett!==b.totalNett?a.totalNett-b.totalNett:b.totalPts-a.totalPts;});
+  const playerEclectics=players.map(p=>{const pr=sr.filter(r=>r.player_id===p.id);if(!pr.length)return null;const bestPerHole=Array.from({length:18},(_,hi)=>{let best=null;for(const r of pr){const h=r.holes[hi];if(!h||h.score==null)continue;const tee=getTee(r.tee_id||'platinum');const index=hcpOnDate(p,r.date);if(index==null)continue;const phcp=calcPlayingHcp(index,tee);const str=strokesOnHole(phcp,hi);const nett=h.score-str;const pts=stablefordPts(h.score,h.par,str);if(best===null||nett<best.nett||(nett===best.nett&&(pts||0)>(best.pts||0)))best={nett,gross:h.score,pts:pts||0,str,par:HOLE_PARS[hi],date:r.date};}return best;});const filled=bestPerHole.filter(Boolean).length;const fN=F.reduce((s,i)=>s+(bestPerHole[i]?.nett??0),0),bN=B.reduce((s,i)=>s+(bestPerHole[i]?.nett??0),0);const fP=F.reduce((s,i)=>s+(bestPerHole[i]?.pts??0),0),bP=B.reduce((s,i)=>s+(bestPerHole[i]?.pts??0),0);const fF=F.filter(i=>bestPerHole[i]).length,bF=B.filter(i=>bestPerHole[i]).length;return{p,bestPerHole,filled,fN,bN,fP,bP,fF,bF,totalNett:fN+bN,totalPts:fP+bP,completedPar:bestPerHole.reduce((s,b)=>s+(b?b.par:0),0)};}).filter(Boolean).sort((a,b)=>{if(a.filled===0&&b.filled===0)return 0;if(a.filled===0)return 1;if(b.filled===0)return -1;return a.totalNett!==b.totalNett?a.totalNett-b.totalNett:b.totalPts-a.totalPts;});
   if(!playerEclectics.length){document.getElementById('eclecticRankings').innerHTML='<div class="empty">No rounds for '+season+' yet.</div>';document.getElementById('eclecticScorecards').innerHTML='';return;}
-  document.getElementById('eclecticRankings').innerHTML=`<div class="rt-wrap"><table class="rt"><thead><tr><th></th><th>Player</th><th>Holes</th><th>HCP</th><th>Nett Out</th><th>Nett In</th><th style="color:var(--gold-l)">Eclectic Total</th><th style="color:#82aaf0">Total Pts</th></tr></thead><tbody>${playerEclectics.map((e,i)=>{const rc=i===0?'rank gold':i===1?'rank silver':i===2?'rank bronze':'rank';const med=i===0?'1st':i===1?'2nd':i===2?'3rd':`${i+1}th`;const hcp=currentHcp(e.p);const nd=e.totalNett-(pF+pB);return`<tr><td class="${rc}">${med}</td><td><div style="display:flex;align-items:center;gap:8px"><div class="av" style="background:${clr(e.p)}">${ini(e.p.name)}</div>${e.p.name}</div></td><td style="font-family:'DM Mono',monospace">${e.filled}<span style="color:rgba(255,255,255,0.3)">/18</span></td><td style="font-family:'DM Mono',monospace;color:rgba(255,255,255,0.5)">${hcp!=null?hcp:'—'}</td><td style="font-family:'DM Mono',monospace">${e.fF?e.fN:'—'}</td><td style="font-family:'DM Mono',monospace">${e.bF?e.bN:'—'}</td><td><span style="font-family:'DM Mono',monospace;font-weight:700;font-size:1.05rem;color:var(--gold-l)">${e.filled?e.totalNett:'—'}</span>${e.filled?`<span style="font-size:0.72rem;color:${vpC(nd)};margin-left:5px">(${ds(nd)})</span>`:''}</td><td style="font-family:'DM Mono',monospace;font-weight:600;color:#82aaf0">${e.filled?e.totalPts:'—'}</td></tr>`;}).join('')}</tbody></table></div>`;
-  document.getElementById('eclecticScorecards').innerHTML=playerEclectics.map((e,rank)=>{function hc(i){const b=e.bestPerHole[i];if(!b)return`<td style="color:rgba(255,255,255,0.2)">—</td>`;const diff=b.nett-b.par;return`<td title="${fd(b.date)} · Gross ${b.gross}${b.str?' −'+b.str:''} = Nett ${b.nett} (${b.pts}pts)" style="font-family:'DM Mono',monospace;font-size:0.88rem;font-weight:600;color:${vpC(diff)};cursor:default">${b.nett}</td>`;}function pc(i){const b=e.bestPerHole[i];if(!b)return`<td style="color:rgba(255,255,255,0.2)">—</td>`;return`<td style="font-family:'DM Mono',monospace;font-size:0.78rem;font-weight:500;color:${ptC(b.pts)}">${b.pts}</td>`;}const nd=e.totalNett-(pF+pB);const mc=rank===0?'#ffd700':rank===1?'#c0c0c0':rank===2?'#cd7f32':'rgba(255,255,255,0.3)';const isMe=e.p.id===activeId;return`<div id="eclectic_${e.p.id}" style="margin-top:1.2rem;padding-top:1.2rem;border-top:2px solid ${isMe?clr(e.p):'rgba(255,255,255,0.06)'};${isMe?'border-radius:0 0 8px 8px;background:rgba(255,255,255,0.02);padding:1rem;':''}"><div style="display:flex;align-items:center;gap:10px;margin-bottom:0.75rem;flex-wrap:wrap"><div style="font-size:0.82rem;font-weight:600;color:${mc};font-family:'DM Mono',monospace;min-width:28px">${rank+1}.</div><div class="av" style="background:${clr(e.p)}">${ini(e.p.name)}</div><span style="font-weight:500;font-size:0.92rem">${e.p.name}</span>${isMe?`<span style="font-size:0.68rem;background:rgba(255,255,255,0.1);padding:2px 8px;border-radius:10px;color:rgba(255,255,255,0.5)">You</span>`:''}<span style="font-size:0.75rem;color:rgba(255,255,255,0.38)">${e.filled}/18 holes</span><span style="margin-left:auto;font-family:'DM Mono',monospace;font-size:0.82rem">Nett <strong style="color:var(--gold-l)">${e.filled?e.totalNett:'—'}</strong>${e.filled?`<span style="color:${vpC(nd)};font-size:0.75rem"> ${ds(nd)}</span>`:''} &nbsp;·&nbsp; Pts <strong style="color:#82aaf0">${e.filled?e.totalPts:'—'}</strong></span></div><div class="scorecard-wrap"><table class="sc-table" style="min-width:600px"><thead><tr><th class="left">Hole</th>${F.map(i=>`<th>${i+1}</th>`).join('')}<th>Out</th><th class="sep"></th>${B.map(i=>`<th>${i+1}</th>`).join('')}<th>In</th><th>Total</th></tr></thead><tbody><tr><td class="left muted">Par</td>${F.map(i=>`<td class="mono muted">${HOLE_PARS[i]}</td>`).join('')}<td class="tot mono muted">${pF}</td><td class="sep"></td>${B.map(i=>`<td class="mono muted">${HOLE_PARS[i]}</td>`).join('')}<td class="tot mono muted">${pB}</td><td class="tot mono muted">${pF+pB}</td></tr><tr><td class="left muted">SI</td>${F.map(i=>`<td style="font-size:0.67rem;color:rgba(255,255,255,0.27)">${HOLE_HCP[i]}</td>`).join('')}<td class="tot"></td><td class="sep"></td>${B.map(i=>`<td style="font-size:0.67rem;color:rgba(255,255,255,0.27)">${HOLE_HCP[i]}</td>`).join('')}<td class="tot"></td><td class="tot"></td></tr><tr><td class="left" style="font-weight:500;color:var(--gold-l);font-size:0.78rem">Best Nett</td>${F.map(i=>hc(i)).join('')}<td class="tot" style="font-family:'DM Mono',monospace;font-weight:600;color:${e.fF?vpC(e.fN-pF):'rgba(255,255,255,0.3)'}">${e.fF?e.fN:'—'}</td><td class="sep"></td>${B.map(i=>hc(i)).join('')}<td class="tot" style="font-family:'DM Mono',monospace;font-weight:600;color:${e.bF?vpC(e.bN-pB):'rgba(255,255,255,0.3)'}">${e.bF?e.bN:'—'}</td><td class="tot" style="font-family:'DM Mono',monospace;font-weight:700;color:${e.filled?vpC(nd):'rgba(255,255,255,0.3)'}">${e.filled?e.totalNett:'—'}</td></tr><tr><td class="left" style="color:#82aaf0;font-size:0.78rem">Points</td>${F.map(i=>pc(i)).join('')}<td class="tot" style="color:#82aaf0;font-weight:600">${e.fF?e.fP:'—'}</td><td class="sep"></td>${B.map(i=>pc(i)).join('')}<td class="tot" style="color:#82aaf0;font-weight:600">${e.bF?e.bP:'—'}</td><td class="tot" style="color:#82aaf0;font-weight:700">${e.filled?e.totalPts:'—'}</td></tr></tbody></table></div>`;}).join('');
+  document.getElementById('eclecticRankings').innerHTML=`<div class="rt-wrap"><table class="rt"><thead><tr><th></th><th>Player</th><th>Holes</th><th>HCP</th><th>Nett Out</th><th>Nett In</th><th style="color:var(--gold-l)">Eclectic Total</th><th style="color:#82aaf0">Total Pts</th></tr></thead><tbody>${playerEclectics.map((e,i)=>{const rc=i===0?'rank gold':i===1?'rank silver':i===2?'rank bronze':'rank';const med=i===0?'1st':i===1?'2nd':i===2?'3rd':`${i+1}th`;const hcp=currentHcp(e.p);const nd=e.totalNett-e.completedPar;return`<tr><td class="${rc}">${med}</td><td><div style="display:flex;align-items:center;gap:8px"><div class="av" style="background:${clr(e.p)}">${ini(e.p.name)}</div>${e.p.name}</div></td><td style="font-family:'DM Mono',monospace">${e.filled}<span style="color:rgba(255,255,255,0.3)">/18</span></td><td style="font-family:'DM Mono',monospace;color:rgba(255,255,255,0.5)">${hcp!=null?hcp:'—'}</td><td style="font-family:'DM Mono',monospace">${e.fF?e.fN:'—'}</td><td style="font-family:'DM Mono',monospace">${e.bF?e.bN:'—'}</td><td><span style="font-family:'DM Mono',monospace;font-weight:700;font-size:1.05rem;color:var(--gold-l)">${e.filled?e.totalNett:'—'}</span>${e.filled?`<span style="font-size:0.72rem;color:${vpC(nd)};margin-left:5px">(${ds(nd)})</span>`:''}</td><td style="font-family:'DM Mono',monospace;font-weight:600;color:#82aaf0">${e.filled?e.totalPts:'—'}</td></tr>`;}).join('')}</tbody></table></div>`;
+  document.getElementById('eclecticScorecards').innerHTML=`<div class="scorecard-wrap" style="margin-top:1.5rem"><div style="font-size:0.65rem;text-transform:uppercase;letter-spacing:0.08em;color:rgba(255,255,255,0.3);margin-bottom:0.5rem;padding-left:2px">Best nett per hole — hover a score for details</div><table class="sc-table" style="min-width:700px"><thead><tr><th class="left" style="min-width:100px">Player</th>${F.map(i=>`<th>${i+1}</th>`).join('')}<th class="tot">Out</th><th class="sep"></th>${B.map(i=>`<th>${i+1}</th>`).join('')}<th class="tot">In</th><th class="tot" style="color:var(--gold-l)">Tot</th><th class="tot" style="color:#82aaf0">Pts</th></tr></thead><tbody><tr><td class="left muted" style="font-size:0.7rem">Par</td>${F.map(i=>`<td class="mono muted" style="font-size:0.7rem">${HOLE_PARS[i]}</td>`).join('')}<td class="tot mono muted" style="font-size:0.7rem">${pF}</td><td class="sep"></td>${B.map(i=>`<td class="mono muted" style="font-size:0.7rem">${HOLE_PARS[i]}</td>`).join('')}<td class="tot mono muted" style="font-size:0.7rem">${pB}</td><td class="tot mono muted" style="font-size:0.7rem">${pF+pB}</td><td></td></tr>${playerEclectics.map((e,rank)=>{const mc=rank===0?'#ffd700':rank===1?'#c0c0c0':rank===2?'#cd7f32':'rgba(255,255,255,0.55)';const isMe=e.p.id===activeId;const nd=e.totalNett-e.completedPar;const cs="font-family:'DM Mono',monospace;font-size:0.8rem;font-weight:600;cursor:default;";const hc=ii=>{const b=e.bestPerHole[ii];if(!b)return'<td style="color:rgba(255,255,255,0.18);font-size:0.75rem">—</td>';const diff=b.nett-b.par;return `<td id="eclectic_${e.p.id}_${ii}" title="${fd(b.date)} · Gross ${b.gross}${b.str?' −'+b.str:''} = Nett ${b.nett} (${b.pts}pts)" style="${cs}color:${vpC(diff)}">${b.nett}</td>`;};return `<tr id="eclectic_${e.p.id}" style="${isMe?'background:rgba(201,168,76,0.05)':''}"><td class="left" style="min-width:100px"><div style="display:flex;align-items:center;gap:5px"><span style="font-family:'DM Mono',monospace;font-size:0.62rem;color:${mc};min-width:18px;flex-shrink:0">${rank+1}.</span><div class="av" style="width:20px;height:20px;font-size:0.58rem;flex-shrink:0;background:${clr(e.p)}">${ini(e.p.name)}</div><span style="font-size:0.8rem;font-weight:${isMe?600:500};white-space:nowrap">${e.p.name.split(' ')[0]}</span>${isMe?'<span style="font-size:0.6rem;color:rgba(255,255,255,0.35);margin-left:2px">(you)</span>':''}</div></td>${F.map(hc).join('')}<td class="tot" style="${cs}color:${e.fF?vpC(e.fN-pF):'rgba(255,255,255,0.25)'}">${e.fF?e.fN:'—'}</td><td class="sep"></td>${B.map(hc).join('')}<td class="tot" style="${cs}color:${e.bF?vpC(e.bN-pB):'rgba(255,255,255,0.25)'}">${e.bF?e.bN:'—'}</td><td class="tot" style="${cs}font-weight:700;color:${e.filled?vpC(nd):'rgba(255,255,255,0.25)'}">${e.filled?`${e.totalNett}<div style="font-size:0.62rem;color:${vpC(nd)};line-height:1.2">${ds(nd)}</div>`:'—'}</td><td class="tot" style="${cs}color:#82aaf0">${e.filled?e.totalPts:'—'}</td></tr>`;}).join('')}</tbody></table></div>`;
   // Show My Card button if player is in the eclectic
   const myBtn=document.getElementById('myEclecticBtn');
   if(myBtn) myBtn.style.display=playerEclectics.some(e=>e.p.id===activeId)?'inline-block':'none';
@@ -1932,7 +1949,7 @@ function renderMyDreamCard(){
   const fN=F.reduce((s,i)=>s+(bestPerHole[i]?.nett??0),0),bN=B.reduce((s,i)=>s+(bestPerHole[i]?.nett??0),0);
   const fP=F.reduce((s,i)=>s+(bestPerHole[i]?.pts??0),0),bP=B.reduce((s,i)=>s+(bestPerHole[i]?.pts??0),0);
   const fF=F.filter(i=>bestPerHole[i]).length,bF=B.filter(i=>bestPerHole[i]).length;
-  const totalNett=fN+bN,totalPts=fP+bP,nd=totalNett-(pF+pB);
+  const totalNett=fN+bN,totalPts=fP+bP,completedPar=bestPerHole.reduce((s,b)=>s+(b?b.par:0),0),nd=totalNett-completedPar;
   function hc(i){const b=bestPerHole[i];if(!b)return`<td style="color:rgba(255,255,255,0.2)">—</td>`;const diff=b.nett-b.par;return`<td title="${fd(b.date)} · Gross ${b.gross}${b.str?' −'+b.str:''} = Nett ${b.nett} (${b.pts}pts)" style="font-family:'DM Mono',monospace;font-size:0.88rem;font-weight:600;color:${vpC(diff)};cursor:default">${b.nett}</td>`;}
   function pc(i){const b=bestPerHole[i];if(!b)return`<td style="color:rgba(255,255,255,0.2)">—</td>`;return`<td style="font-family:'DM Mono',monospace;font-size:0.78rem;font-weight:500;color:${ptC(b.pts)}">${b.pts}</td>`;}
   body.innerHTML=`<div style="padding:1rem 1.25rem">
@@ -2284,7 +2301,7 @@ async function deleteRoundAdmin(){
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 async function init(){
-  document.getElementById('roundDate').value=today();
+  document.getElementById('roundDate').value=lastSaturday();
   buildTeeSelectorEl('teeSelector',selTeeId,'selTeeId');
   try{
     await loadData();
