@@ -855,7 +855,7 @@ function showView(id,btn){
   if(id==='teesheet')renderTeeSheet();
 }
 function renderRules(){
-  const approved=players.filter(p=>p.approved!==false).length;
+  const approved=players.filter(p=>p.approved!==false&&!p.is_social).length;
   const total=approved*250;
   const perComp=Math.floor(total/2);
   const el=document.getElementById('rulesPot');
