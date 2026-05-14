@@ -856,8 +856,10 @@ function showView(id,btn){
 }
 function renderRules(){
   const approved=players.filter(p=>p.approved!==false&&!p.is_social).length;
-  const total=approved*250;
-  const perComp=Math.floor(total/2);
+  const gross=approved*250;
+  const mpFee=Math.floor(gross/1000)*19;
+  const net=gross-mpFee;
+  const perComp=Math.floor(net/2);
   const el=document.getElementById('rulesPot');
   if(el)el.innerHTML=`
     <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:0.5rem;text-align:center">
@@ -870,7 +872,7 @@ function renderRules(){
         <div style="font-family:'DM Mono',monospace;font-size:1.2rem;color:var(--gold-l);font-weight:600">DKK ${perComp}</div>
       </div>
     </div>
-    <p style="font-size:0.75rem;color:rgba(255,255,255,0.3)">DKK 250 per player · ${approved} player${approved!==1?'s':''} · Total pot DKK ${total} · Split 50/50 before MobilePay fees</p>`;
+    <p style="font-size:0.75rem;color:rgba(255,255,255,0.3)">DKK 250 × ${approved} player${approved!==1?'s':''} = DKK ${gross}${mpFee?` · MobilePay −DKK ${mpFee} (${Math.floor(gross/1000)}×DKK 19)`:''} · Net DKK ${net} · Split 50/50</p>`;
 }
 function showLb(id,btn){document.querySelectorAll('.lb-view').forEach(v=>v.classList.remove('active'));document.querySelectorAll('.sub-tab').forEach(t=>t.classList.remove('active'));document.getElementById('lb-'+id).classList.add('active');if(btn)btn.classList.add('active');if(id==='today')renderTodayLb();if(id==='season')renderSeasonLb();if(id==='dreamcard'){renderDreamCard();}if(id==='fines')renderFinesLb();if(id==='saturday')renderSaturdayView();}
 
