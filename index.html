@@ -1135,6 +1135,30 @@ async function recordShot(type){
     alert('Could not record shot: '+e.message);
   }finally{setLoading(false);}
 }
+async function resolveProvisional(action){
+  if(!GR||!GR.provisionalShotId)return;
+  setLoading(true,'Updating…');
+  try{
+    if(action==='found'){
+      await sbDelete('gps_shots',GR.provisionalShotId);
+      GR.shots=GR.shots.filter(s=>s.id!==GR.provisionalShotId);
+    } else {
+      await sbUpdate('gps_shots',GR.provisionalShotId,{type:'normal'});
+      const s=GR.shots.find(x=>x.id===GR.provisionalShotId);
+      if(s)s.type='normal';
+    }
+    GR.provisionalShotId=null;
+    renderGpsHole();
+  }catch(e){alert('Error: '+e.message);}
+  finally{setLoading(false);}
+}
+function abandonGpsRound(){
+  if(!confirm('Abandon GPS tracking for this round? Shots recorded so far are kept in the database.'))return;
+  if(GR?.map){GR.map.remove();}
+  if(weatherInterval){clearInterval(weatherInterval);weatherInterval=null;}
+  GR=null;
+  renderGpsStart();
+}
 function renderTrackView(){
   const el=document.getElementById('trackContent');
   if(!el)return;
