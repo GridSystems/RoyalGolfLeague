@@ -1240,7 +1240,8 @@ function finishGpsRound(){
         }
       }
       heRender();
-      toast(`${holesRecorded} hole scores pre-filled from GPS round ✓`);
+      hePatchAll().then(()=>toast(`${holesRecorded} hole scores saved from GPS round ✓`))
+        .catch(()=>toast(`${holesRecorded} hole scores pre-filled — tap ✓ to save`));
     } else {
       toast(`${holesRecorded} GPS scores saved — start a round above, then enter scores manually`);
     }
