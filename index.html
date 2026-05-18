@@ -994,6 +994,111 @@ async function startGpsRound(){
     alert('Could not get GPS location. Please allow location access and try again.');
   }finally{setLoading(false);}
 }
+function renderClubPicker(player){
+  const bag=(player?.bag&&player.bag.length)?player.bag:['Driver'];
+  return bag.map(c=>`<button class="club-btn${GR.selectedClub===c?' selected':''}" onclick="selectGpsClub('${c.replace(/'/g,"\\'")}',this)">${c}</button>`).join('');
+}
+function selectGpsClub(club,el){
+  GR.selectedClub=club;
+  document.querySelectorAll('.club-btn').forEach(b=>b.classList.remove('selected'));
+  el.classList.add('selected');
+}
+const GPS_WEIGHTS=[{v:'full',l:'Full'},{v:'3/4',l:'¾'},{v:'1/2',l:'½'},{v:'chip',l:'Chip'},{v:'putt',l:'Putt'}];
+function renderWeightPicker(){
+  return GPS_WEIGHTS.map(w=>`<button class="weight-btn${GR.selectedWeight===w.v?' selected':''}" onclick="selectGpsWeight('${w.v}',this)">${w.l}</button>`).join('');
+}
+function selectGpsWeight(weight,el){
+  GR.selectedWeight=weight;
+  document.querySelectorAll('.weight-btn').forEach(b=>b.classList.remove('selected'));
+  el.classList.add('selected');
+}
+function renderGpsHole(){
+  const el=document.getElementById('trackContent');
+  const p=players.find(x=>x.id===activeId);
+  const holeShots=GR.shots.filter(s=>s.hole===GR.currentHole);
+  const shotCount=holeShots.length;
+  const par=HOLE_PARS[GR.currentHole-1];
+  const hasProvisional=GR.provisionalShotId!=null;
+  el.innerHTML=`
+    <div style="background:rgba(0,0,0,0.3);border:1px solid var(--border);border-radius:14px;overflow:hidden">
+      <div class="gps-hole-header">
+        <div>
+          <div style="font-family:'Playfair Display',serif;color:var(--gold-l);font-size:1.1rem">Hole ${GR.currentHole}</div>
+          <div style="font-size:0.72rem;color:rgba(255,255,255,0.4)">Par ${par} · SI ${HOLE_HCP[GR.currentHole-1]} · Shot ${shotCount+1}</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="confirmEndHole()">End Hole →</button>
+      </div>
+      <div id="gpsMap"></div>
+      <div class="club-picker" id="clubPicker">${renderClubPicker(p)}</div>
+      <div class="weight-picker" id="weightPicker">${renderWeightPicker()}</div>
+      <div class="gps-actions">
+        <button class="btn-hit" onclick="recordShot('normal')">🎯 Hit</button>
+        <button class="btn-shot-type" onclick="recordShot('drop')">⬇ Drop</button>
+        <button class="btn-shot-type" onclick="recordShot('replay')">↩ Replay</button>
+        <button class="btn-shot-type provisional" onclick="recordShot('provisional')">P Provisional</button>
+        ${hasProvisional?`
+        <button class="btn-shot-type" style="color:#7fcc9e;border-color:rgba(127,204,158,0.4)" onclick="resolveProvisional('found')">✓ Found Original</button>
+        <button class="btn-shot-type" style="color:#f0c060;border-color:rgba(240,192,96,0.4)" onclick="resolveProvisional('inplay')">▶ Provisional In Play</button>`:''}
+      </div>
+      <div style="padding:0.5rem 1rem;display:flex;gap:8px;justify-content:flex-end;border-top:1px solid var(--border)">
+        <button class="btn btn-ghost btn-sm" onclick="abandonGpsRound()">Abandon</button>
+        <button class="btn btn-primary btn-sm" onclick="finishGpsRound()">Finish Round</button>
+      </div>
+    </div>`;
+  initGpsMap(holeShots);
+}
+function initGpsMap(holeShots){
+  if(GR.map){GR.map.remove();GR.map=null;GR.markers=[];GR.polylines=[];}
+  const mapEl=document.getElementById('gpsMap');
+  if(!mapEl)return;
+  const defaultLat=55.68,defaultLng=12.56;
+  GR.map=L.map('gpsMap',{zoomControl:true,attributionControl:false}).setView([defaultLat,defaultLng],17);
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{
+    maxZoom:20,attribution:'Tiles © Esri'
+  }).addTo(GR.map);
+  navigator.geolocation.getCurrentPosition(pos=>{
+    if(GR.map)GR.map.setView([pos.coords.latitude,pos.coords.longitude],18);
+  },{},{enableHighAccuracy:true,timeout:5000});
+  drawShotMap(holeShots);
+}
+function drawShotMap(holeShots){
+  if(!GR.map)return;
+  GR.markers.forEach(m=>m.remove());GR.markers=[];
+  GR.polylines.forEach(l=>l.remove());GR.polylines=[];
+  const gpsShots=holeShots.filter(s=>s.lat!=null&&s.lng!=null);
+  gpsShots.forEach((shot,idx)=>{
+    const isProvisional=shot.type==='provisional';
+    const isDrop=shot.type==='drop';
+    const isReplay=shot.type==='replay';
+    const isCurrentProvisional=shot.id===GR.provisionalShotId;
+    const color=isCurrentProvisional?'#f0c060':isProvisional?'#f0c060':isDrop?'#f08080':isReplay?'#82aaf0':'#ffd700';
+    const icon=L.divIcon({
+      className:'',
+      html:`<div style="width:24px;height:24px;border-radius:50%;background:${color};color:#1a3a2a;display:flex;align-items:center;justify-content:center;font-size:0.65rem;font-weight:700;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.5)">${shot.shot_num}</div>`,
+      iconSize:[24,24],iconAnchor:[12,12]
+    });
+    const label=isDrop?' ⬇':isReplay?' ↩':isProvisional?' P':'';
+    const distLabel=idx>0&&!isDrop?` ${gpsShots[idx-1]?haversineM(gpsShots[idx-1].lat,gpsShots[idx-1].lng,shot.lat,shot.lng)+'m':''}`:' Drop';
+    const m=L.marker([shot.lat,shot.lng],{icon})
+      .bindTooltip(`${shot.shot_num}${label}${idx>0?distLabel:''}`,{permanent:false,direction:'top'})
+      .addTo(GR.map);
+    GR.markers.push(m);
+    if(idx>0&&!isDrop){
+      const prev=gpsShots[idx-1];
+      const line=L.polyline([[prev.lat,prev.lng],[shot.lat,shot.lng]],{
+        color:isProvisional?'#f0c060':'rgba(255,215,0,0.7)',
+        weight:2,
+        dashArray:isProvisional?'6,4':null
+      }).addTo(GR.map);
+      GR.polylines.push(line);
+    }
+  });
+  if(gpsShots.length>=2){
+    GR.map.fitBounds(gpsShots.map(s=>[s.lat,s.lng]),{padding:[30,30]});
+  } else if(gpsShots.length===1){
+    GR.map.setView([gpsShots[0].lat,gpsShots[0].lng],18);
+  }
+}
 function renderTrackView(){
   const el=document.getElementById('trackContent');
   if(!el)return;
