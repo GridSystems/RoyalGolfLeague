@@ -933,6 +933,67 @@ function startWeatherRefresh(lat,lng){
   fetchWeather(lat,lng);
   weatherInterval=setInterval(()=>fetchWeather(lat,lng),15*60*1000);
 }
+let gpsTeeId='platinum';
+function selectGpsTee(id,el){
+  gpsTeeId=id;
+  document.querySelectorAll('#gpsTeeSelect .tee-opt').forEach(o=>o.classList.remove('selected'));
+  el.classList.add('selected');
+}
+function renderGpsStart(){
+  const el=document.getElementById('trackContent');
+  const p=players.find(x=>x.id===activeId);
+  if(!p){el.innerHTML='<div class="empty">Select your player first.</div>';return;}
+  el.innerHTML=`
+    <div class="panel">
+      <div class="ph"><span class="pt">Track Round</span></div>
+      <div class="pb" style="display:flex;flex-direction:column;gap:14px">
+        <div class="fg">
+          <div class="fgi">
+            <label>Date</label>
+            <input type="date" id="gpsDate" value="${today()}" onchange="validateSaturdayDate(this)">
+          </div>
+          <div class="fgi">
+            <label>Starting Hole</label>
+            <select id="gpsStartHole">${Array.from({length:18},(_,i)=>`<option value="${i+1}">Hole ${i+1}</option>`).join('')}</select>
+          </div>
+          <div class="fgi full">
+            <label>Tee</label>
+            <div class="tee-sel" id="gpsTeeSelect">
+              ${TEES.map(t=>`<div class="tee-opt${t.id==='platinum'?' selected':''}" onclick="selectGpsTee('${t.id}',this)"><span class="tee-dot" style="background:${t.color}"></span>${t.name}</div>`).join('')}
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;justify-content:flex-end">
+          <button class="btn btn-primary" onclick="startGpsRound()">Start Tracking →</button>
+        </div>
+      </div>
+    </div>`;
+}
+async function startGpsRound(){
+  const date=document.getElementById('gpsDate').value;
+  const startHole=parseInt(document.getElementById('gpsStartHole').value)||1;
+  if(!date){alert('Please select a date.');return;}
+  setLoading(true,'Getting GPS…');
+  try{
+    const pos=await new Promise((res,rej)=>
+      navigator.geolocation.getCurrentPosition(res,rej,{enableHighAccuracy:true,timeout:10000})
+    );
+    const {latitude:lat,longitude:lng}=pos.coords;
+    startWeatherRefresh(lat,lng);
+    GR={
+      date,teeId:gpsTeeId,currentHole:startHole,
+      selectedClub:null,selectedWeight:'full',
+      holeScores:{},provisionalShotId:null,
+      map:null,markers:[],polylines:[],shots:[]
+    };
+    try{
+      GR.shots=await sbGet('gps_shots',`player_id=eq.${activeId}&round_date=eq.${date}&order=hole.asc,shot_num.asc`);
+    }catch(e){GR.shots=[];}
+    renderGpsHole();
+  }catch(e){
+    alert('Could not get GPS location. Please allow location access and try again.');
+  }finally{setLoading(false);}
+}
 function renderTrackView(){
   const el=document.getElementById('trackContent');
   if(!el)return;
