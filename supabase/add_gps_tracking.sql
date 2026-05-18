@@ -5,7 +5,7 @@
 -- 1. gps_shots table
 CREATE TABLE IF NOT EXISTS public.gps_shots (
   id           BIGSERIAL PRIMARY KEY,
-  player_id    INTEGER REFERENCES public.players(id) ON DELETE CASCADE,
+  player_id    BIGINT REFERENCES public.players(id) ON DELETE CASCADE,
   round_date   DATE NOT NULL,
   hole         SMALLINT NOT NULL CHECK (hole BETWEEN 1 AND 18),
   shot_num     SMALLINT NOT NULL,
