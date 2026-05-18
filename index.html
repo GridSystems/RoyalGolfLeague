@@ -1322,7 +1322,7 @@ function moveBagClub(idx,dir){
   [bag[idx],bag[target]]=[bag[target],bag[idx]];
   saveBag(bag);
 }
-function showLb(id,btn){document.querySelectorAll('.lb-view').forEach(v=>v.classList.remove('active'));document.querySelectorAll('.sub-tab').forEach(t=>t.classList.remove('active'));document.getElementById('lb-'+id).classList.add('active');if(btn)btn.classList.add('active');if(id==='today')renderTodayLb();if(id==='season')renderSeasonLb();if(id==='dreamcard'){renderDreamCard();}if(id==='fines')renderFinesLb();if(id==='saturday')renderSaturdayView();}
+function showLb(id,btn){document.querySelectorAll('#view-leaderboard .lb-view').forEach(v=>v.classList.remove('active'));document.querySelectorAll('#view-leaderboard .sub-tab').forEach(t=>t.classList.remove('active'));document.getElementById('lb-'+id).classList.add('active');if(btn)btn.classList.add('active');if(id==='today')renderTodayLb();if(id==='season')renderSeasonLb();if(id==='dreamcard'){renderDreamCard();}if(id==='fines')renderFinesLb();if(id==='saturday')renderSaturdayView();}
 function showHistorySub(id,btn){
   document.querySelectorAll('#view-history .lb-view').forEach(v=>v.classList.remove('active'));
   document.querySelectorAll('#view-history .sub-tab').forEach(t=>t.classList.remove('active'));
@@ -1351,9 +1351,8 @@ async function renderGpsStats(){
     const byRound={};
     shots.forEach(s=>{
       const k=s.round_date;
-      if(!byRound[k])byRound[k]={putts:0,holes:new Set(),dist:0};
+      if(!byRound[k])byRound[k]={putts:0,dist:0};
       if(s.club==='Putter'||s.shot_weight==='putt')byRound[k].putts++;
-      byRound[k].holes.add(s.hole);
     });
     shots.filter(s=>s.lat!=null).forEach(s=>{
       const next=shots.find(n=>n.round_date===s.round_date&&n.hole===s.hole&&n.shot_num===s.shot_num+1&&n.lat!=null);
@@ -1384,22 +1383,28 @@ async function renderGpsStats(){
       <div class="panel" style="margin-top:1rem">
         <div class="ph"><span class="pt">Avg Distance Per Club</span></div>
         <div class="pb">
-          ${Object.entries(byClub).filter(([,v])=>v.dists.length>0).sort((a,b)=>{
-            const aAvg=Math.round(a[1].dists.reduce((x,y)=>x+y,0)/a[1].dists.length);
-            const bAvg=Math.round(b[1].dists.reduce((x,y)=>x+y,0)/b[1].dists.length);
-            return bAvg-aAvg;
-          }).map(([club,v])=>{
-            const avg=Math.round(v.dists.reduce((x,y)=>x+y,0)/v.dists.length);
-            const max=Math.max(...v.dists);
-            return `<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
-              <span style="min-width:60px;font-size:0.85rem;font-weight:500">${escHtml(club)}</span>
-              <div style="flex:1;background:rgba(255,255,255,0.06);border-radius:4px;height:6px">
-                <div style="width:${Math.min(100,Math.round(avg/4))}%;height:100%;background:var(--gold);border-radius:4px"></div>
-              </div>
-              <span style="font-family:'DM Mono',monospace;font-size:0.82rem;color:var(--gold-l)">${avg}m</span>
-              <span style="font-size:0.7rem;color:rgba(255,255,255,0.3)">(max ${Math.round(max)}m, ${v.count} shots)</span>
-            </div>`;
-          }).join('')||'<div style="color:rgba(255,255,255,0.3);font-size:0.82rem">Not enough shots to calculate yet.</div>'}
+          ${(()=>{
+            const clubEntries=Object.entries(byClub).filter(([,v])=>v.dists.length>0).sort((a,b)=>{
+              const aAvg=Math.round(a[1].dists.reduce((x,y)=>x+y,0)/a[1].dists.length);
+              const bAvg=Math.round(b[1].dists.reduce((x,y)=>x+y,0)/b[1].dists.length);
+              return bAvg-aAvg;
+            });
+            if(!clubEntries.length)return '<div style="color:rgba(255,255,255,0.3);font-size:0.82rem">Not enough shots to calculate yet.</div>';
+            const maxAvgClub=Math.max(...clubEntries.map(([,v])=>Math.round(v.dists.reduce((x,y)=>x+y,0)/v.dists.length)));
+            return clubEntries.map(([club,v])=>{
+              const avg=Math.round(v.dists.reduce((x,y)=>x+y,0)/v.dists.length);
+              const max=Math.max(...v.dists);
+              const barW=maxAvgClub>0?Math.round((avg/maxAvgClub)*100):0;
+              return `<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
+                <span style="min-width:60px;font-size:0.85rem;font-weight:500">${escHtml(club)}</span>
+                <div style="flex:1;background:rgba(255,255,255,0.06);border-radius:4px;height:6px">
+                  <div style="width:${barW}%;height:100%;background:var(--gold);border-radius:4px"></div>
+                </div>
+                <span style="font-family:'DM Mono',monospace;font-size:0.82rem;color:var(--gold-l)">${avg}m</span>
+                <span style="font-size:0.7rem;color:rgba(255,255,255,0.3)">(max ${max}m, ${v.count} shots)</span>
+              </div>`;
+            }).join('');
+          })()}
         </div>
       </div>`;
   }catch(e){el.innerHTML=`<div class="empty">Error: ${escHtml(e.message)}</div>`;}
