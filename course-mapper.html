@@ -11,9 +11,12 @@
     #topbar { display: flex; align-items: center; gap: 12px; padding: 8px 16px; background: #16213e; border-bottom: 1px solid #0f3460; flex-shrink: 0; }
     #topbar h1 { font-size: 15px; font-weight: 700; color: #e94560; white-space: nowrap; }
     #status { font-size: 13px; color: #aaa; flex: 1; }
-    #exportBtn { padding: 7px 16px; border-radius: 6px; border: none; background: #555; color: #bbb; font-size: 13px; font-weight: 600; cursor: default; white-space: nowrap; }
+    #exportBtn { padding: 7px 16px; border-radius: 6px; border: none; background: #444; color: #aaa; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; }
     #exportBtn.ready { background: #2ecc71; color: #000; cursor: pointer; animation: pulse 1.5s infinite; }
+    #addPinBtn { padding: 7px 14px; border-radius: 6px; border: 1px solid #555; background: none; color: #aaa; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+    #addPinBtn.active { background: #f39c12; color: #000; border-color: #f39c12; }
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.75} }
+    #map.pin-mode { cursor: crosshair !important; }
     #main { display: flex; flex: 1; overflow: hidden; }
     #sidebar { width: 254px; background: #16213e; border-right: 1px solid #0f3460; overflow-y: auto; flex-shrink: 0; }
     #sidebar h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #666; padding: 9px 12px 6px; border-bottom: 1px solid #0f3460; }
@@ -48,6 +51,7 @@
 <div id="topbar">
   <h1>🏌️ Royal GC — Course Mapper</h1>
   <div id="status">0 / 18 holes mapped</div>
+  <button id="addPinBtn" onclick="togglePinMode()">📍 Add Pin</button>
   <button id="exportBtn" onclick="exportJson()">Export JSON</button>
 </div>
 <div id="main">
@@ -78,7 +82,8 @@
   <span style="background:#888"></span> Unassigned<br>
   <span style="background:#2196F3"></span> Tee<br>
   <span style="background:#e94560"></span> Green<br>
-  <span style="background:#9b59b6"></span> Tee + Green (par 3)
+  <span style="background:#9b59b6"></span> Tee + Green (par 3)<br>
+  <span style="background:#f39c12"></span> Custom pin
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -142,9 +147,17 @@ const STAYS = [
 
 // ── State ──────────────────────────────────────────────────────────────────
 // assignments[stayIdx] = { tee: holeNum|null, green: holeNum|null }
-let assignments = JSON.parse(localStorage.getItem('rgcCourseMapper') || '{}');
-let selectedIdx = null;
-let markers = [];
+let assignments  = JSON.parse(localStorage.getItem('rgcCourseMapper') || '{}');
+let customPins   = JSON.parse(localStorage.getItem('rgcCourseMapperPins') || '[]');
+let selectedIdx  = null;
+let markers      = [];
+let pinMode      = false;
+
+// Combined accessor — GPS stays (0..N-1) then custom pins (N..)
+function getStay(i) {
+  return i < STAYS.length ? STAYS[i] : customPins[i - STAYS.length];
+}
+function stayCount() { return STAYS.length + customPins.length; }
 
 // ── Map ────────────────────────────────────────────────────────────────────
 const map = L.map('map', { center: [55.6355, 12.566], zoom: 16 });
@@ -156,20 +169,50 @@ L.tileLayer(
 // Track polyline
 L.polyline(TRACK, { color: '#ffd700', weight: 2, opacity: 0.65 }).addTo(map);
 
-// Stay number labels (small divIcon)
-STAYS.forEach((stay, i) => {
-  const m = L.circleMarker([stay.lat, stay.lon], markerOpts(i)).addTo(map);
-  m.bindTooltip(`#${i+1} @ ${stay.time} (${stay.duration}s)`, { permanent: false, direction: 'top' });
-  m.on('click', e => { L.DomEvent.stopPropagation(e); openPanel(i); });
-  markers.push(m);
+// GPS stay markers
+STAYS.forEach((stay, i) => addMarker(stay, i));
+// Restore any saved custom pins
+customPins.forEach((pin, j) => addMarker(pin, STAYS.length + j));
+
+map.on('click', e => {
+  if (pinMode) {
+    const {lat, lng} = e.latlng;
+    customPins.push({ lat, lon: lng, custom: true });
+    const idx = STAYS.length + customPins.length - 1;
+    addMarker(customPins[customPins.length - 1], idx);
+    saveAll();
+    renderHoleList();
+    openPanel(idx);
+  } else {
+    closePanel();
+  }
 });
 
-map.on('click', () => closePanel());
+function addMarker(stay, i) {
+  const label = stay.custom
+    ? `Custom pin #${i - STAYS.length + 1}`
+    : `#${i+1} @ ${stay.time} (${stay.duration}s)`;
+  const m = L.circleMarker([stay.lat, stay.lon], markerOpts(i)).addTo(map);
+  m.bindTooltip(label, { permanent: false, direction: 'top' });
+  m.on('click', e => { L.DomEvent.stopPropagation(e); openPanel(i); });
+  markers[i] = m;
+}
+
+// ── Add-pin mode ──────────────────────────────────────────────────────────
+function togglePinMode() {
+  pinMode = !pinMode;
+  document.getElementById('addPinBtn').classList.toggle('active', pinMode);
+  document.getElementById('map').classList.toggle('pin-mode', pinMode);
+  if (pinMode) closePanel();
+}
 
 function markerOpts(i) {
   const a = assignments[i] || {};
+  const stay = getStay(i);
   const both = a.tee && a.green;
-  const color = both ? '#9b59b6' : a.tee ? '#2196F3' : a.green ? '#e94560' : '#888888';
+  const color = stay && stay.custom
+    ? (both ? '#9b59b6' : a.tee ? '#2196F3' : a.green ? '#e94560' : '#f39c12')
+    : (both ? '#9b59b6' : a.tee ? '#2196F3' : a.green ? '#e94560' : '#888888');
   const sel = i === selectedIdx;
   return {
     radius: sel ? 11 : 8,
@@ -199,11 +242,14 @@ function buildSel(id, current) {
 
 function openPanel(i) {
   selectedIdx = i;
-  const stay = STAYS[i];
+  const stay = getStay(i);
   const a = assignments[i] || {};
-  document.getElementById('panel-title').textContent = 'Stay #' + (i + 1);
-  document.getElementById('panel-meta').textContent =
-    'Time: ' + stay.time + ' · Duration: ' + stay.duration + 's';
+  document.getElementById('panel-title').textContent = stay.custom
+    ? 'Custom pin #' + (i - STAYS.length + 1)
+    : 'Stay #' + (i + 1);
+  document.getElementById('panel-meta').textContent = stay.custom
+    ? stay.lat.toFixed(6) + ', ' + stay.lon.toFixed(6)
+    : 'Time: ' + stay.time + ' · Duration: ' + stay.duration + 's';
   buildSel('tee-sel', a.tee || null);
   buildSel('grn-sel', a.green || null);
 
@@ -308,40 +354,45 @@ function renderHoleList() {
   }
   document.getElementById('status').textContent = done + ' / 18 holes mapped';
   const btn = document.getElementById('exportBtn');
-  if (done === 18) {
-    btn.classList.add('ready');
-    btn.removeAttribute('disabled');
-  } else {
-    btn.classList.remove('ready');
-    btn.setAttribute('disabled', '');
-  }
+  btn.classList.toggle('ready', done === 18);
+  btn.textContent = done === 18 ? 'Export JSON' : 'Export JSON (' + done + '/18)';
 }
 
 function focusStay(idx) {
-  map.flyTo([STAYS[idx].lat, STAYS[idx].lon], 18, { animate: true, duration: 0.8 });
+  const s = getStay(idx);
+  map.flyTo([s.lat, s.lon], 18, { animate: true, duration: 0.8 });
   setTimeout(() => openPanel(idx), 300);
 }
 
 // ── Persistence ────────────────────────────────────────────────────────────
-function save() {
+function saveAll() {
   localStorage.setItem('rgcCourseMapper', JSON.stringify(assignments));
+  localStorage.setItem('rgcCourseMapperPins', JSON.stringify(customPins));
 }
+function save() { saveAll(); }
 
 // ── Export ─────────────────────────────────────────────────────────────────
 function exportJson() {
+  const missing = [];
   const holes = [];
   for (let h = 1; h <= 18; h++) {
     const teeIdx   = getAssignedIdx('tee', h);
     const greenIdx = getAssignedIdx('green', h);
-    if (teeIdx === null || greenIdx === null) {
-      alert('Hole ' + h + ' is incomplete — assign both tee and green before exporting.');
-      return;
-    }
+    if (teeIdx === null || greenIdx === null) missing.push(h);
+    const teeStay   = teeIdx   !== null ? getStay(teeIdx)   : null;
+    const greenStay = greenIdx !== null ? getStay(greenIdx) : null;
     holes.push({
       hole:  h,
-      tee:   { lat: STAYS[teeIdx].lat,   lng: STAYS[teeIdx].lon   },
-      green: { lat: STAYS[greenIdx].lat, lng: STAYS[greenIdx].lon }
+      tee:   teeStay   ? { lat: teeStay.lat,   lng: teeStay.lon   } : null,
+      green: greenStay ? { lat: greenStay.lat, lng: greenStay.lon } : null
     });
+  }
+  if (missing.length > 0) {
+    const ok = confirm(
+      'Holes ' + missing.join(', ') + ' are incomplete.\n' +
+      'Export anyway with null for missing positions?'
+    );
+    if (!ok) return;
   }
   const blob = new Blob([JSON.stringify({ holes }, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
