@@ -346,26 +346,35 @@ select option { background: #1a3a2a; }
 
   <!-- MY ROUNDS -->
   <div class="view" id="view-history">
-    <div class="stats-row" id="myStats"></div>
-    <div class="panel">
-      <div class="ph">
-        <span class="pt" id="myTitle">My Rounds</span>
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <button class="btn btn-warn btn-sm" onclick="showMyHcp()" id="myHcpBtn" style="display:none">Update My HCP</button>
-          <select id="sortSel" onchange="renderMyRounds()" style="background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.14);border-radius:6px;color:var(--cream);font-size:0.75rem;padding:4px 8px;outline:none">
-            <option value="date-desc">Newest first</option><option value="date-asc">Oldest first</option>
-            <option value="pts-desc">Best stableford</option><option value="score-asc">Best stroke</option>
-          </select>
-        </div>
-      </div>
-      <div id="myTable"></div>
+    <div class="sub-tabs">
+      <button class="sub-tab active" onclick="showHistorySub('rounds',this)">My Rounds</button>
+      <button class="sub-tab" onclick="showHistorySub('gpsstats',this)">📍 GPS Stats</button>
     </div>
-    <div class="panel" id="myDreamPanel" style="margin-top:1.25rem;display:none">
-      <div class="ph">
-        <span class="pt">My Dream Scorecard</span>
-        <select id="myDreamYear" onchange="renderMyDreamCard()" style="background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.14);border-radius:6px;color:var(--cream);font-size:0.75rem;padding:4px 8px;outline:none"></select>
+    <div class="lb-view active" id="hsub-rounds">
+      <div class="stats-row" id="myStats"></div>
+      <div class="panel">
+        <div class="ph">
+          <span class="pt" id="myTitle">My Rounds</span>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <button class="btn btn-warn btn-sm" onclick="showMyHcp()" id="myHcpBtn" style="display:none">Update My HCP</button>
+            <select id="sortSel" onchange="renderMyRounds()" style="background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.14);border-radius:6px;color:var(--cream);font-size:0.75rem;padding:4px 8px;outline:none">
+              <option value="date-desc">Newest first</option><option value="date-asc">Oldest first</option>
+              <option value="pts-desc">Best stableford</option><option value="score-asc">Best stroke</option>
+            </select>
+          </div>
+        </div>
+        <div id="myTable"></div>
       </div>
-      <div id="myDreamCardBody"></div>
+      <div class="panel" id="myDreamPanel" style="margin-top:1.25rem;display:none">
+        <div class="ph">
+          <span class="pt">My Dream Scorecard</span>
+          <select id="myDreamYear" onchange="renderMyDreamCard()" style="background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.14);border-radius:6px;color:var(--cream);font-size:0.75rem;padding:4px 8px;outline:none"></select>
+        </div>
+        <div id="myDreamCardBody"></div>
+      </div>
+    </div>
+    <div class="lb-view" id="hsub-gpsstats">
+      <div id="gpsStatsContent"></div>
     </div>
   </div>
 
@@ -890,7 +899,7 @@ function showView(id,btn){
   document.getElementById('view-'+id).classList.add('active');
   if(btn)btn.classList.add('active');
   if(id==='leaderboard'){renderTodayLb();populateYearSelects();renderSeasonLb();renderDreamCard();}
-  if(id==='history'){renderMyRounds();const b=document.getElementById('myHcpBtn');if(b)b.style.display=activeId?'inline-block':'none';}
+  if(id==='history'){renderMyRounds();const b=document.getElementById('myHcpBtn');if(b)b.style.display=activeId?'inline-block':'none';showHistorySub('rounds',document.querySelector('#view-history .sub-tab'));}
   if(id==='players'){renderGrid();renderBagSetup();}
   if(id==='log'){buildPlayerCheckboxes();checkForResumableRounds();applySaturdayDraw();}
   if(id==='admin'){renderPendingApprovals();renderAdmin();renderBulkEntry();renderAdminFines();renderSaturdayAdmin();}
@@ -1314,6 +1323,87 @@ function moveBagClub(idx,dir){
   saveBag(bag);
 }
 function showLb(id,btn){document.querySelectorAll('.lb-view').forEach(v=>v.classList.remove('active'));document.querySelectorAll('.sub-tab').forEach(t=>t.classList.remove('active'));document.getElementById('lb-'+id).classList.add('active');if(btn)btn.classList.add('active');if(id==='today')renderTodayLb();if(id==='season')renderSeasonLb();if(id==='dreamcard'){renderDreamCard();}if(id==='fines')renderFinesLb();if(id==='saturday')renderSaturdayView();}
+function showHistorySub(id,btn){
+  document.querySelectorAll('#view-history .lb-view').forEach(v=>v.classList.remove('active'));
+  document.querySelectorAll('#view-history .sub-tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('hsub-'+id).classList.add('active');
+  if(btn)btn.classList.add('active');
+  if(id==='gpsstats')renderGpsStats();
+}
+async function renderGpsStats(){
+  const el=document.getElementById('gpsStatsContent');
+  if(!el||!activeId){if(el)el.innerHTML='<div class="empty">Select your player first.</div>';return;}
+  el.innerHTML='<div class="empty">Loading…</div>';
+  try{
+    const shots=await sbGet('gps_shots',`player_id=eq.${activeId}&order=round_date.desc,hole.asc,shot_num.asc`);
+    if(!shots.length){el.innerHTML='<div class="empty">No GPS rounds recorded yet.</div>';return;}
+
+    // Avg distance per club (GPS shots only, exclude chip/putt)
+    const byClub={};
+    shots.filter(s=>s.lat!=null&&s.club&&s.shot_weight!=='chip'&&s.shot_weight!=='putt').forEach(s=>{
+      if(!byClub[s.club])byClub[s.club]={dists:[],count:0};
+      byClub[s.club].count++;
+      const next=shots.find(n=>n.round_date===s.round_date&&n.hole===s.hole&&n.shot_num===s.shot_num+1&&n.lat!=null);
+      if(next)byClub[s.club].dists.push(haversineM(s.lat,s.lng,next.lat,next.lng));
+    });
+
+    // Putts per round + distance walked per round
+    const byRound={};
+    shots.forEach(s=>{
+      const k=s.round_date;
+      if(!byRound[k])byRound[k]={putts:0,holes:new Set(),dist:0};
+      if(s.club==='Putter'||s.shot_weight==='putt')byRound[k].putts++;
+      byRound[k].holes.add(s.hole);
+    });
+    shots.filter(s=>s.lat!=null).forEach(s=>{
+      const next=shots.find(n=>n.round_date===s.round_date&&n.hole===s.hole&&n.shot_num===s.shot_num+1&&n.lat!=null);
+      if(next&&byRound[s.round_date])byRound[s.round_date].dist+=haversineM(s.lat,s.lng,next.lat,next.lng);
+    });
+
+    const rounds=Object.keys(byRound).sort().reverse();
+    const avgPutts=rounds.length?Math.round(rounds.reduce((s,r)=>s+byRound[r].putts,0)/rounds.length):0;
+    const avgDist=rounds.length?Math.round(rounds.reduce((s,r)=>s+byRound[r].dist,0)/rounds.length):0;
+
+    // Driver stats
+    const driverFull=shots.filter(s=>s.club==='Driver'&&s.shot_weight==='full'&&s.lat!=null);
+    const driverDists=driverFull.map(s=>{
+      const next=shots.find(n=>n.round_date===s.round_date&&n.hole===s.hole&&n.shot_num===s.shot_num+1&&n.lat!=null);
+      return next?haversineM(s.lat,s.lng,next.lat,next.lng):null;
+    }).filter(d=>d!=null&&d>50&&d<400);
+    const avgDriver=driverDists.length?Math.round(driverDists.reduce((a,b)=>a+b,0)/driverDists.length):null;
+    const maxDriver=driverDists.length?Math.max(...driverDists):null;
+
+    el.innerHTML=`
+      <div class="stats-row" style="margin-top:1rem">
+        ${avgDriver!=null?`<div class="sc"><div class="sl">Avg Drive</div><div class="sv">${avgDriver}m</div></div>`:''}
+        ${maxDriver!=null?`<div class="sc"><div class="sl">Longest Drive</div><div class="sv">${maxDriver}m</div></div>`:''}
+        <div class="sc"><div class="sl">Avg Putts</div><div class="sv">${avgPutts}</div><div class="ss">per round</div></div>
+        <div class="sc"><div class="sl">Avg Distance</div><div class="sv">${(avgDist/1000).toFixed(1)}km</div><div class="ss">walked/round</div></div>
+        <div class="sc"><div class="sl">GPS Rounds</div><div class="sv">${rounds.length}</div></div>
+      </div>
+      <div class="panel" style="margin-top:1rem">
+        <div class="ph"><span class="pt">Avg Distance Per Club</span></div>
+        <div class="pb">
+          ${Object.entries(byClub).filter(([,v])=>v.dists.length>0).sort((a,b)=>{
+            const aAvg=Math.round(a[1].dists.reduce((x,y)=>x+y,0)/a[1].dists.length);
+            const bAvg=Math.round(b[1].dists.reduce((x,y)=>x+y,0)/b[1].dists.length);
+            return bAvg-aAvg;
+          }).map(([club,v])=>{
+            const avg=Math.round(v.dists.reduce((x,y)=>x+y,0)/v.dists.length);
+            const max=Math.max(...v.dists);
+            return `<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
+              <span style="min-width:60px;font-size:0.85rem;font-weight:500">${escHtml(club)}</span>
+              <div style="flex:1;background:rgba(255,255,255,0.06);border-radius:4px;height:6px">
+                <div style="width:${Math.min(100,Math.round(avg/4))}%;height:100%;background:var(--gold);border-radius:4px"></div>
+              </div>
+              <span style="font-family:'DM Mono',monospace;font-size:0.82rem;color:var(--gold-l)">${avg}m</span>
+              <span style="font-size:0.7rem;color:rgba(255,255,255,0.3)">(max ${Math.round(max)}m, ${v.count} shots)</span>
+            </div>`;
+          }).join('')||'<div style="color:rgba(255,255,255,0.3);font-size:0.82rem">Not enough shots to calculate yet.</div>'}
+        </div>
+      </div>`;
+  }catch(e){el.innerHTML=`<div class="empty">Error: ${escHtml(e.message)}</div>`;}
+}
 
 // ── Tee selectors ─────────────────────────────────────────────────────────────
 function buildTeeSelectorEl(cid,active,sv){const el=document.getElementById(cid);if(!el)return;el.innerHTML=TEES.map(t=>`<div class="tee-opt${t.id===active?' selected':''}" onclick="selectTee('${cid}','${t.id}','${sv}')"><span class="tee-dot" style="background:${t.color};border:1px solid rgba(255,255,255,0.25)"></span>${t.name} <span style="font-size:0.68rem;color:rgba(255,255,255,0.32)">${t.rating}/${t.slope}</span></div>`).join('');}
