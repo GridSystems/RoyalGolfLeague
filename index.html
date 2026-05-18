@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Saturday League — Royal Golf Club</title>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 :root { --gd: #1a3a2a; --cream: #f7f3ec; --gold: #c9a84c; --gold-l: #f0d58c; --danger: #e07070; --border: rgba(255,255,255,0.08); --border-gold: rgba(201,168,76,0.22); }
@@ -122,6 +124,25 @@ select option { background: #1a3a2a; }
 .live-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #7fcc9e; margin-right: 5px; animation: pulse 1.5s infinite; }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 @media (max-width: 640px) { .fg { grid-template-columns: 1fr; } .main { padding: 1rem; } }
+/* ── GPS Tracker ───────────────────────────────────────────── */
+#gpsMap { height: 55vh; min-height: 280px; border-radius: 10px; overflow: hidden; z-index: 1; }
+.gps-hole-header { display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 1rem; background: rgba(0,0,0,0.3); border-bottom: 1px solid var(--border); }
+.gps-actions { display: flex; gap: 8px; flex-wrap: wrap; padding: 0.75rem 1rem; background: rgba(0,0,0,0.18); }
+.btn-hit { background: var(--gold); color: var(--gd); font-size: 1rem; font-weight: 700; padding: 12px 28px; border-radius: 10px; border: none; cursor: pointer; flex: 1; min-width: 100px; }
+.btn-hit:active { transform: scale(0.97); }
+.btn-shot-type { background: rgba(255,255,255,0.06); color: var(--cream); border: 1px solid var(--border); border-radius: 8px; font-family: 'DM Sans', sans-serif; font-size: 0.78rem; font-weight: 500; padding: 8px 12px; cursor: pointer; }
+.btn-shot-type:hover { background: rgba(255,255,255,0.11); }
+.btn-shot-type.provisional { border-color: rgba(240,192,96,0.4); color: #f0c060; }
+.club-picker { display: flex; gap: 6px; overflow-x: auto; padding: 0.6rem 1rem; background: rgba(0,0,0,0.14); border-bottom: 1px solid var(--border); }
+.club-btn { background: rgba(255,255,255,0.06); border: 1px solid var(--border); border-radius: 8px; color: var(--cream); font-family: 'DM Mono', monospace; font-size: 0.78rem; padding: 6px 12px; cursor: pointer; white-space: nowrap; flex-shrink: 0; transition: all 0.12s; }
+.club-btn.selected { background: rgba(201,168,76,0.18); border-color: var(--gold); color: var(--gold-l); }
+.weight-picker { display: flex; gap: 6px; padding: 0.5rem 1rem; background: rgba(0,0,0,0.1); border-bottom: 1px solid var(--border); }
+.weight-btn { background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 6px; color: rgba(255,255,255,0.5); font-family: 'DM Sans', sans-serif; font-size: 0.75rem; padding: 5px 11px; cursor: pointer; transition: all 0.12s; }
+.weight-btn.selected { background: rgba(201,168,76,0.14); border-color: rgba(201,168,76,0.5); color: var(--gold-l); }
+.gps-summary-card { background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 12px; padding: 1.25rem; margin: 1rem; }
+.shot-dot { width: 26px; height: 26px; border-radius: 50%; background: var(--gold); color: var(--gd); display: flex; align-items: center; justify-content: center; font-size: 0.7rem; font-weight: 700; border: 2px solid #fff; }
+.bag-club-row { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-bottom: 1px solid rgba(255,255,255,0.04); }
+.bag-club-name { flex: 1; font-size: 0.88rem; }
 </style>
 </head>
 <body>
