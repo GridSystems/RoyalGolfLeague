@@ -375,6 +375,7 @@ select option { background: #1a3a2a; }
       <div class="ph"><span class="pt">Club Roster</span><button class="btn btn-ghost btn-sm" id="addPlayerBtn" style="display:none" onclick="showAddPlayer()">+ Add Player</button></div>
       <div class="pb"><div class="player-grid" id="playerGrid"></div></div>
     </div>
+    <div class="panel" id="bagSetupPanel" style="margin-top:1rem"></div>
   </div>
 
   <!-- RULES -->
@@ -889,7 +890,7 @@ function showView(id,btn){
   if(btn)btn.classList.add('active');
   if(id==='leaderboard'){renderTodayLb();populateYearSelects();renderSeasonLb();renderDreamCard();}
   if(id==='history'){renderMyRounds();const b=document.getElementById('myHcpBtn');if(b)b.style.display=activeId?'inline-block':'none';}
-  if(id==='players')renderGrid();
+  if(id==='players'){renderGrid();renderBagSetup();}
   if(id==='log'){buildPlayerCheckboxes();checkForResumableRounds();applySaturdayDraw();}
   if(id==='admin'){renderPendingApprovals();renderAdmin();renderBulkEntry();renderAdminFines();renderSaturdayAdmin();}
   if(id==='rules')renderRules();
@@ -1240,6 +1241,73 @@ function renderTrackView(){
   if(!el)return;
   if(GR){renderGpsHole();}
   else{renderGpsStart();}
+}
+function renderBagSetup(){
+  const p=players.find(x=>x.id===activeId);
+  if(!p)return;
+  const bag=Array.isArray(p.bag)?p.bag:[];
+  const el=document.getElementById('bagSetupPanel');
+  if(!el)return;
+  el.innerHTML=`
+    <div class="ph"><span class="pt">My Bag</span></div>
+    <div class="pb" style="display:flex;flex-direction:column;gap:10px">
+      ${bag.length===0?'<div style="color:rgba(255,255,255,0.3);font-size:0.82rem">No clubs added yet.</div>':''}
+      ${bag.map((club,i)=>`
+        <div class="bag-club-row">
+          <span class="bag-club-name">${club}</span>
+          <button class="btn btn-ghost btn-sm" onclick="moveBagClub(${i},-1)" ${i===0?'disabled':''}>↑</button>
+          <button class="btn btn-ghost btn-sm" onclick="moveBagClub(${i},1)" ${i===bag.length-1?'disabled':''}>↓</button>
+          <button class="btn btn-danger btn-sm" onclick="removeBagClub(${i})">✕</button>
+        </div>`).join('')}
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+        <select id="masterClubSelect" style="flex:1;min-width:120px">
+          ${MASTER_CLUBS.filter(c=>!bag.includes(c)).map(c=>`<option value="${c}">${c}</option>`).join('')}
+        </select>
+        <button class="btn btn-ghost btn-sm" onclick="addBagClub()">+ Add</button>
+      </div>
+      <div style="display:flex;gap:8px">
+        <input type="text" id="customClubInput" placeholder="Custom club (e.g. 48° PW)" style="flex:1">
+        <button class="btn btn-ghost btn-sm" onclick="addCustomBagClub()">+ Custom</button>
+      </div>
+    </div>`;
+}
+async function saveBag(bag){
+  const p=players.find(x=>x.id===activeId);
+  if(!p)return;
+  try{
+    await sbUpdate('players',p.id,{bag:JSON.stringify(bag)});
+    p.bag=bag;
+    renderBagSetup();
+    toast('Bag saved ✓');
+  }catch(e){alert('Error saving bag: '+e.message);}
+}
+function addBagClub(){
+  const sel=document.getElementById('masterClubSelect');
+  if(!sel||!sel.value)return;
+  const p=players.find(x=>x.id===activeId);
+  const bag=Array.isArray(p?.bag)?[...p.bag]:[];
+  if(!bag.includes(sel.value)){bag.push(sel.value);saveBag(bag);}
+}
+function addCustomBagClub(){
+  const inp=document.getElementById('customClubInput');
+  const val=inp?.value.trim();
+  if(!val)return;
+  const p=players.find(x=>x.id===activeId);
+  const bag=Array.isArray(p?.bag)?[...p.bag]:[];
+  if(!bag.includes(val)){bag.push(val);inp.value='';saveBag(bag);}
+}
+function removeBagClub(idx){
+  const p=players.find(x=>x.id===activeId);
+  const bag=Array.isArray(p?.bag)?[...p.bag]:[];
+  bag.splice(idx,1);saveBag(bag);
+}
+function moveBagClub(idx,dir){
+  const p=players.find(x=>x.id===activeId);
+  const bag=Array.isArray(p?.bag)?[...p.bag]:[];
+  const target=idx+dir;
+  if(target<0||target>=bag.length)return;
+  [bag[idx],bag[target]]=[bag[target],bag[idx]];
+  saveBag(bag);
 }
 function showLb(id,btn){document.querySelectorAll('.lb-view').forEach(v=>v.classList.remove('active'));document.querySelectorAll('.sub-tab').forEach(t=>t.classList.remove('active'));document.getElementById('lb-'+id).classList.add('active');if(btn)btn.classList.add('active');if(id==='today')renderTodayLb();if(id==='season')renderSeasonLb();if(id==='dreamcard'){renderDreamCard();}if(id==='fines')renderFinesLb();if(id==='saturday')renderSaturdayView();}
 
