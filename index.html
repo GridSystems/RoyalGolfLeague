@@ -1205,6 +1205,35 @@ function saveHoleScore(){
     finishGpsRound();
   }
 }
+function finishGpsRound(){
+  const scores=GR.holeScores;
+  const holesRecorded=Object.keys(scores).length;
+  if(holesRecorded===0){
+    if(!confirm('No holes completed. Abandon GPS tracking?'))return;
+    abandonGpsRound();return;
+  }
+  if(!confirm(`Transfer ${holesRecorded} hole scores to score entry?`))return;
+  if(GR.map){GR.map.remove();}
+  if(weatherInterval){clearInterval(weatherInterval);weatherInterval=null;}
+  const savedScores={...scores};
+  GR=null;
+  const logTab=document.querySelector('.nav-tab[onclick*="log"]');
+  showView('log',logTab);
+  setTimeout(()=>{
+    const pid=activeId;
+    if(HE&&HE.roundIds&&HE.roundIds[pid]&&HE.playerList&&HE.playerList.find(x=>x.p.id===pid)){
+      for(let h=1;h<=18;h++){
+        if(savedScores[h]!=null){
+          HE.scores[pid][h-1]=savedScores[h];
+        }
+      }
+      heRender();
+      toast(`${holesRecorded} hole scores pre-filled from GPS round ✓`);
+    } else {
+      toast(`${holesRecorded} GPS scores saved — start a round above, then enter scores manually`);
+    }
+  },300);
+}
 function renderTrackView(){
   const el=document.getElementById('trackContent');
   if(!el)return;
