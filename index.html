@@ -2688,7 +2688,7 @@ function setPlayer(id){
   if(sessionId&&id!==sessionId&&!isAdmin()){toast('You can only view your own profile.');return;}
   activeId=id;const p=players.find(x=>x.id===id);
   if(p){document.getElementById('playerName').textContent=p.name;const av=document.getElementById('playerAvatar');av.textContent=ini(p.name);av.style.background=clr(p);}
-  localStorage.setItem('sl_active_player',id);closeModal('pickerModal');updateAdminUI();
+  localStorage.setItem('sl_active_player',id);closeModal('pickerModal');updateAdminUI();applyPendingUI();
   const hb=document.getElementById('myHcpBtn');if(hb)hb.style.display='inline-block';
 }
 function showAddPlayer(){
@@ -2763,7 +2763,7 @@ async function makeSocial(id){
     p.is_social=!willRemove;
     await sbUpdate('players',p.id,{is_social:p.is_social});
     toast(willRemove?`${p.name} is now a full member`:`${p.name} marked as Social Member ✓`);
-    renderGrid();updateAdminUI();renderTodayLb();renderSeasonLb();
+    renderGrid();updateAdminUI();applyPendingUI();renderTodayLb();renderSeasonLb();
   }catch(e){alert('Error: '+e.message);}finally{setLoading(false);}
 }
 
