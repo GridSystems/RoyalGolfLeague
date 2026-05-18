@@ -17,6 +17,18 @@
     #addPinBtn.active { background: #f39c12; color: #000; border-color: #f39c12; }
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.75} }
     #map.pin-mode { cursor: crosshair !important; }
+    #map.draw-mode { cursor: crosshair !important; }
+    #drawBar { display: none; position: fixed; z-index: 1002; left: 50%; transform: translateX(-50%); bottom: 60px; background: #16213ef0; border: 1px solid #2ecc71; border-radius: 8px; padding: 8px 14px; display: none; align-items: center; gap: 10px; font-size: 13px; box-shadow: 0 4px 16px rgba(0,0,0,.6); }
+    #drawBar span { color: #2ecc71; font-weight: 600; }
+    #drawBar button { padding: 5px 12px; border-radius: 5px; border: none; font-size: 12px; font-weight: 700; cursor: pointer; }
+    #drawUndoBtn { background: #555; color: #eee; }
+    #drawFinishBtn { background: #2ecc71; color: #000; }
+    #drawFinishBtn:disabled { background: #3a5a3a; color: #666; cursor: default; }
+    #drawCancelBtn { background: #e94560; color: #fff; }
+    .ind-poly { font-size: 11px; padding: 2px 6px; border-radius: 3px; font-weight: 700; cursor: pointer; }
+    .ind-poly.set { background: #27ae60; color: #fff; }
+    .ind-poly.unset { background: #2a2a3e; color: #444; }
+    .ind-poly:hover { opacity: 0.8; }
     #main { display: flex; flex: 1; overflow: hidden; }
     #sidebar { width: 254px; background: #16213e; border-right: 1px solid #0f3460; overflow-y: auto; flex-shrink: 0; }
     #sidebar h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #666; padding: 9px 12px 6px; border-bottom: 1px solid #0f3460; }
@@ -78,12 +90,20 @@
   <button id="panel-close" onclick="closePanel()">✕ Close</button>
 </div>
 
+<div id="drawBar">
+  <span id="drawBarText">Drawing green</span>
+  <button id="drawUndoBtn" onclick="undoDrawVertex()">↩ Undo</button>
+  <button id="drawFinishBtn" onclick="finishDrawGreen()" disabled>✓ Finish</button>
+  <button id="drawCancelBtn" onclick="cancelDrawGreen()">✕ Cancel</button>
+</div>
+
 <div id="legend">
   <span style="background:#888"></span> Unassigned<br>
   <span style="background:#2196F3"></span> Tee<br>
   <span style="background:#e94560"></span> Green<br>
   <span style="background:#9b59b6"></span> Tee + Green (par 3)<br>
-  <span style="background:#f39c12"></span> Custom pin
+  <span style="background:#f39c12"></span> Custom pin<br>
+  <span style="background:#27ae60;border-radius:2px"></span> Green polygon
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -147,11 +167,19 @@ const STAYS = [
 
 // ── State ──────────────────────────────────────────────────────────────────
 // assignments[stayIdx] = { tee: holeNum|null, green: holeNum|null }
-let assignments  = JSON.parse(localStorage.getItem('rgcCourseMapper') || '{}');
-let customPins   = JSON.parse(localStorage.getItem('rgcCourseMapperPins') || '[]');
-let selectedIdx  = null;
-let markers      = [];
-let pinMode      = false;
+let assignments   = JSON.parse(localStorage.getItem('rgcCourseMapper') || '{}');
+let customPins    = JSON.parse(localStorage.getItem('rgcCourseMapperPins') || '[]');
+let greenPolygons = JSON.parse(localStorage.getItem('rgcGreenPolygons') || '{}');
+let selectedIdx   = null;
+let markers       = [];
+let pinMode       = false;
+
+// Green polygon drawing state
+let drawingGreen    = null;  // hole number 1-18, or null
+let drawVerts       = [];    // [[lat,lng], ...]
+let drawVertMarkers = [];    // L.circleMarker per vertex
+let drawPolyLayer   = null;  // live preview L.polygon
+let polyLayers      = {};    // saved polygon layers: {holeNum: L.polygon}
 
 // Combined accessor — GPS stays (0..N-1) then custom pins (N..)
 function getStay(i) {
@@ -175,7 +203,9 @@ STAYS.forEach((stay, i) => addMarker(stay, i));
 customPins.forEach((pin, j) => addMarker(pin, STAYS.length + j));
 
 map.on('click', e => {
-  if (pinMode) {
+  if (drawingGreen !== null) {
+    addDrawVertex(e.latlng.lat, e.latlng.lng);
+  } else if (pinMode) {
     const {lat, lng} = e.latlng;
     customPins.push({ lat, lon: lng, custom: true });
     const idx = STAYS.length + customPins.length - 1;
@@ -186,6 +216,20 @@ map.on('click', e => {
   } else {
     closePanel();
   }
+});
+
+map.on('dblclick', e => {
+  if (drawingGreen !== null) {
+    L.DomEvent.stopPropagation(e);
+    if (drawVerts.length >= 3) finishDrawGreen();
+  }
+});
+
+document.addEventListener('keydown', e => {
+  if (drawingGreen === null) return;
+  if (e.key === 'Escape') cancelDrawGreen();
+  if (e.key === 'Enter' && drawVerts.length >= 3) finishDrawGreen();
+  if ((e.key === 'z' || e.key === 'Z') && (e.ctrlKey || e.metaKey)) { e.preventDefault(); undoDrawVertex(); }
 });
 
 function addMarker(stay, i) {
@@ -200,10 +244,134 @@ function addMarker(stay, i) {
 
 // ── Add-pin mode ──────────────────────────────────────────────────────────
 function togglePinMode() {
+  if (drawingGreen !== null) cancelDrawGreen();
   pinMode = !pinMode;
   document.getElementById('addPinBtn').classList.toggle('active', pinMode);
   document.getElementById('map').classList.toggle('pin-mode', pinMode);
   if (pinMode) closePanel();
+}
+
+// ── Green polygon drawing ──────────────────────────────────────────────────
+function startDrawGreen(hole) {
+  // Exit other modes first
+  if (pinMode) togglePinMode();
+  closePanel();
+
+  drawingGreen = hole;
+  // Seed with existing polygon if any, so edits don't start from scratch
+  drawVerts = (greenPolygons[hole] || []).map(v => [...v]);
+  drawVertMarkers = [];
+  drawPolyLayer = null;
+
+  document.getElementById('map').classList.add('draw-mode');
+  const bar = document.getElementById('drawBar');
+  bar.style.display = 'flex';
+
+  // Re-render existing vertices
+  drawVerts.forEach(v => _addVertMarker(v[0], v[1]));
+  updateDrawPreview();
+  updateDrawBar();
+
+  // Fly to the green centre if we know it
+  const gIdx = getAssignedIdx('green', hole);
+  if (gIdx !== null) {
+    const s = getStay(gIdx);
+    map.flyTo([s.lat, s.lon], 19, { animate: true, duration: 0.6 });
+  }
+}
+
+function addDrawVertex(lat, lng) {
+  drawVerts.push([lat, lng]);
+  _addVertMarker(lat, lng);
+  updateDrawPreview();
+  updateDrawBar();
+}
+
+function _addVertMarker(lat, lng) {
+  const idx = drawVertMarkers.length;
+  const m = L.circleMarker([lat, lng], {
+    radius: 5, fillColor: '#ffd700', color: '#fff', weight: 1.5, fillOpacity: 1
+  }).addTo(map);
+  // Click a vertex to delete it
+  m.on('click', e => {
+    L.DomEvent.stopPropagation(e);
+    drawVerts.splice(idx, 1);
+    drawVertMarkers.forEach(x => x.remove());
+    drawVertMarkers = [];
+    drawVerts.forEach(v => _addVertMarker(v[0], v[1]));
+    updateDrawPreview();
+    updateDrawBar();
+  });
+  drawVertMarkers.push(m);
+}
+
+function updateDrawPreview() {
+  if (drawPolyLayer) { drawPolyLayer.remove(); drawPolyLayer = null; }
+  if (drawVerts.length >= 2) {
+    drawPolyLayer = L.polygon(drawVerts, {
+      color: '#2ecc71', weight: 2, fillColor: '#2ecc71', fillOpacity: 0.15, dashArray: '6 4'
+    }).addTo(map);
+  }
+}
+
+function updateDrawBar() {
+  const n = drawVerts.length;
+  document.getElementById('drawBarText').textContent =
+    `Hole ${drawingGreen} green — ${n} point${n !== 1 ? 's' : ''}${n < 3 ? ' (need 3+)' : ' — double-click or Enter to finish'}`;
+  document.getElementById('drawFinishBtn').disabled = n < 3;
+}
+
+function finishDrawGreen() {
+  if (drawVerts.length < 3) return;
+  greenPolygons[drawingGreen] = drawVerts.map(v => [...v]);
+  saveAll();
+  _exitDrawMode();
+  redrawAllPolygons();
+  renderHoleList();
+}
+
+function cancelDrawGreen() {
+  _exitDrawMode();
+  redrawAllPolygons(); // restore saved polygon if any
+}
+
+function undoDrawVertex() {
+  if (!drawVerts.length) return;
+  drawVerts.pop();
+  const last = drawVertMarkers.pop();
+  if (last) last.remove();
+  updateDrawPreview();
+  updateDrawBar();
+}
+
+function clearGreenPolygon(hole) {
+  delete greenPolygons[hole];
+  saveAll();
+  if (polyLayers[hole]) { polyLayers[hole].remove(); delete polyLayers[hole]; }
+  renderHoleList();
+}
+
+function _exitDrawMode() {
+  drawVerts = [];
+  drawVertMarkers.forEach(m => m.remove()); drawVertMarkers = [];
+  if (drawPolyLayer) { drawPolyLayer.remove(); drawPolyLayer = null; }
+  drawingGreen = null;
+  document.getElementById('map').classList.remove('draw-mode');
+  document.getElementById('drawBar').style.display = 'none';
+}
+
+function redrawAllPolygons() {
+  // Remove existing polygon layers
+  Object.values(polyLayers).forEach(l => l.remove());
+  polyLayers = {};
+  Object.entries(greenPolygons).forEach(([hole, verts]) => {
+    if (verts && verts.length >= 3) {
+      polyLayers[hole] = L.polygon(verts, {
+        color: '#27ae60', weight: 2, fillColor: '#27ae60', fillOpacity: 0.18
+      }).addTo(map);
+      polyLayers[hole].bindTooltip('Hole ' + hole + ' green', { permanent: false, direction: 'center' });
+    }
+  });
 }
 
 function markerOpts(i) {
@@ -334,6 +502,8 @@ function renderHoleList() {
     const teeIdx   = getAssignedIdx('tee', h);
     const greenIdx = getAssignedIdx('green', h);
     if (teeIdx !== null && greenIdx !== null) done++;
+    const poly = greenPolygons[h];
+    const hasPoly = poly && poly.length >= 3;
     const row = document.createElement('div');
     row.className = 'hole-row';
     row.innerHTML =
@@ -345,10 +515,13 @@ function renderHoleList() {
         '<span class="indicator ind-green ' + (greenIdx !== null ? 'set' : 'unset') + '"' +
           (greenIdx !== null ? ' title="Stay #'+(greenIdx+1)+'" onclick="focusStay('+greenIdx+')"' : '') +
           '>G' + (greenIdx !== null ? ' '+(greenIdx+1) : '') + '</span>' +
+        '<span class="ind-poly ' + (hasPoly ? 'set' : 'unset') + '" onclick="startDrawGreen('+h+')" title="' + (hasPoly ? poly.length+' pts — click to redraw' : 'Draw green polygon') + '">' +
+          (hasPoly ? '⬡ '+poly.length : '⬡') + '</span>' +
       '</div>' +
       '<div class="hole-clears">' +
         (teeIdx !== null ? '<button class="clr" onclick="clearHoleType(\'tee\','+h+')">✕T</button>' : '') +
         (greenIdx !== null ? '<button class="clr" onclick="clearHoleType(\'green\','+h+')">✕G</button>' : '') +
+        (hasPoly ? '<button class="clr" onclick="clearGreenPolygon('+h+')">✕⬡</button>' : '') +
       '</div>';
     list.appendChild(row);
   }
@@ -368,6 +541,7 @@ function focusStay(idx) {
 function saveAll() {
   localStorage.setItem('rgcCourseMapper', JSON.stringify(assignments));
   localStorage.setItem('rgcCourseMapperPins', JSON.stringify(customPins));
+  localStorage.setItem('rgcGreenPolygons', JSON.stringify(greenPolygons));
 }
 function save() { saveAll(); }
 
@@ -381,10 +555,15 @@ function exportJson() {
     if (teeIdx === null || greenIdx === null) missing.push(h);
     const teeStay   = teeIdx   !== null ? getStay(teeIdx)   : null;
     const greenStay = greenIdx !== null ? getStay(greenIdx) : null;
+    const poly = greenPolygons[h];
     holes.push({
       hole:  h,
       tee:   teeStay   ? { lat: teeStay.lat,   lng: teeStay.lon   } : null,
-      green: greenStay ? { lat: greenStay.lat, lng: greenStay.lon } : null
+      green: greenStay ? {
+        lat: greenStay.lat,
+        lng: greenStay.lon,
+        ...(poly && poly.length >= 3 ? { polygon: poly } : {})
+      } : null
     });
   }
   if (missing.length > 0) {
@@ -402,6 +581,7 @@ function exportJson() {
 }
 
 // ── Init ───────────────────────────────────────────────────────────────────
+redrawAllPolygons();
 renderHoleList();
 </script>
 </body>
