@@ -1042,7 +1042,7 @@ function renderGpsHole(){
       </div>
       <div style="padding:0.5rem 1rem;display:flex;gap:8px;justify-content:flex-end;border-top:1px solid var(--border)">
         <button class="btn btn-ghost btn-sm" onclick="abandonGpsRound()">Abandon</button>
-        <button class="btn btn-primary btn-sm" onclick="finishGpsRound()">Finish Round</button>
+        <button class="btn btn-primary btn-sm" onclick="confirmEndHole()">Finish Round</button>
       </div>
     </div>`;
   initGpsMap(holeShots);
@@ -1185,6 +1185,7 @@ function confirmEndHole(){
         </div>
         <div class="fa">
           <button class="btn btn-ghost" onclick="renderGpsHole()">← Back</button>
+          ${GR.currentHole<18?`<button class="btn btn-ghost" onclick="saveHoleScore(true)">Finish Round</button>`:''}
           <button class="btn btn-primary" onclick="saveHoleScore()">
             ${GR.currentHole<18?'Next Hole →':'Finish Round'}
           </button>
@@ -1193,11 +1194,11 @@ function confirmEndHole(){
     </div>`;
   setTimeout(()=>{const i=document.getElementById('holeScoreInput');if(i){i.focus();i.select();}},50);
 }
-function saveHoleScore(){
-  const val=parseInt(document.getElementById('holeScoreInput').value);
+function saveHoleScore(finishAfter=false){
+  const val=parseInt(document.getElementById('holeScoreInput').value,10);
   if(!val||val<1){alert('Enter a valid score.');return;}
   GR.holeScores[GR.currentHole]=val;
-  if(GR.currentHole<18){
+  if(!finishAfter&&GR.currentHole<18){
     GR.currentHole++;
     GR.provisionalShotId=null;
     renderGpsHole();
@@ -1221,7 +1222,7 @@ function finishGpsRound(){
   showView('log',logTab);
   setTimeout(()=>{
     const pid=activeId;
-    if(HE&&HE.roundIds&&HE.roundIds[pid]&&HE.playerList&&HE.playerList.find(x=>x.p.id===pid)){
+    if(HE&&HE.roundIds&&HE.roundIds[pid]&&HE.scores&&HE.scores[pid]&&HE.playerList&&HE.playerList.find(x=>x.p.id===pid)){
       for(let h=1;h<=18;h++){
         if(savedScores[h]!=null){
           HE.scores[pid][h-1]=savedScores[h];
