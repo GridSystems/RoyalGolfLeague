@@ -749,6 +749,7 @@ function windDegToText(deg){
   const dirs=['N','NE','E','SE','S','SW','W','NW'];
   return dirs[Math.round((deg||0)/45)%8];
 }
+function escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function toast(msg,dur=2500){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),dur);}
 function setLoading(on,msg='Loading…'){const o=document.getElementById('loadingOverlay');o.style.display=on?'flex':'none';if(on)o.querySelector('div:last-child').textContent=msg;}
 function closeModal(id){document.getElementById(id).style.display='none';}
@@ -997,7 +998,7 @@ async function startGpsRound(){
 }
 function renderClubPicker(player){
   const bag=(player?.bag&&player.bag.length)?player.bag:['Driver'];
-  return bag.map(c=>`<button class="club-btn${GR.selectedClub===c?' selected':''}" onclick="selectGpsClub('${c.replace(/'/g,"\\'")}',this)">${c}</button>`).join('');
+  return bag.map(c=>`<button class="club-btn${GR.selectedClub===c?' selected':''}" onclick="selectGpsClub('${c.replace(/'/g,"\\'")}',this)">${escHtml(c)}</button>`).join('');
 }
 function selectGpsClub(club,el){
   GR.selectedClub=club;
@@ -1254,17 +1255,18 @@ function renderBagSetup(){
       ${bag.length===0?'<div style="color:rgba(255,255,255,0.3);font-size:0.82rem">No clubs added yet.</div>':''}
       ${bag.map((club,i)=>`
         <div class="bag-club-row">
-          <span class="bag-club-name">${club}</span>
+          <span class="bag-club-name">${escHtml(club)}</span>
           <button class="btn btn-ghost btn-sm" onclick="moveBagClub(${i},-1)" ${i===0?'disabled':''}>↑</button>
           <button class="btn btn-ghost btn-sm" onclick="moveBagClub(${i},1)" ${i===bag.length-1?'disabled':''}>↓</button>
           <button class="btn btn-danger btn-sm" onclick="removeBagClub(${i})">✕</button>
         </div>`).join('')}
+      ${(()=>{const avail=MASTER_CLUBS.filter(c=>!bag.includes(c));return avail.length?`
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
         <select id="masterClubSelect" style="flex:1;min-width:120px">
-          ${MASTER_CLUBS.filter(c=>!bag.includes(c)).map(c=>`<option value="${c}">${c}</option>`).join('')}
+          ${avail.map(c=>`<option value="${escHtml(c)}">${escHtml(c)}</option>`).join('')}
         </select>
         <button class="btn btn-ghost btn-sm" onclick="addBagClub()">+ Add</button>
-      </div>
+      </div>`:'';})()}
       <div style="display:flex;gap:8px">
         <input type="text" id="customClubInput" placeholder="Custom club (e.g. 48° PW)" style="flex:1">
         <button class="btn btn-ghost btn-sm" onclick="addCustomBagClub()">+ Custom</button>
@@ -1275,7 +1277,7 @@ async function saveBag(bag){
   const p=players.find(x=>x.id===activeId);
   if(!p)return;
   try{
-    await sbUpdate('players',p.id,{bag:JSON.stringify(bag)});
+    await sbUpdate('players',p.id,{bag});
     p.bag=bag;
     renderBagSetup();
     toast('Bag saved ✓');
@@ -1298,12 +1300,14 @@ function addCustomBagClub(){
 }
 function removeBagClub(idx){
   const p=players.find(x=>x.id===activeId);
-  const bag=Array.isArray(p?.bag)?[...p.bag]:[];
+  if(!p)return;
+  const bag=Array.isArray(p.bag)?[...p.bag]:[];
   bag.splice(idx,1);saveBag(bag);
 }
 function moveBagClub(idx,dir){
   const p=players.find(x=>x.id===activeId);
-  const bag=Array.isArray(p?.bag)?[...p.bag]:[];
+  if(!p)return;
+  const bag=Array.isArray(p.bag)?[...p.bag]:[];
   const target=idx+dir;
   if(target<0||target>=bag.length)return;
   [bag[idx],bag[target]]=[bag[target],bag[idx]];
