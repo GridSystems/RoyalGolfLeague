@@ -918,6 +918,21 @@ function renderRules(){
     <p style="font-size:0.75rem;color:rgba(255,255,255,0.3)">DKK 250 × ${approved} player${approved!==1?'s':''} = DKK ${gross}${mpFee?` · MobilePay −DKK ${mpFee} (${Math.floor(gross/1000)}×DKK 19)`:''} · Net DKK ${net} · Split 50/50</p>`;
 }
 // ── GPS Round Tracker ─────────────────────────────────────────────────────────
+async function fetchWeather(lat,lng){
+  try{
+    const r=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=wind_speed_10m,wind_direction_10m&wind_speed_unit=kmh&forecast_days=1`);
+    if(!r.ok)return;
+    const d=await r.json();
+    const spd=d.current?.wind_speed_10m??null;
+    const deg=d.current?.wind_direction_10m??null;
+    currentWeather={speed_kmh:spd,dir:deg!=null?windDegToText(deg):null,deg};
+  }catch(e){/* silent — wind is non-critical */}
+}
+function startWeatherRefresh(lat,lng){
+  if(weatherInterval)clearInterval(weatherInterval);
+  fetchWeather(lat,lng);
+  weatherInterval=setInterval(()=>fetchWeather(lat,lng),15*60*1000);
+}
 function renderTrackView(){
   const el=document.getElementById('trackContent');
   if(!el)return;
