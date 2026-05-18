@@ -216,6 +216,7 @@ select option { background: #1a3a2a; }
     <button class="nav-tab" id="tabHistory" onclick="showView('history',this)">My Rounds</button>
     <button class="nav-tab" id="tabPlayers" onclick="showView('players',this)">Players</button>
     <button class="nav-tab" onclick="showView('rules',this)">Rules</button>
+    <button class="nav-tab" id="tabTrack" onclick="showView('track',this)" style="display:none">📍 Track</button>
     <button class="nav-tab" id="adminTab" style="display:none" onclick="requireAdminPin(this)">⚙ Admin</button>
   </div>
 
@@ -468,6 +469,11 @@ select option { background: #1a3a2a; }
       </div>
     </div>
 
+  </div>
+
+  <!-- GPS ROUND TRACKER -->
+  <div class="view" id="view-track">
+    <div id="trackContent"></div>
   </div>
 
   <!-- ADMIN -->
@@ -872,6 +878,7 @@ function showView(id,btn){
   if(id==='log'){buildPlayerCheckboxes();checkForResumableRounds();applySaturdayDraw();}
   if(id==='admin'){renderPendingApprovals();renderAdmin();renderBulkEntry();renderAdminFines();renderSaturdayAdmin();}
   if(id==='rules')renderRules();
+  if(id==='track')renderTrackView();
   if(id==='signup')renderSaturdayView();
   if(id==='teesheet')renderTeeSheet();
 }
@@ -894,6 +901,13 @@ function renderRules(){
       </div>
     </div>
     <p style="font-size:0.75rem;color:rgba(255,255,255,0.3)">DKK 250 × ${approved} player${approved!==1?'s':''} = DKK ${gross}${mpFee?` · MobilePay −DKK ${mpFee} (${Math.floor(gross/1000)}×DKK 19)`:''} · Net DKK ${net} · Split 50/50</p>`;
+}
+// ── GPS Round Tracker ─────────────────────────────────────────────────────────
+function renderTrackView(){
+  const el=document.getElementById('trackContent');
+  if(!el)return;
+  if(GR){renderGpsHole();}
+  else{renderGpsStart();}
 }
 function showLb(id,btn){document.querySelectorAll('.lb-view').forEach(v=>v.classList.remove('active'));document.querySelectorAll('.sub-tab').forEach(t=>t.classList.remove('active'));document.getElementById('lb-'+id).classList.add('active');if(btn)btn.classList.add('active');if(id==='today')renderTodayLb();if(id==='season')renderSeasonLb();if(id==='dreamcard'){renderDreamCard();}if(id==='fines')renderFinesLb();if(id==='saturday')renderSaturdayView();}
 
