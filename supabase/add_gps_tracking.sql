@@ -25,6 +25,10 @@ CREATE TABLE IF NOT EXISTS public.gps_shots (
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.gps_shots TO anon, authenticated;
 GRANT USAGE, SELECT ON SEQUENCE public.gps_shots_id_seq TO authenticated;
 
+-- RLS is disabled to match all other tables in this project
+-- (app uses anon key with client-side player selection — no server-side auth)
+ALTER TABLE public.gps_shots DISABLE ROW LEVEL SECURITY;
+
 CREATE INDEX IF NOT EXISTS idx_gps_shots_player_id ON public.gps_shots(player_id);
 CREATE INDEX IF NOT EXISTS idx_gps_shots_player_round_hole ON public.gps_shots(player_id, round_date, hole);
 
