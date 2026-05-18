@@ -781,7 +781,7 @@ async function loadData(){const all=await sbGet('players','order=created_at.asc'
 function adminPlayer(){return players.find(p=>p.is_admin)||players[0];}
 function isAdmin(){return players.find(p=>p.id===activeId)?.is_admin===true;}
 function updateAdminUI(){const a=isAdmin();document.getElementById('adminTab').style.display=a?'inline-block':'none';document.getElementById('adminBadge').style.display=a?'inline-flex':'none';const ab=document.getElementById('addPlayerBtn');if(ab)ab.style.display=a?'inline-block':'none';if(a)renderSaturdayAdmin();}
-function applyPendingUI(){const p=players.find(x=>x.id===activeId)||pendingPlayers.find(x=>x.id===activeId);const pending=p&&p.approved===false;document.getElementById('pendingBanner').style.display=pending?'block':'none';document.getElementById('tabLeaderboard').style.display=pending?'none':'';document.getElementById('tabHistory').style.display=pending?'none':'';document.getElementById('tabPlayers').style.display=pending?'none':'';if(pending){showView('log',document.querySelector('.nav-tab'));document.querySelector('.nav-tab').classList.remove('active');}}
+function applyPendingUI(){const p=players.find(x=>x.id===activeId)||pendingPlayers.find(x=>x.id===activeId);const pending=p&&p.approved===false;document.getElementById('pendingBanner').style.display=pending?'block':'none';document.getElementById('tabLeaderboard').style.display=pending?'none':'';document.getElementById('tabHistory').style.display=pending?'none':'';document.getElementById('tabPlayers').style.display=pending?'none':'';if(pending){showView('log',document.querySelector('.nav-tab'));document.querySelector('.nav-tab').classList.remove('active');}const trackTab=document.getElementById('tabTrack');if(trackTab){const me=players.find(x=>x.id===activeId)||pendingPlayers.find(x=>x.id===activeId);const canTrack=me&&me.approved!==false&&!me.is_social;trackTab.style.display=canTrack?'':'none';}}
 
 // ── Email + PIN Login ─────────────────────────────────────────────────────────
 let lockLoginPlayer=null;
@@ -2682,6 +2682,8 @@ async function resetPlayerPin(id){
   }catch(e){alert('Error: '+e.message);}finally{setLoading(false);}
 }
 function setPlayer(id){
+  // Reset GPS tracking if player changes mid-round
+  if(GR&&id!==activeId){if(GR.map)GR.map.remove();if(weatherInterval){clearInterval(weatherInterval);weatherInterval=null;}GR=null;toast('GPS round cleared (player changed)');}
   const sessionId=parseInt(sessionStorage.getItem('sl_session_player'));
   if(sessionId&&id!==sessionId&&!isAdmin()){toast('You can only view your own profile.');return;}
   activeId=id;const p=players.find(x=>x.id===id);
