@@ -697,6 +697,7 @@ async function sbDelete(t,id){const r=await fetch(`${SUPABASE_URL}/rest/v1/${t}?
 
 // ── Course data ───────────────────────────────────────────────────────────────
 const HOLE_PARS=[4,4,5,3,4,4,3,4,4,4,4,4,3,5,4,3,5,5];
+const MASTER_CLUBS=['Driver','2W','3W','4W','5W','7W','9W','2H','3H','4H','5H','6H','7H','1i','2i','3i','4i','5i','6i','7i','8i','9i','PW','GW','SW','LW','Putter'];
 const HOLE_HCP=[4,14,8,18,12,10,16,6,2,5,7,13,17,3,11,15,1,9];
 const COURSE_PAR=72;
 const TEES=[
@@ -711,6 +712,10 @@ const TEES=[
 const COLORS=['#e8534a','#4a7fe8','#e8a93a','#6cb86c','#a06be8','#e86ca0','#4ab8c8','#c8a060','#80b840','#e87040'];
 
 let players=[],allRounds=[],activeId=null,selColor=0;
+// ── GPS Tracker state ─────────────────────────────────────────────────────────
+let GR = null;
+let currentWeather = null;
+let weatherInterval = null;
 let fineTypes=[],allFines=[];
 let saturdayEvents=[],saturdaySignups=[];
 const MOBILEPAY_FINES_URL='https://qr.mobilepay.dk/box/19b8d876-6c09-4fbd-b471-6d46df7c61e5/pay-in';
@@ -733,6 +738,16 @@ const scC=d=>d<=-2?'s-eagle':d===-1?'s-birdie':d===0?'s-par':d===1?'s-bogey':'s-
 const vpC=d=>d<=-2?'#c9a0f0':d===-1?'#7fcc9e':d===0?'#82aaf0':d===1?'#f0a882':'#f08080';
 const ptC=p=>p>=4?'#c9a0f0':p===3?'#7fcc9e':p===2?'#82aaf0':p===1?'#f0a882':'rgba(255,255,255,0.28)';
 const today=()=>new Date().toISOString().split('T')[0];
+function haversineM(lat1,lng1,lat2,lng2){
+  const R=6371000,rad=Math.PI/180;
+  const dLat=(lat2-lat1)*rad,dLng=(lng2-lng1)*rad;
+  const a=Math.sin(dLat/2)**2+Math.cos(lat1*rad)*Math.cos(lat2*rad)*Math.sin(dLng/2)**2;
+  return Math.round(R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a)));
+}
+function windDegToText(deg){
+  const dirs=['N','NE','E','SE','S','SW','W','NW'];
+  return dirs[Math.round((deg||0)/45)%8];
+}
 function toast(msg,dur=2500){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),dur);}
 function setLoading(on,msg='Loading…'){const o=document.getElementById('loadingOverlay');o.style.display=on?'flex':'none';if(on)o.querySelector('div:last-child').textContent=msg;}
 function closeModal(id){document.getElementById(id).style.display='none';}
