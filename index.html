@@ -1099,6 +1099,42 @@ function drawShotMap(holeShots){
     GR.map.setView([gpsShots[0].lat,gpsShots[0].lng],18);
   }
 }
+async function recordShot(type){
+  if(!GR||!activeId)return;
+  const isChipOrPutt=GR.selectedWeight==='chip'||GR.selectedWeight==='putt';
+  setLoading(true,'Recording…');
+  try{
+    let lat=null,lng=null;
+    if(!isChipOrPutt){
+      const pos=await new Promise((res,rej)=>
+        navigator.geolocation.getCurrentPosition(res,rej,{enableHighAccuracy:true,timeout:8000})
+      );
+      lat=pos.coords.latitude;
+      lng=pos.coords.longitude;
+    }
+    const holeShots=GR.shots.filter(s=>s.hole===GR.currentHole);
+    const shot_num=holeShots.length+1;
+    const payload={
+      player_id:activeId,
+      round_date:GR.date,
+      hole:GR.currentHole,
+      shot_num,
+      type,
+      lat,lng,
+      club:GR.selectedClub,
+      shot_weight:GR.selectedWeight,
+      wind_speed:currentWeather?.speed_kmh??null,
+      wind_dir:currentWeather?.dir??null,
+      wind_deg:currentWeather?.deg??null
+    };
+    const [saved]=await sbInsert('gps_shots',payload);
+    GR.shots.push(saved||{...payload,id:Date.now()});
+    if(type==='provisional')GR.provisionalShotId=(saved||payload).id;
+    renderGpsHole();
+  }catch(e){
+    alert('Could not record shot: '+e.message);
+  }finally{setLoading(false);}
+}
 function renderTrackView(){
   const el=document.getElementById('trackContent');
   if(!el)return;
