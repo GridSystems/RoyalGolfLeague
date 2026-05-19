@@ -815,26 +815,30 @@ function copyOverlaySettings() {
 
 // ── Overlay persistence ────────────────────────────────────────────────────
 // Pre-seeded defaults: bearing(tee→green), scale 0.65, green GPS centre
-// Hole 1 uses the user-calibrated value; 2-18 use computed bearing.
+// Rotation sources:
+//   1:  user-calibrated (-170°); algo gave -178° (8° err) ✓
+//   3,7,12,13,18: bunker-match + 180° flip (≤42° diff from bearing) ✓
+//   9,16: bearing fallback (no satellite blobs found)
+//   2,4,5,6,8,10,11,14,15,17: tee→green bearing (large blob-match diff, untrustworthy)
 const OVERLAY_DEFAULTS = {
   1:  {rot:-170, scale:0.65, lat:55.63527289876049, lng:12.56852835416794},
   2:  {rot:  36, scale:0.65, lat:55.637074, lng:12.571836},
-  3:  {rot:-170, scale:0.65, lat:55.633343, lng:12.571409},
+  3:  {rot: 156, scale:0.65, lat:55.633343, lng:12.571409},
   4:  {rot: -32, scale:0.65, lat:55.634267, lng:12.569700},
   5:  {rot:-164, scale:0.65, lat:55.630469, lng:12.568423},
   6:  {rot: -67, scale:0.65, lat:55.632771, lng:12.561003},
-  7:  {rot: 106, scale:0.65, lat:55.632613, lng:12.563988},
+  7:  {rot:  65, scale:0.65, lat:55.632613, lng:12.563988},
   8:  {rot:  19, scale:0.65, lat:55.635267, lng:12.566551},
   9:  {rot:  53, scale:0.65, lat:55.638214, lng:12.570327},
   10: {rot:-100, scale:0.65, lat:55.638181, lng:12.565392},
   11: {rot:-155, scale:0.65, lat:55.633187, lng:12.562876},
-  12: {rot:  19, scale:0.65, lat:55.636504, lng:12.563852},
-  13: {rot: -47, scale:0.65, lat:55.637770, lng:12.563066},
+  12: {rot:  -1, scale:0.65, lat:55.636504, lng:12.563852},
+  13: {rot: -74, scale:0.65, lat:55.637770, lng:12.563066},
   14: {rot:-167, scale:0.65, lat:55.633399, lng:12.560343},
   15: {rot:   9, scale:0.65, lat:55.637212, lng:12.560953},
   16: {rot:-160, scale:0.65, lat:55.635338, lng:12.558873},
   17: {rot:  48, scale:0.65, lat:55.637996, lng:12.561462},
-  18: {rot:  93, scale:0.65, lat:55.638759, lng:12.571647},
+  18: {rot:  51, scale:0.65, lat:55.638759, lng:12.571647},
 };
 let overlaySaved = JSON.parse(localStorage.getItem('rgcOverlaySettings') || '{}');
 
