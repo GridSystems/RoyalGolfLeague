@@ -808,6 +808,7 @@ function saveOverlay() {
   const c = overlayLayer._center;
   overlaySaved[overlayHole] = { rot: _overlayRot, scale: _overlayScale, lat: c.lat, lng: c.lng };
   localStorage.setItem('rgcOverlaySettings', JSON.stringify(overlaySaved));
+  renderHoleList();
   const btn = document.getElementById('overlayBar').querySelector('button[onclick="saveOverlay()"]');
   if (btn) { btn.textContent = '✓ Saved'; setTimeout(() => btn.textContent = '💾 Save', 1200); }
 }
@@ -848,7 +849,7 @@ function renderHoleList() {
           '>G' + (greenIdx !== null ? ' '+(greenIdx+1) : '') + '</span>' +
         '<span class="ind-poly ' + (hasPoly ? 'set' : 'unset') + '" onclick="startDrawGreen('+h+')" title="' + (hasPoly ? poly.length+' pts — click to redraw' : 'Draw green polygon') + '">' +
           (hasPoly ? '⬡ '+poly.length : '⬡') + '</span>' +
-        '<span class="ind-ovl ' + (overlayHole === h ? 'active' : 'inactive') + '" onclick="activateOverlay('+h+')" title="Show green diagram overlay">🖼</span>' +
+        '<span class="ind-ovl ' + (overlayHole === h ? 'active' : 'inactive') + '" onclick="activateOverlay('+h+')" title="' + (overlaySaved[h] ? 'Overlay saved — click to restore' : 'Show green diagram overlay') + '">' + (overlaySaved[h] ? '🖼💾' : '🖼') + '</span>' +
       '</div>' +
       '<div class="hole-clears">' +
         (teeIdx !== null ? '<button class="clr" onclick="clearHoleType(\'tee\','+h+')">✕T</button>' : '') +
