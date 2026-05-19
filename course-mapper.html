@@ -120,7 +120,7 @@
   <input type="range" id="overlayRotSlider" min="-180" max="180" value="0" step="1" style="width:100px" oninput="updateOverlayRot(this.value)">
   <span class="oval" id="overlayRotVal">0°</span>
   <label>Scale</label>
-  <input type="range" id="overlayScaleSlider" min="20" max="300" value="100" step="5" style="width:80px" oninput="updateOverlayScale(this.value)">
+  <input type="range" id="overlayScaleSlider" min="20" max="300" value="100" step="1" style="width:80px" oninput="updateOverlayScale(this.value)">
   <span class="oval" id="overlayScaleVal">1.0×</span>
   <button onclick="cycleOverlayOpacity()" id="overlayOpacBtn" style="background:#555;color:#eee">70%</button>
   <button onclick="removeOverlay()" style="background:#e94560;color:#fff">✕ Remove</button>
@@ -780,7 +780,7 @@ function updateOverlayRot(val) {
 }
 
 function updateOverlayScale(val) {
-  const s = (parseInt(val) / 100).toFixed(1);
+  const s = (parseInt(val) / 100).toFixed(2);
   document.getElementById('overlayScaleVal').textContent = s + '×';
   if (overlayLayer) overlayLayer.setScale(parseFloat(s));
 }
