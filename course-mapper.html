@@ -117,12 +117,17 @@
   <span class="olabel" id="overlayBarText">Hole N overlay</span>
   <span style="font-size:10px;color:#888">drag image to move</span>
   <label>Rotate</label>
-  <input type="range" id="overlayRotSlider" min="-180" max="180" value="0" step="1" style="width:100px" oninput="updateOverlayRot(this.value)">
+  <button onclick="stepRot(-10)" style="background:#555;color:#eee;padding:2px 7px;font-size:13px" title="-10°">−−</button>
+  <button onclick="stepRot(-1)"  style="background:#555;color:#eee;padding:2px 7px;font-size:13px" title="-1°">−</button>
   <span class="oval" id="overlayRotVal">0°</span>
+  <button onclick="stepRot(1)"   style="background:#555;color:#eee;padding:2px 7px;font-size:13px" title="+1°">+</button>
+  <button onclick="stepRot(10)"  style="background:#555;color:#eee;padding:2px 7px;font-size:13px" title="+10°">++</button>
   <label>Scale</label>
-  <button onclick="stepScale(-1)" style="background:#555;color:#eee;padding:2px 8px;font-size:14px">−</button>
+  <button onclick="stepScale(-5)" style="background:#555;color:#eee;padding:2px 7px;font-size:13px" title="-0.25×">−−</button>
+  <button onclick="stepScale(-1)" style="background:#555;color:#eee;padding:2px 7px;font-size:13px" title="-0.05×">−</button>
   <span class="oval" id="overlayScaleVal">1.00×</span>
-  <button onclick="stepScale(1)"  style="background:#555;color:#eee;padding:2px 8px;font-size:14px">+</button>
+  <button onclick="stepScale(1)"  style="background:#555;color:#eee;padding:2px 7px;font-size:13px" title="+0.05×">+</button>
+  <button onclick="stepScale(5)"  style="background:#555;color:#eee;padding:2px 7px;font-size:13px" title="+0.25×">++</button>
   <button onclick="cycleOverlayOpacity()" id="overlayOpacBtn" style="background:#555;color:#eee">70%</button>
   <button onclick="removeOverlay()" style="background:#e94560;color:#fff">✕ Remove</button>
 </div>
@@ -757,9 +762,10 @@ function activateOverlay(hole) {
   const bar = document.getElementById('overlayBar');
   bar.style.display = 'flex';
   document.getElementById('overlayBarText').textContent = 'Hole ' + hole + ' overlay';
-  document.getElementById('overlayRotSlider').value = rot;
+  _overlayRot = rot;
   document.getElementById('overlayRotVal').textContent = rot + '°';
   _overlayScale = 1.0;
+
   document.getElementById('overlayScaleVal').textContent = '1.00×';
   overlayOpacIdx = 0;
   document.getElementById('overlayOpacBtn').textContent = '70%';
@@ -774,10 +780,12 @@ function removeOverlay(silent) {
   if (!silent) renderHoleList();
 }
 
-function updateOverlayRot(val) {
-  const deg = parseInt(val);
-  document.getElementById('overlayRotVal').textContent = deg + '°';
-  if (overlayLayer) overlayLayer.setRotation(deg);
+let _overlayRot = 0;
+function stepRot(deg) {
+  _overlayRot = ((_overlayRot + deg) % 360 + 360) % 360;
+  if (_overlayRot > 180) _overlayRot -= 360;   // keep in -180..180
+  document.getElementById('overlayRotVal').textContent = _overlayRot + '°';
+  if (overlayLayer) overlayLayer.setRotation(_overlayRot);
 }
 
 let _overlayScale = 1.0;
