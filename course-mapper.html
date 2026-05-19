@@ -823,7 +823,10 @@ function exportJson() {
     );
     if (!ok) return;
   }
-  const blob = new Blob([JSON.stringify({ holes }, null, 2)], { type: 'application/json' });
+  // Include all custom pins (assigned or not) so distance markers aren't lost
+  const pins = customPins.map(p => ({ lat: p.lat, lng: p.lon }));
+  const output = pins.length > 0 ? { holes, pins } : { holes };
+  const blob = new Blob([JSON.stringify(output, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = 'royal_gc_holes.json';
