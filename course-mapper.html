@@ -815,30 +815,26 @@ function copyOverlaySettings() {
 
 // ── Overlay persistence ────────────────────────────────────────────────────
 // Pre-seeded defaults: bearing(tee→green), scale 0.65, green GPS centre
-// Rotation sources:
-//   1:  user-calibrated (-170°); algo gave -178° (8° err) ✓
-//   3,7,12,13,18: bunker-match + 180° flip (≤42° diff from bearing) ✓
-//   9,16: bearing fallback (no satellite blobs found)
-//   2,4,5,6,8,10,11,14,15,17: tee→green bearing (large blob-match diff, untrustworthy)
+// All 18 holes manually validated on-screen 2026-05-19.
 const OVERLAY_DEFAULTS = {
-  1:  {rot:-170, scale:0.65, lat:55.63527289876049, lng:12.56852835416794},
-  2:  {rot:  36, scale:0.65, lat:55.637074, lng:12.571836},
-  3:  {rot: 156, scale:0.65, lat:55.633343, lng:12.571409},
-  4:  {rot: -32, scale:0.65, lat:55.634267, lng:12.569700},
-  5:  {rot:-164, scale:0.65, lat:55.630469, lng:12.568423},
-  6:  {rot: -67, scale:0.65, lat:55.632771, lng:12.561003},
-  7:  {rot:  65, scale:0.65, lat:55.632613, lng:12.563988},
-  8:  {rot:  19, scale:0.65, lat:55.635267, lng:12.566551},
-  9:  {rot:  53, scale:0.65, lat:55.638214, lng:12.570327},
-  10: {rot:-100, scale:0.65, lat:55.638181, lng:12.565392},
-  11: {rot:-155, scale:0.65, lat:55.633187, lng:12.562876},
-  12: {rot:  -1, scale:0.65, lat:55.636504, lng:12.563852},
-  13: {rot: -74, scale:0.65, lat:55.637770, lng:12.563066},
-  14: {rot:-167, scale:0.65, lat:55.633399, lng:12.560343},
-  15: {rot:   9, scale:0.65, lat:55.637212, lng:12.560953},
-  16: {rot:-160, scale:0.65, lat:55.635338, lng:12.558873},
-  17: {rot:  48, scale:0.65, lat:55.637996, lng:12.561462},
-  18: {rot:  51, scale:0.65, lat:55.638759, lng:12.571647},
+  1:  {rot:-170, scale:0.65, lat:55.63527289876049,  lng:12.56852835416794},
+  2:  {rot:  13, scale:0.65, lat:55.63721379218065,  lng:12.571902573108673},
+  3:  {rot:-166, scale:0.70, lat:55.63320173433742,  lng:12.571443915367128},
+  4:  {rot: -31, scale:0.60, lat:55.634299389558336, lng:12.569611966609957},
+  5:  {rot:-161, scale:0.80, lat:55.63040509819049,  lng:12.568367421627045},
+  6:  {rot: -49, scale:0.70, lat:55.63279591591653,  lng:12.560964524745943},
+  7:  {rot: 115, scale:0.65, lat:55.63253097660693,  lng:12.564075887203218},
+  8:  {rot:  53, scale:0.65, lat:55.635177520111924, lng:12.566723227500917},
+  9:  {rot:  82, scale:0.70, lat:55.63831591545198,  lng:12.570658028125765},
+  10: {rot:-100, scale:0.60, lat:55.63829472195383,  lng:12.565003931522371},
+  11: {rot:-162, scale:0.65, lat:55.63319260656646,  lng:12.563163936138155},
+  12: {rot:  31, scale:0.70, lat:55.63651284418476,  lng:12.5639283657074},
+  13: {rot: -44, scale:0.70, lat:55.63785417629236,  lng:12.563067376613619},
+  14: {rot:-149, scale:0.65, lat:55.633315248264125, lng:12.560350298881533},
+  15: {rot:  22, scale:0.70, lat:55.63722590886439,  lng:12.561047673225405},
+  16: {rot:-152, scale:0.65, lat:55.63528198560033,  lng:12.558759748935701},
+  17: {rot:  59, scale:0.70, lat:55.6380161584524,   lng:12.561415135860445},
+  18: {rot: 109, scale:0.65, lat:55.63876401869515,  lng:12.571484148502352},
 };
 let overlaySaved = JSON.parse(localStorage.getItem('rgcOverlaySettings') || '{}');
 
