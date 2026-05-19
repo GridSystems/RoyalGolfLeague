@@ -129,6 +129,7 @@
   <button onclick="stepScale(1)"  style="background:#555;color:#eee;padding:2px 7px;font-size:13px" title="+0.05×">+</button>
   <button onclick="stepScale(5)"  style="background:#555;color:#eee;padding:2px 7px;font-size:13px" title="+0.25×">++</button>
   <button onclick="cycleOverlayOpacity()" id="overlayOpacBtn" style="background:#555;color:#eee">70%</button>
+  <button onclick="saveOverlay()" style="background:#27ae60;color:#fff">💾 Save</button>
   <button onclick="removeOverlay()" style="background:#e94560;color:#fff">✕ Remove</button>
 </div>
 
@@ -757,16 +758,20 @@ function activateOverlay(hole) {
     rot = Math.round(bearingDeg(t.lat, t.lon, g.lat, g.lon));
   }
   const greenS = greenIdx !== null ? getStay(greenIdx) : null;
-  const center = greenS ? L.latLng(greenS.lat, greenS.lon) : map.getCenter();
+  const saved  = overlaySaved[hole];
+  if (saved) { rot = saved.rot; }
+  const center = saved    ? L.latLng(saved.lat, saved.lng)
+               : greenS   ? L.latLng(greenS.lat, greenS.lon)
+               : map.getCenter();
   overlayLayer = new GreenOverlay(GREEN_IMAGES[hole], center, rot, PIN_OFFSETS[hole] || [0.5,0.5]).addTo(map);
   const bar = document.getElementById('overlayBar');
   bar.style.display = 'flex';
   document.getElementById('overlayBarText').textContent = 'Hole ' + hole + ' overlay';
-  _overlayRot = rot;
-  document.getElementById('overlayRotVal').textContent = rot + '°';
-  _overlayScale = 1.0;
-
-  document.getElementById('overlayScaleVal').textContent = '1.00×';
+  _overlayRot   = rot;
+  _overlayScale = saved ? saved.scale : 1.0;
+  if (saved) overlayLayer.setScale(_overlayScale);
+  document.getElementById('overlayRotVal').textContent   = _overlayRot + '°';
+  document.getElementById('overlayScaleVal').textContent = _overlayScale.toFixed(2) + '×';
   overlayOpacIdx = 0;
   document.getElementById('overlayOpacBtn').textContent = '70%';
   if (greenS) map.flyTo([greenS.lat, greenS.lon], 19, { animate: true, duration: 0.6 });
@@ -793,6 +798,18 @@ function stepScale(dir) {
   _overlayScale = Math.min(5.0, Math.max(0.1, Math.round((_overlayScale + dir * 0.05) * 100) / 100));
   document.getElementById('overlayScaleVal').textContent = _overlayScale.toFixed(2) + '×';
   if (overlayLayer) overlayLayer.setScale(_overlayScale);
+}
+
+// ── Overlay persistence ────────────────────────────────────────────────────
+let overlaySaved = JSON.parse(localStorage.getItem('rgcOverlaySettings') || '{}');
+
+function saveOverlay() {
+  if (!overlayLayer || overlayHole === null) return;
+  const c = overlayLayer._center;
+  overlaySaved[overlayHole] = { rot: _overlayRot, scale: _overlayScale, lat: c.lat, lng: c.lng };
+  localStorage.setItem('rgcOverlaySettings', JSON.stringify(overlaySaved));
+  const btn = document.getElementById('overlayBar').querySelector('button[onclick="saveOverlay()"]');
+  if (btn) { btn.textContent = '✓ Saved'; setTimeout(() => btn.textContent = '💾 Save', 1200); }
 }
 
 function cycleOverlayOpacity() {
