@@ -484,6 +484,13 @@ let overlayLayer    = null;
 let overlayHole     = null;
 let hazardLayer     = null;
 let hazardVisible   = true;
+
+// ── Survey state ────────────────────────────────────────────────────────────
+let surveyPanelOpen = false;
+let surveyHole      = 1;
+let surveyFeature   = 'front_green';
+let surveyGpsPos    = null;
+let surveyPoints    = [];
 const OVERLAY_OPAC  = [0.7, 0.5, 0.3, 0.9];
 let overlayOpacIdx  = 0;
 
@@ -1031,6 +1038,16 @@ function exportJson() {
   a.href = URL.createObjectURL(blob);
   a.download = 'royal_gc_holes.json';
   a.click();
+}
+
+// ── Survey data load ────────────────────────────────────────────────────────
+async function loadSurveyPoints() {
+  try {
+    surveyPoints = await sbSurveyGet();
+  } catch (e) {
+    console.warn('Could not load survey points from Supabase:', e);
+    surveyPoints = [];
+  }
 }
 
 // ── Init ───────────────────────────────────────────────────────────────────
