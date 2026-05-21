@@ -1040,6 +1040,31 @@ function exportJson() {
   a.click();
 }
 
+// ── Survey panel toggle + GPS ───────────────────────────────────────────────
+function toggleSurveyPanel() {
+  surveyPanelOpen = !surveyPanelOpen;
+  document.getElementById('surveyPanel').style.display = surveyPanelOpen ? 'block' : 'none';
+  document.getElementById('surveyBtn').classList.toggle('active', surveyPanelOpen);
+  if (surveyPanelOpen) {
+    renderSurveyPanel();
+    fetchSurveyGps();
+  }
+}
+
+function fetchSurveyGps() {
+  surveyGpsPos = null;
+  renderSurveyPanel();
+  if (!navigator.geolocation) {
+    console.warn('Geolocation not available');
+    return;
+  }
+  navigator.geolocation.getCurrentPosition(
+    pos => { surveyGpsPos = pos; renderSurveyPanel(); },
+    err => { console.warn('GPS error', err.code, err.message); renderSurveyPanel(); },
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+  );
+}
+
 // ── Survey panel render ─────────────────────────────────────────────────────
 function setSurveyHole(h) { surveyHole = h; renderSurveyPanel(); }
 function setSurveyFeature(t) { surveyFeature = t; renderSurveyPanel(); }
