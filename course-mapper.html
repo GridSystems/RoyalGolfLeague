@@ -74,6 +74,50 @@
     #panel-close:hover { background: #252545; }
     #legend { position: fixed; bottom: 12px; right: 12px; z-index: 1000; background: #16213ecc; border: 1px solid #0f3460; border-radius: 6px; padding: 8px 12px; font-size: 11px; line-height: 1.8; }
     #legend span { display: inline-block; width: 12px; height: 12px; border-radius: 50%; vertical-align: middle; margin-right: 5px; border: 1px solid #fff; }
+    /* ── Survey panel ──────────────────────────────────────────────────────── */
+    #surveyBtn { padding: 7px 14px; border-radius: 6px; border: 1px solid #555; background: none; color: #aaa; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+    #surveyBtn.active { background: #e94560; color: #fff; border-color: #e94560; }
+    #surveyPanel {
+      position: fixed; z-index: 1003; top: 56px; left: 50%; transform: translateX(-50%);
+      width: 92vw; max-width: 420px; max-height: calc(100vh - 70px); overflow-y: auto;
+      background: #16213e; border: 1px solid #e94560; border-radius: 10px;
+      box-shadow: 0 8px 32px rgba(0,0,0,.7);
+    }
+    #surveyPanel .sv-header {
+      display: flex; align-items: center; gap: 8px; padding: 10px 14px;
+      border-bottom: 1px solid #0f3460; position: sticky; top: 0; background: #16213e; z-index: 1;
+    }
+    #surveyPanel .sv-title { font-size: 14px; font-weight: 700; color: #e94560; flex: 1; }
+    #surveyPanel .sv-close { background: none; border: none; color: #666; font-size: 18px; cursor: pointer; padding: 2px 6px; }
+    #surveyPanel .sv-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 12px; }
+    .sv-section-label { font-size: 10px; text-transform: uppercase; letter-spacing: 1.2px; color: #556; font-weight: 700; margin-bottom: 4px; }
+    .sv-hole-row { display: flex; flex-wrap: wrap; gap: 5px; }
+    .sv-hole-btn { width: 36px; height: 36px; border-radius: 7px; border: 1px solid #2a2a4e; background: #1a1a3e; color: #888; font-size: 12px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; position: relative; }
+    .sv-hole-btn.sv-hole-sel { background: #e94560; border-color: #e94560; color: #fff; }
+    .sv-hole-btn.sv-hole-dot::after { content: ''; position: absolute; bottom: 3px; right: 3px; width: 5px; height: 5px; border-radius: 50%; background: #27ae60; }
+    .sv-feat-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+    .sv-feat-btn { padding: 9px 4px; border-radius: 7px; border: 1px solid #2a2a4e; background: #1a1a3e; color: #aaa; font-size: 11px; font-weight: 600; cursor: pointer; text-align: center; line-height: 1.4; }
+    .sv-feat-btn.sv-feat-sel { background: #0f3460; border-color: #4a90d9; color: #fff; }
+    .sv-feat-btn.sv-feat-rec { border-color: #27ae60; color: #4caf50; }
+    .sv-note { background: #1a1a0e; border: 1px solid #3a3a1a; border-radius: 7px; padding: 7px 10px; font-size: 11px; color: #888; line-height: 1.5; }
+    .sv-gps-row { background: #0d1a2e; border: 1px solid #1a3a5e; border-radius: 7px; padding: 9px 12px; display: flex; align-items: center; justify-content: space-between; }
+    .sv-gps-coords { font-size: 11px; color: #4a90d9; font-family: monospace; }
+    .sv-gps-good { font-size: 11px; color: #4caf50; font-weight: 700; }
+    .sv-gps-poor { font-size: 11px; color: #ff9800; font-weight: 700; }
+    .sv-action-row { display: flex; gap: 8px; }
+    .sv-btn-refresh { flex: 1; padding: 12px; border-radius: 8px; border: 1px solid #4a90d9; background: #0f3460; color: #7bb8f0; font-size: 13px; font-weight: 700; cursor: pointer; }
+    .sv-btn-record  { flex: 1; padding: 12px; border-radius: 8px; border: none; background: #27ae60; color: #fff; font-size: 13px; font-weight: 700; cursor: pointer; }
+    .sv-list-header { font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; color: #556; display: flex; justify-content: space-between; align-items: center; }
+    .sv-list-count  { color: #27ae60; font-size: 12px; text-transform: none; letter-spacing: 0; }
+    .sv-list-empty  { font-size: 12px; color: #444; text-align: center; padding: 8px; }
+    .sv-list        { background: #0d1a2e; border: 1px solid #1a3a5e; border-radius: 7px; overflow: hidden; }
+    .sv-list-item   { padding: 7px 10px; border-top: 1px solid #1a2a3e; display: flex; align-items: center; gap: 8px; }
+    .sv-list-item:first-child { border-top: none; }
+    .sv-list-dot    { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .sv-list-name   { color: #ccc; flex: 1; font-size: 12px; }
+    .sv-list-acc    { color: #556; font-size: 10px; }
+    .sv-list-del    { background: none; border: none; color: #e94560; font-size: 18px; cursor: pointer; padding: 0 2px; line-height: 1; }
+    .sv-copy-btn    { width: 100%; padding: 10px; border-radius: 7px; border: 1px solid #555; background: none; color: #aaa; font-size: 12px; font-weight: 600; cursor: pointer; }
   </style>
 </head>
 <body>
