@@ -1040,6 +1040,75 @@ function exportJson() {
   a.click();
 }
 
+// ── Survey panel render ─────────────────────────────────────────────────────
+function setSurveyHole(h) { surveyHole = h; renderSurveyPanel(); }
+function setSurveyFeature(t) { surveyFeature = t; renderSurveyPanel(); }
+
+function renderSurveyPanel() {
+  if (!surveyPanelOpen) return;
+  const body = document.getElementById('surveyPanelBody');
+
+  // Hole selector
+  let holeHtml = '<div class="sv-section-label">Hole</div><div class="sv-hole-row">';
+  for (let h = 1; h <= 18; h++) {
+    const hasDot = surveyPoints.some(p => p.hole === h);
+    holeHtml += `<button class="sv-hole-btn${h===surveyHole?' sv-hole-sel':''}${hasDot?' sv-hole-dot':''}" onclick="setSurveyHole(${h})">${h}</button>`;
+  }
+  holeHtml += '</div>';
+
+  // Feature grid
+  let featHtml = '<div class="sv-section-label">Feature</div><div class="sv-feat-grid">';
+  for (const f of SURVEY_FEATURES) {
+    const isSel = surveyFeature === f.type;
+    const isRec = !f.multi && surveyPoints.some(p => p.hole === surveyHole && p.type === f.type);
+    featHtml += `<button class="sv-feat-btn${isSel?' sv-feat-sel':''}${isRec?' sv-feat-rec':''}" onclick="setSurveyFeature('${f.type}')">${f.icon}<br><span>${f.label}${isRec?' ✓':''}</span></button>`;
+  }
+  featHtml += '</div>';
+
+  // Instruction note for multi-instance features
+  const feat = SURVEY_FEATURES.find(f => f.type === surveyFeature);
+  let noteHtml = '';
+  if (feat && feat.multi) {
+    const cnt = surveyPoints.filter(p => p.hole === surveyHole && p.type === surveyFeature).length;
+    noteHtml = `<div class="sv-note">${feat.icon} <b>${feat.label}</b> — tap Record each time you're at a new one. ${cnt > 0 ? cnt + ' recorded.' : ''}</div>`;
+  }
+
+  // GPS readout
+  let gpsHtml;
+  if (!surveyGpsPos) {
+    gpsHtml = '<div class="sv-gps-row"><span class="sv-gps-coords" style="color:#556">Fetching GPS…</span><span style="color:#556;font-size:11px">—</span></div>';
+  } else {
+    const acc = surveyGpsPos.coords.accuracy.toFixed(0);
+    gpsHtml = `<div class="sv-gps-row"><span class="sv-gps-coords">${surveyGpsPos.coords.latitude.toFixed(5)}°N&nbsp;&nbsp;${surveyGpsPos.coords.longitude.toFixed(5)}°E</span><span class="${acc<=3?'sv-gps-good':'sv-gps-poor'}">±${acc}m</span></div>`;
+  }
+
+  // Action buttons
+  const actionHtml = `<div class="sv-action-row"><button class="sv-btn-refresh" onclick="fetchSurveyGps()">↻ Refresh GPS</button><button class="sv-btn-record" id="surveyRecordBtn" onclick="recordSurveyPoint()">✓ Record</button></div>`;
+
+  // Recorded list for this hole
+  const holePoints = surveyPoints.filter(p => p.hole === surveyHole);
+  const multiIdx = {};
+  const labelled = holePoints.map(p => {
+    const f = SURVEY_FEATURES.find(f => f.type === p.type);
+    if (f && f.multi) { multiIdx[p.type] = (multiIdx[p.type] || 0) + 1; return {...p, label: `${f.label} #${multiIdx[p.type]}`}; }
+    return {...p, label: f ? f.label : p.type};
+  });
+
+  let listHtml = `<div class="sv-list-header"><span>Recorded — Hole ${surveyHole}</span><span class="sv-list-count">${holePoints.length} point${holePoints.length!==1?'s':''}</span></div>`;
+  if (holePoints.length === 0) {
+    listHtml += '<div class="sv-list-empty">No points yet for this hole.</div>';
+  } else {
+    listHtml += '<div class="sv-list">' + labelled.map(p =>
+      `<div class="sv-list-item"><span class="sv-list-dot" style="background:${SURVEY_COLORS[p.type]||'#888'}"></span><span class="sv-list-name">${p.label}</span><span class="sv-list-acc">±${p.accuracy.toFixed(0)}m</span><button class="sv-list-del" onclick="deleteSurveyPoint('${p.id}')">×</button></div>`
+    ).join('') + '</div>';
+  }
+
+  // Copy button footer
+  const copyHtml = '<button class="sv-copy-btn" id="surveyCopyBtn" onclick="copySurveyData()">📋 Copy Survey Data</button>';
+
+  body.innerHTML = holeHtml + featHtml + noteHtml + gpsHtml + actionHtml + listHtml + copyHtml;
+}
+
 // ── Survey data load ────────────────────────────────────────────────────────
 async function loadSurveyPoints() {
   try {
