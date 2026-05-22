@@ -623,6 +623,13 @@ select option { background: #1a3a2a; }
     <button class="btn btn-ghost btn-sm" onclick="closeModal('bagModal')">Close</button>
   </div>
 </div></div>
+<div class="modal-bg" id="conflictModal" style="display:none"><div class="modal modal-sm">
+  <h3 id="conflictModalTitle">Resolve Scores</h3>
+  <div id="conflictModalBody" style="display:flex;flex-direction:column;gap:10px;margin-top:0.75rem"></div>
+  <div style="display:flex;justify-content:flex-end;margin-top:1rem">
+    <button class="btn btn-ghost btn-sm" onclick="closeModal('conflictModal')">Close</button>
+  </div>
+</div></div>
 
 
 <div class="modal-bg" id="pinModal" style="display:none"><div class="modal modal-sm">
@@ -1655,6 +1662,66 @@ async function heInit(playerList,date,notes,startHole){
   heRender();
 }
 
+function openConflictModal(h){
+  const saved=JSON.parse(localStorage.getItem('sl_active_group')||'{}');
+  const isLogScorer=!saved.scorerPlayerId||saved.scorerPlayerId===activeId;
+  const par=HOLE_PARS[h-1];
+  document.getElementById('conflictModalTitle').textContent=`Hole ${h} — Par ${par}`;
+  const rows=HE.playerList.map(({p})=>{
+    const r=allRounds.find(x=>x.id===HE.roundIds[p.id]);
+    const aScore=HE.scores[p.id][h-1];
+    const bScore=r?.marker_holes?.[h-1]?.score??null;
+    const myScore=isLogScorer?aScore:bScore;
+    const otherScore=isLogScorer?bScore:aScore;
+    if(myScore==null&&otherScore==null)return'';
+    const agreed=myScore!=null&&otherScore!=null&&myScore===otherScore;
+    return`<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 12px;background:rgba(0,0,0,0.2);border-radius:8px;border:1px solid ${agreed?'rgba(74,140,92,0.3)':'rgba(240,180,60,0.3)'}">
+      <div style="display:flex;align-items:center;gap:7px">
+        <div style="width:20px;height:20px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.58rem;font-weight:700;color:#fff">${ini(p.name)}</div>
+        <span style="font-size:0.85rem">${p.name.split(' ')[0]}</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;font-size:0.82rem">
+        <span>You: <strong>${myScore??'—'}</strong></span>
+        <span style="color:rgba(255,255,255,0.35)">Other: ${otherScore??'—'}</span>
+        ${agreed?`<span style="color:#7fcc9e;font-size:0.9rem">✓</span>`
+          :myScore!=null&&otherScore!=null?`<button class="btn btn-ghost btn-sm" onclick="acceptScore(${p.id},${h},${otherScore},${isLogScorer})">Accept ${otherScore}</button>`:''}
+      </div>
+    </div>`;
+  }).filter(Boolean).join('');
+  document.getElementById('conflictModalBody').innerHTML=rows||'<div style="color:rgba(255,255,255,0.4);font-size:0.85rem">No conflicts on this hole.</div>';
+  document.getElementById('conflictModal').style.display='flex';
+}
+async function acceptScore(pid,h,score,isLogScorer){
+  const rid=HE.roundIds[pid];
+  if(!rid)return;
+  const r=allRounds.find(x=>x.id===rid);
+  if(!r)return;
+  setLoading(true,'Saving…');
+  try{
+    if(isLogScorer){
+      HE.scores[pid][h-1]=score;
+      await hePatchRound(pid);
+    }else{
+      const mh=r.marker_holes?r.marker_holes.map(x=>({...x})):Array.from({length:18},(_,i)=>({hole:i+1,score:null,par:HOLE_PARS[i],hcp:HOLE_HCP[i]}));
+      mh[h-1]={...mh[h-1],score};
+      await sbUpdate('rounds',rid,{marker_holes:mh});
+      r.marker_holes=mh;
+    }
+    toast('Score accepted ✓');
+    openConflictModal(h);
+    heRender();
+    // Auto-close if all rows resolved
+    const allOk=HE.playerList.every(({p})=>{
+      const rr=allRounds.find(x=>x.id===HE.roundIds[p.id]);
+      if(!rr||!rr.marker_holes)return true;
+      const a=HE.scores[p.id][h-1];
+      const b=rr.marker_holes[h-1]?.score??null;
+      return a==null||b==null||a===b;
+    });
+    if(allOk)closeModal('conflictModal');
+  }catch(e){alert('Error: '+e.message);}
+  finally{setLoading(false);}
+}
 function holeState(h){
   if(!HE||!HE.playerList)return null;
   // Returns null (no second scorer), 'waiting' (○), 'agree' (✓), or 'conflict' (⚠)
