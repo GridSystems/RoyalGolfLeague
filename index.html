@@ -384,7 +384,6 @@ select option { background: #1a3a2a; }
       <div class="ph"><span class="pt">Club Roster</span><button class="btn btn-ghost btn-sm" id="addPlayerBtn" style="display:none" onclick="showAddPlayer()">+ Add Player</button></div>
       <div class="pb"><div class="player-grid" id="playerGrid"></div></div>
     </div>
-    <div class="panel" id="bagSetupPanel" style="margin-top:1rem"></div>
   </div>
 
   <!-- RULES -->
@@ -615,6 +614,13 @@ select option { background: #1a3a2a; }
   </div>
   <div style="display:flex;justify-content:flex-end">
     <button class="btn btn-ghost btn-sm" onclick="closeModal('fineTypesModal')">Close</button>
+  </div>
+</div></div>
+<div class="modal-bg" id="bagModal" style="display:none"><div class="modal modal-sm">
+  <h3 id="bagModalTitle">🎒 My Bag</h3>
+  <div id="bagSetupPanel"></div>
+  <div style="display:flex;justify-content:flex-end;margin-top:1rem">
+    <button class="btn btn-ghost btn-sm" onclick="closeModal('bagModal')">Close</button>
   </div>
 </div></div>
 
