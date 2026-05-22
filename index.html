@@ -1027,6 +1027,7 @@ async function startGpsRound(){
     GR={
       date,teeId:gpsTeeId,currentHole:startHole,
       selectedClub:null,selectedWeight:'full',selectedLie:'fairway',selectedDirection:null,
+      pendingShot:null,
       holeScores:{},provisionalShotId:null,
       map:null,markers:[],polylines:[],shots:[]
     };
@@ -1082,6 +1083,42 @@ function renderGpsHole(){
   const par=HOLE_PARS[GR.currentHole-1];
   const hasProvisional=GR.provisionalShotId!=null;
   const dtg=distToGreen(GR.currentHole,GR.currentLat??null,GR.currentLng??null);
+  const bag=p?.bag&&p.bag.length?p.bag:['Driver'];
+
+  const bodyHtml=GR.pendingShot?
+    `<div style="padding:1rem;display:flex;flex-direction:column;gap:1.1rem;border-top:1px solid var(--border)">
+      <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.07em;color:rgba(255,255,255,0.4)">Shot ${shotCount+1} — describe the shot</div>
+      <div>
+        <div style="font-size:0.72rem;color:rgba(255,255,255,0.45);margin-bottom:7px;text-transform:uppercase;letter-spacing:0.05em">Lie</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">${GPS_LIES.map(l=>`<button class="weight-btn lie-btn${GR.selectedLie===l.v?' selected':''}" onclick="selectGpsLie('${l.v}',this)">${l.l}</button>`).join('')}</div>
+      </div>
+      <div>
+        <div style="font-size:0.72rem;color:rgba(255,255,255,0.45);margin-bottom:7px;text-transform:uppercase;letter-spacing:0.05em">Club</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">${bag.map(c=>`<button class="club-btn${GR.selectedClub===c?' selected':''}" onclick="selectGpsClub('${c.replace(/'/g,"\\'")}',this)">${escHtml(c)}</button>`).join('')}</div>
+      </div>
+      <div>
+        <div style="font-size:0.72rem;color:rgba(255,255,255,0.45);margin-bottom:7px;text-transform:uppercase;letter-spacing:0.05em">Shot type</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">${GPS_WEIGHTS.map(w=>`<button class="weight-btn${GR.selectedWeight===w.v?' selected':''}" onclick="selectGpsWeight('${w.v}',this)">${w.l}</button>`).join('')}</div>
+      </div>
+      <div>
+        <div style="font-size:0.72rem;color:rgba(255,255,255,0.45);margin-bottom:7px;text-transform:uppercase;letter-spacing:0.05em">Result</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">${GPS_DIRECTIONS.map(d=>`<button class="weight-btn dir-btn${GR.selectedDirection===d.v?' selected':''}" onclick="selectGpsDirection('${d.v}',this)">${d.l}</button>`).join('')}</div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-ghost btn-sm" onclick="cancelPendingShot()">Cancel</button>
+        <button class="btn btn-primary" style="flex:1" onclick="savePendingShot()">Save Shot →</button>
+      </div>
+    </div>`:
+    `<div class="gps-actions">
+      <button class="btn-hit" onclick="recordShot('normal')">🎯 Hit</button>
+      <button class="btn-shot-type" onclick="recordShot('drop')">⬇ Drop</button>
+      <button class="btn-shot-type" onclick="recordShot('replay')">↩ Replay</button>
+      <button class="btn-shot-type provisional" onclick="recordShot('provisional')">P Provisional</button>
+      ${hasProvisional?`
+      <button class="btn-shot-type" style="color:#7fcc9e;border-color:rgba(127,204,158,0.4)" onclick="resolveProvisional('found')">✓ Found Original</button>
+      <button class="btn-shot-type" style="color:#f0c060;border-color:rgba(240,192,96,0.4)" onclick="resolveProvisional('inplay')">▶ Provisional In Play</button>`:''}
+    </div>`;
+
   el.innerHTML=`
     <div style="background:rgba(0,0,0,0.3);border:1px solid var(--border);border-radius:14px;overflow:hidden">
       <div class="gps-hole-header">
@@ -1092,19 +1129,7 @@ function renderGpsHole(){
         <button class="btn btn-ghost btn-sm" onclick="confirmEndHole()">End Hole →</button>
       </div>
       <div id="gpsMap"></div>
-      <div class="club-picker" id="clubPicker">${renderClubPicker(p)}</div>
-      <div class="weight-picker" id="weightPicker">${renderWeightPicker()}</div>
-      <div class="weight-picker" id="liePicker" style="border-top:none">${renderLiePicker()}</div>
-      <div class="weight-picker" id="directionPicker" style="border-top:none">${renderDirectionPicker()}</div>
-      <div class="gps-actions">
-        <button class="btn-hit" onclick="recordShot('normal')">🎯 Hit</button>
-        <button class="btn-shot-type" onclick="recordShot('drop')">⬇ Drop</button>
-        <button class="btn-shot-type" onclick="recordShot('replay')">↩ Replay</button>
-        <button class="btn-shot-type provisional" onclick="recordShot('provisional')">P Provisional</button>
-        ${hasProvisional?`
-        <button class="btn-shot-type" style="color:#7fcc9e;border-color:rgba(127,204,158,0.4)" onclick="resolveProvisional('found')">✓ Found Original</button>
-        <button class="btn-shot-type" style="color:#f0c060;border-color:rgba(240,192,96,0.4)" onclick="resolveProvisional('inplay')">▶ Provisional In Play</button>`:''}
-      </div>
+      ${bodyHtml}
       <div style="padding:0.5rem 1rem;display:flex;gap:8px;justify-content:flex-end;border-top:1px solid var(--border)">
         <button class="btn btn-ghost btn-sm" onclick="abandonGpsRound()">Abandon</button>
         <button class="btn btn-primary btn-sm" onclick="confirmEndHole()">Finish Round</button>
@@ -1178,34 +1203,31 @@ function drawShotMap(holeShots){
 }
 async function recordShot(type){
   if(!GR||!activeId)return;
-  const isChipOrPutt=GR.selectedWeight==='chip'||GR.selectedWeight==='putt';
-  setLoading(true,'Recording…');
+  setLoading(true,type==='normal'?'Getting location…':'Recording…');
   try{
     let lat=null,lng=null;
-    if(!isChipOrPutt){
+    try{
       const pos=await new Promise((res,rej)=>
         navigator.geolocation.getCurrentPosition(res,rej,{enableHighAccuracy:true,timeout:8000})
       );
       lat=pos.coords.latitude;
       lng=pos.coords.longitude;
       GR.currentLat=lat; GR.currentLng=lng;
+    }catch(e){
+      if(type==='normal'){alert('Could not get GPS location: '+e.message);return;}
+    }
+    if(type==='normal'){
+      GR.pendingShot={lat,lng,type};
+      renderGpsHole();
+      return;
     }
     const holeShots=GR.shots.filter(s=>s.hole===GR.currentHole);
     const shot_num=holeShots.length+1;
     const payload={
-      player_id:activeId,
-      round_date:GR.date,
-      hole:GR.currentHole,
-      shot_num,
-      type,
-      lat,lng,
-      club:GR.selectedClub,
-      shot_weight:GR.selectedWeight,
-      lie:GR.selectedLie||null,
-      direction:GR.selectedDirection||null,
-      wind_speed:currentWeather?.speed_kmh??null,
-      wind_dir:currentWeather?.dir??null,
-      wind_deg:currentWeather?.deg??null
+      player_id:activeId,round_date:GR.date,hole:GR.currentHole,shot_num,type,lat,lng,
+      club:GR.selectedClub,shot_weight:GR.selectedWeight,
+      lie:GR.selectedLie||null,direction:GR.selectedDirection||null,
+      wind_speed:currentWeather?.speed_kmh??null,wind_dir:currentWeather?.dir??null,wind_deg:currentWeather?.deg??null
     };
     const [saved]=await sbInsert('gps_shots',payload);
     GR.shots.push(saved||{...payload,id:Date.now()});
@@ -1214,6 +1236,33 @@ async function recordShot(type){
   }catch(e){
     alert('Could not record shot: '+e.message);
   }finally{setLoading(false);}
+}
+async function savePendingShot(){
+  if(!GR||!GR.pendingShot||!activeId)return;
+  setLoading(true,'Saving shot…');
+  try{
+    const holeShots=GR.shots.filter(s=>s.hole===GR.currentHole);
+    const shot_num=holeShots.length+1;
+    const payload={
+      player_id:activeId,round_date:GR.date,hole:GR.currentHole,shot_num,
+      type:GR.pendingShot.type,lat:GR.pendingShot.lat,lng:GR.pendingShot.lng,
+      club:GR.selectedClub,shot_weight:GR.selectedWeight,
+      lie:GR.selectedLie||null,direction:GR.selectedDirection||null,
+      wind_speed:currentWeather?.speed_kmh??null,wind_dir:currentWeather?.dir??null,wind_deg:currentWeather?.deg??null
+    };
+    const [saved]=await sbInsert('gps_shots',payload);
+    GR.shots.push(saved||{...payload,id:Date.now()});
+    GR.pendingShot=null;
+    GR.selectedClub=null;
+    GR.selectedDirection=null;
+    renderGpsHole();
+  }catch(e){
+    alert('Could not save shot: '+e.message);
+  }finally{setLoading(false);}
+}
+function cancelPendingShot(){
+  GR.pendingShot=null;
+  renderGpsHole();
 }
 async function resolveProvisional(action){
   if(!GR||!GR.provisionalShotId)return;
