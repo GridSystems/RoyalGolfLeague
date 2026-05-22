@@ -128,6 +128,7 @@
   <button id="addPinBtn" onclick="togglePinMode()">📍 Add Pin</button>
   <button id="exportBtn" onclick="exportJson()">Export JSON</button>
   <button id="copyOverlayBtn" onclick="copyOverlaySettings()" title="Copy saved overlay settings to clipboard">📋 Copy Overlays</button>
+  <button id="surveyBtn" onclick="toggleSurveyPanel()">📍 Survey</button>
 </div>
 <div id="main">
   <div id="sidebar">
@@ -178,6 +179,16 @@
   <button onclick="cycleOverlayOpacity()" id="overlayOpacBtn" style="background:#555;color:#eee">70%</button>
   <button onclick="saveOverlay()" style="background:#27ae60;color:#fff">💾 Save</button>
   <button onclick="removeOverlay()" style="background:#e94560;color:#fff">✕ Remove</button>
+</div>
+
+<div id="surveyPanel" style="display:none">
+  <div class="sv-header">
+    <span class="sv-title">📍 Survey Mode</span>
+    <button class="sv-close" onclick="toggleSurveyPanel()">✕</button>
+  </div>
+  <div class="sv-body" id="surveyPanelBody">
+    <!-- rendered by renderSurveyPanel() -->
+  </div>
 </div>
 
 <div id="legend">
@@ -1048,6 +1059,7 @@ function toggleSurveyPanel() {
   if (surveyPanelOpen) {
     renderSurveyPanel();
     fetchSurveyGps();
+    loadSurveyPoints().then(() => renderSurveyPanel());
   }
 }
 
