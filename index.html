@@ -970,7 +970,12 @@ function renderRules(){
 }
 // ── GPS Round Tracker ─────────────────────────────────────────────────────────
 const COURSE_LAT=55.6179,COURSE_LNG=12.5695;
-function isSaturdayPlayingHours(){const n=new Date();return n.getDay()===6&&n.getHours()>=7&&n.getHours()<15;}
+function isSaturdayPlayingHours(){
+  const n=new Date();
+  const fmt=new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Copenhagen',weekday:'short',hour:'numeric',hour12:false});
+  const parts=Object.fromEntries(fmt.formatToParts(n).map(({type,value})=>[type,value]));
+  return parts.weekday==='Sat'&&Number(parts.hour)>=7&&Number(parts.hour)<15;
+}
 async function fetchWeather(){
   try{
     const r=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${COURSE_LAT}&longitude=${COURSE_LNG}&current=wind_speed_10m,wind_direction_10m&wind_speed_unit=kmh&forecast_days=1`);
