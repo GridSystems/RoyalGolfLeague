@@ -260,7 +260,6 @@ const SURVEY_FEATURES = [
   { type:'front_green',  label:'Front green',   icon:'⛳', multi:false },
   { type:'mid_green',    label:'Mid green',     icon:'🎯', multi:false },
   { type:'back_green',   label:'Back green',    icon:'🏁', multi:false },
-  { type:'pin',          label:'Pin',           icon:'🚩', multi:false },
   { type:'dist_200',     label:'200m',          icon:'📏', multi:false },
   { type:'dist_150',     label:'150m',          icon:'📏', multi:false },
   { type:'dist_100',     label:'100m',          icon:'📏', multi:false },
@@ -268,7 +267,7 @@ const SURVEY_FEATURES = [
 const SURVEY_COLORS = {
   tee:'#2196F3', fairway_start:'#27ae60', fairway_end:'#f39c12',
   bunker:'#d4a843', water:'#3498db', front_green:'#1abc9c',
-  mid_green:'#2ecc71', back_green:'#e74c3c', pin:'#f1c40f',
+  mid_green:'#2ecc71', back_green:'#e74c3c',
   dist_200:'#9b59b6', dist_150:'#9b59b6', dist_100:'#9b59b6',
 };
 
@@ -1145,7 +1144,7 @@ function renderSurveyPanel() {
     `<div class="sv-group"><div class="sv-group-label">${label}</div><div class="sv-capture-grid sv-capture-grid-${cols}">${types.map(btnHtml).join('')}</div></div>`;
 
   const featHtml =
-    group('Green', ['front_green','mid_green','back_green','pin'], 2) +
+    group('Green', ['front_green','mid_green','back_green'], 3) +
     group('Course', ['tee','fairway_start','fairway_end'], 3) +
     group('Hazards', ['bunker','water'], 2) +
     group('Distances', ['dist_200','dist_150','dist_100'], 3);

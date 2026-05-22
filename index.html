@@ -1321,7 +1321,7 @@ function toggleGreenZoom(){
     return;
   }
   if(!GR.currentLat||!GR.currentLng){toast('GPS position not acquired yet');return;}
-  const surveyPts=(GR.surveyPoints||[]).filter(p=>p.hole===GR.currentHole&&['front_green','mid_green','back_green','pin'].includes(p.type));
+  const surveyPts=(GR.surveyPoints||[]).filter(p=>p.hole===GR.currentHole&&['front_green','mid_green','back_green'].includes(p.type));
   // Fall back to HOLE_DATA estimated centre if no survey points yet
   const hd=HOLE_DATA[GR.currentHole-1];
   const usingSurvey=surveyPts.length>0;
@@ -1342,8 +1342,8 @@ function toggleGreenZoom(){
       interactive:false,zIndexOffset:-200
     }).addTo(GR.map));
   }
-  const COL={front_green:'rgba(26,188,156,0.55)',mid_green:'rgba(46,204,113,0.55)',back_green:'rgba(231,76,60,0.55)',pin:'rgba(241,196,15,0.8)',est:'rgba(180,180,180,0.6)'};
-  const LBL={front_green:'Front',mid_green:'Mid',back_green:'Back',pin:'Pin',est:'Green~'};
+  const COL={front_green:'rgba(26,188,156,0.55)',mid_green:'rgba(46,204,113,0.55)',back_green:'rgba(231,76,60,0.55)',est:'rgba(180,180,180,0.6)'};
+  const LBL={front_green:'Front',mid_green:'Mid',back_green:'Back',est:'Green~'};
   // Cone lines: player → front and back (survey only)
   if(usingSurvey){
     const frontPt=holePts.find(p=>p.type==='front_green');
