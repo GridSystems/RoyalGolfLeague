@@ -1026,7 +1026,7 @@ async function startGpsRound(){
     startWeatherRefresh(lat,lng);
     GR={
       date,teeId:gpsTeeId,currentHole:startHole,
-      selectedClub:null,selectedWeight:'full',
+      selectedClub:null,selectedWeight:'full',selectedLie:'fairway',selectedDirection:null,
       holeScores:{},provisionalShotId:null,
       map:null,markers:[],polylines:[],shots:[]
     };
@@ -1048,12 +1048,30 @@ function selectGpsClub(club,el){
   el.classList.add('selected');
 }
 const GPS_WEIGHTS=[{v:'full',l:'Full'},{v:'3/4',l:'¾'},{v:'1/2',l:'½'},{v:'chip',l:'Chip'},{v:'putt',l:'Putt'}];
+const GPS_LIES=[{v:'tee',l:'Tee'},{v:'fairway',l:'Fairway'},{v:'rough',l:'Rough'},{v:'bush',l:'Bush'},{v:'green',l:'Green'}];
+const GPS_DIRECTIONS=[{v:'left',l:'← Left'},{v:'straight',l:'↑ Straight'},{v:'right',l:'→ Right'}];
 function renderWeightPicker(){
   return GPS_WEIGHTS.map(w=>`<button class="weight-btn${GR.selectedWeight===w.v?' selected':''}" onclick="selectGpsWeight('${w.v}',this)">${w.l}</button>`).join('');
 }
 function selectGpsWeight(weight,el){
   GR.selectedWeight=weight;
   document.querySelectorAll('.weight-btn').forEach(b=>b.classList.remove('selected'));
+  el.classList.add('selected');
+}
+function renderLiePicker(){
+  return GPS_LIES.map(l=>`<button class="weight-btn lie-btn${GR.selectedLie===l.v?' selected':''}" onclick="selectGpsLie('${l.v}',this)">${l.l}</button>`).join('');
+}
+function selectGpsLie(lie,el){
+  GR.selectedLie=lie;
+  document.querySelectorAll('.lie-btn').forEach(b=>b.classList.remove('selected'));
+  el.classList.add('selected');
+}
+function renderDirectionPicker(){
+  return GPS_DIRECTIONS.map(d=>`<button class="weight-btn dir-btn${GR.selectedDirection===d.v?' selected':''}" onclick="selectGpsDirection('${d.v}',this)">${d.l}</button>`).join('');
+}
+function selectGpsDirection(dir,el){
+  GR.selectedDirection=dir;
+  document.querySelectorAll('.dir-btn').forEach(b=>b.classList.remove('selected'));
   el.classList.add('selected');
 }
 function renderGpsHole(){
@@ -1076,6 +1094,8 @@ function renderGpsHole(){
       <div id="gpsMap"></div>
       <div class="club-picker" id="clubPicker">${renderClubPicker(p)}</div>
       <div class="weight-picker" id="weightPicker">${renderWeightPicker()}</div>
+      <div class="weight-picker" id="liePicker" style="border-top:none">${renderLiePicker()}</div>
+      <div class="weight-picker" id="directionPicker" style="border-top:none">${renderDirectionPicker()}</div>
       <div class="gps-actions">
         <button class="btn-hit" onclick="recordShot('normal')">🎯 Hit</button>
         <button class="btn-shot-type" onclick="recordShot('drop')">⬇ Drop</button>
@@ -1181,6 +1201,8 @@ async function recordShot(type){
       lat,lng,
       club:GR.selectedClub,
       shot_weight:GR.selectedWeight,
+      lie:GR.selectedLie||null,
+      direction:GR.selectedDirection||null,
       wind_speed:currentWeather?.speed_kmh??null,
       wind_dir:currentWeather?.dir??null,
       wind_deg:currentWeather?.deg??null
