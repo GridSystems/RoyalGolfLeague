@@ -1663,8 +1663,19 @@ async function heInit(playerList,date,notes,startHole){
 }
 
 function openConflictModal(h){
+  if(!HE||!HE.playerList)return;
   const saved=JSON.parse(localStorage.getItem('sl_active_group')||'{}');
-  const isLogScorer=!saved.scorerPlayerId||saved.scorerPlayerId===activeId;
+  let isLogScorer=true;
+  if(saved.scorerPlayerId!=null){
+    isLogScorer=saved.scorerPlayerId===activeId;
+  }else{
+    // Fallback: if this player is the marker on any group round, they are NOT the log scorer
+    const asMarker=HE.playerList.some(({p})=>{
+      const r=allRounds.find(x=>x.id===HE.roundIds[p.id]);
+      return r&&r.marker_id===activeId;
+    });
+    if(asMarker)isLogScorer=false;
+  }
   const par=HOLE_PARS[h-1];
   document.getElementById('conflictModalTitle').textContent=`Hole ${h} — Par ${par}`;
   const rows=HE.playerList.map(({p})=>{
@@ -1691,7 +1702,10 @@ function openConflictModal(h){
   document.getElementById('conflictModalBody').innerHTML=rows||'<div style="color:rgba(255,255,255,0.4);font-size:0.85rem">No conflicts on this hole.</div>';
   document.getElementById('conflictModal').style.display='flex';
 }
+let _acceptInFlight=false;
 async function acceptScore(pid,h,score,isLogScorer){
+  if(_acceptInFlight)return;
+  _acceptInFlight=true;
   const rid=HE.roundIds[pid];
   if(!rid)return;
   const r=allRounds.find(x=>x.id===rid);
@@ -1704,8 +1718,11 @@ async function acceptScore(pid,h,score,isLogScorer){
     }else{
       const mh=r.marker_holes?r.marker_holes.map(x=>({...x})):Array.from({length:18},(_,i)=>({hole:i+1,score:null,par:HOLE_PARS[i],hcp:HOLE_HCP[i]}));
       mh[h-1]={...mh[h-1],score};
-      await sbUpdate('rounds',rid,{marker_holes:mh});
+      const updates={marker_holes:mh};
+      if(!r.marker_id)updates.marker_id=activeId;
+      await sbUpdate('rounds',rid,updates);
       r.marker_holes=mh;
+      if(!r.marker_id)r.marker_id=activeId;
     }
     toast('Score accepted ✓');
     openConflictModal(h);
@@ -1720,7 +1737,7 @@ async function acceptScore(pid,h,score,isLogScorer){
     });
     if(allOk)closeModal('conflictModal');
   }catch(e){alert('Error: '+e.message);}
-  finally{setLoading(false);}
+  finally{setLoading(false);_acceptInFlight=false;}
 }
 function holeState(h){
   if(!HE||!HE.playerList)return null;
