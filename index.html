@@ -1227,8 +1227,8 @@ function renderGpsHole(){
         </div>
         ${GR.chipAndPutt?`<button class="btn btn-ghost btn-sm" onclick="confirmEndHole()">End Hole →</button>`:`<button class="btn btn-ghost btn-sm" onclick="enterChipAndPutt()">⛳ Chip &amp; Putt →</button>`}
       </div>
-      <div id="gpsMap"></div>
       ${bodyHtml}
+      <div id="gpsMap"></div>
       <div style="padding:0.5rem 1rem;display:flex;gap:8px;justify-content:flex-end;border-top:1px solid var(--border)">
         <button class="btn btn-ghost btn-sm" onclick="abandonGpsRound()">Abandon</button>
         <button class="btn btn-primary btn-sm" onclick="confirmEndHole()">Finish Round</button>
