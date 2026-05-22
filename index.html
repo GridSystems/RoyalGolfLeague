@@ -1048,7 +1048,7 @@ function selectGpsClub(club,el){
   el.classList.add('selected');
 }
 const GPS_WEIGHTS=[{v:'full',l:'Full'},{v:'3/4',l:'¾'},{v:'1/2',l:'½'},{v:'chip',l:'Chip'},{v:'putt',l:'Putt'}];
-const GPS_LIES=[{v:'tee',l:'Tee'},{v:'fairway',l:'Fairway'},{v:'rough',l:'Rough'},{v:'bush',l:'Bush'},{v:'green',l:'Green'}];
+const GPS_LIES=[{v:'tee',l:'Tee'},{v:'fairway',l:'Fairway'},{v:'rough',l:'Rough'},{v:'bunker',l:'Bunker'},{v:'bush',l:'Bush'},{v:'green',l:'Green'}];
 const GPS_DIRECTIONS=[{v:'left',l:'← Left'},{v:'straight',l:'↑ Straight'},{v:'right',l:'→ Right'}];
 function renderWeightPicker(){
   return GPS_WEIGHTS.map(w=>`<button class="weight-btn${GR.selectedWeight===w.v?' selected':''}" onclick="selectGpsWeight('${w.v}',this)">${w.l}</button>`).join('');
