@@ -381,7 +381,7 @@ select option { background: #1a3a2a; }
   <!-- PLAYERS -->
   <div class="view" id="view-players">
     <div class="panel">
-      <div class="ph"><span class="pt">Club Roster</span><button class="btn btn-ghost btn-sm" id="addPlayerBtn" style="display:none" onclick="showAddPlayer()">+ Add Player</button></div>
+      <div class="ph"><span class="pt">Club Roster</span><div style="display:flex;gap:6px"><button class="btn btn-ghost btn-sm" id="myBagBtn" style="display:none" onclick="openBagModal()">🎒 My Bag</button><button class="btn btn-ghost btn-sm" id="addPlayerBtn" style="display:none" onclick="showAddPlayer()">+ Add Player</button></div></div>
       <div class="pb"><div class="player-grid" id="playerGrid"></div></div>
     </div>
   </div>
@@ -933,7 +933,7 @@ function showView(id,btn){
   if(btn)btn.classList.add('active');
   if(id==='leaderboard'){renderTodayLb();populateYearSelects();renderSeasonLb();renderDreamCard();}
   if(id==='history'){renderMyRounds();const b=document.getElementById('myHcpBtn');if(b)b.style.display=activeId?'inline-block':'none';showHistorySub('rounds',document.querySelector('#view-history .sub-tab'));}
-  if(id==='players'){renderGrid();renderBagSetup();}
+  if(id==='players'){renderGrid();}
   if(id==='log'){buildPlayerCheckboxes();checkForResumableRounds();applySaturdayDraw();}
   if(id==='admin'){renderPendingApprovals();renderAdmin();renderBulkEntry();renderAdminFines();renderSaturdayAdmin();}
   if(id==='rules')renderRules();
@@ -1299,6 +1299,13 @@ function renderTrackView(){
   if(!el)return;
   if(GR){renderGpsHole();}
   else{renderGpsStart();}
+}
+function openBagModal(){
+  const p=players.find(x=>x.id===activeId);
+  if(!p){alert('Select your player first.');return;}
+  document.getElementById('bagModalTitle').textContent=`🎒 ${p.name}'s Bag`;
+  renderBagSetup();
+  document.getElementById('bagModal').style.display='flex';
 }
 function renderBagSetup(){
   const p=players.find(x=>x.id===activeId);
@@ -2789,6 +2796,7 @@ function setPlayer(id){
   if(p){document.getElementById('playerName').textContent=p.name;const av=document.getElementById('playerAvatar');av.textContent=ini(p.name);av.style.background=clr(p);}
   localStorage.setItem('sl_active_player',id);closeModal('pickerModal');updateAdminUI();applyPendingUI();
   const hb=document.getElementById('myHcpBtn');if(hb)hb.style.display='inline-block';
+  const bb=document.getElementById('myBagBtn');if(bb)bb.style.display='inline-block';
 }
 function showAddPlayer(){
   if(!isAdmin()){alert('Only the admin can add players.');return;}
@@ -2966,7 +2974,7 @@ async function init(){
   populateYearSelects();renderTodayLb();renderGrid();
   // Restore last selected player
   const savedId=localStorage.getItem('sl_active_player');
-  if(savedId){const saved=players.find(p=>p.id==savedId)||pendingPlayers.find(p=>p.id==savedId);if(saved){activeId=saved.id;document.getElementById('playerName').textContent=saved.name;const av=document.getElementById('playerAvatar');av.textContent=ini(saved.name);av.style.background=clr(saved);const hb=document.getElementById('myHcpBtn');if(hb)hb.style.display='inline-block';}}
+  if(savedId){const saved=players.find(p=>p.id==savedId)||pendingPlayers.find(p=>p.id==savedId);if(saved){activeId=saved.id;document.getElementById('playerName').textContent=saved.name;const av=document.getElementById('playerAvatar');av.textContent=ini(saved.name);av.style.background=clr(saved);const hb=document.getElementById('myHcpBtn');if(hb)hb.style.display='inline-block';const bb=document.getElementById('myBagBtn');if(bb)bb.style.display='inline-block';}}
   updateAdminUI();applyPendingUI();buildPlayerCheckboxes();checkForResumableRounds();
 
   setLoading(false);
