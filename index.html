@@ -1655,6 +1655,26 @@ async function heInit(playerList,date,notes,startHole){
   heRender();
 }
 
+function holeState(h){
+  // Returns null (no second scorer), 'waiting' (○), 'agree' (✓), or 'conflict' (⚠)
+  const hasMarker=HE.playerList.some(({p})=>{
+    const r=allRounds.find(x=>x.id===HE.roundIds[p.id]);
+    return r&&r.marker_holes!=null;
+  });
+  if(!hasMarker)return null;
+  let anyConflict=false,allMatch=true;
+  for(const{p}of HE.playerList){
+    const r=allRounds.find(x=>x.id===HE.roundIds[p.id]);
+    if(!r||!r.marker_holes){allMatch=false;continue;}
+    const a=HE.scores[p.id][h-1];
+    const b=r.marker_holes[h-1]?.score??null;
+    if(a==null||b==null){allMatch=false;continue;}
+    if(a!==b){anyConflict=true;allMatch=false;}
+  }
+  if(anyConflict)return'conflict';
+  if(allMatch)return'agree';
+  return'waiting';
+}
 function saveActiveGroup(){
   if(!HE||!HE.playerList||!HE.playerList.length)return;
   localStorage.setItem('sl_active_group',JSON.stringify({
@@ -1708,9 +1728,15 @@ function heRender(){
     const isCur=h===hole;
     const filled=s.playerList.every(({p})=>s.scores[p.id][h-1]!==null);
     const partial=s.playerList.some(({p})=>s.scores[p.id][h-1]!==null);
-    let bg=filled?'var(--gold)':partial?'rgba(201,168,76,0.4)':'rgba(255,255,255,0.15)';
-    if(isCur)bg='#82aaf0';
-    return`<div onclick="heJump(${h})" style="width:${isCur?'24px':'10px'};height:10px;border-radius:5px;background:${bg};cursor:pointer;transition:all 0.2s;flex-shrink:0;display:flex;align-items:center;justify-content:center">${isCur?`<span style="font-size:0.55rem;font-weight:600;color:#fff">${h}</span>`:''}</div>`;
+    const state=holeState(h);
+    let bg;
+    if(isCur){bg='#82aaf0';}
+    else if(state==='conflict'){bg='rgba(240,180,60,0.85)';}
+    else if(state==='agree'){bg='rgba(74,140,92,0.85)';}
+    else{bg=filled?'var(--gold)':partial?'rgba(201,168,76,0.4)':'rgba(255,255,255,0.15)';}
+    const clickFn=state==='conflict'?`openConflictModal(${h})`:`heJump(${h})`;
+    const label=isCur?`<span style="font-size:0.55rem;font-weight:600;color:#fff">${h}</span>`:state==='conflict'?`<span style="font-size:0.55rem;font-weight:700;color:#fff">!</span>`:state==='agree'?`<span style="font-size:0.55rem;color:#fff">✓</span>`:'';
+    return`<div onclick="${clickFn}" style="width:${isCur||state?'14px':'10px'};height:10px;border-radius:5px;background:${bg};cursor:pointer;transition:all 0.2s;flex-shrink:0;display:flex;align-items:center;justify-content:center">${label}</div>`;
   }).join('');
 
   // Scorecard table setup
