@@ -1321,8 +1321,12 @@ function toggleGreenZoom(){
     return;
   }
   if(!GR.currentLat||!GR.currentLng){toast('GPS position not acquired yet');return;}
-  const holePts=(GR.surveyPoints||[]).filter(p=>p.hole===GR.currentHole&&['front_green','mid_green','back_green','pin'].includes(p.type));
-  if(!holePts.length){toast('No survey points for hole '+GR.currentHole+' yet');return;}
+  const surveyPts=(GR.surveyPoints||[]).filter(p=>p.hole===GR.currentHole&&['front_green','mid_green','back_green','pin'].includes(p.type));
+  // Fall back to HOLE_DATA estimated centre if no survey points yet
+  const hd=HOLE_DATA[GR.currentHole-1];
+  const usingSurvey=surveyPts.length>0;
+  const holePts=usingSurvey?surveyPts:(hd&&hd.green?[{type:'est',lat:hd.green.lat,lng:hd.green.lng}]:[]);
+  if(!holePts.length){toast('No green data for hole '+GR.currentHole);return;}
   GR.greenZoom=true;
   GR.greenLayers=[];
   const pLL=[GR.currentLat,GR.currentLng];
@@ -1338,19 +1342,22 @@ function toggleGreenZoom(){
       interactive:false,zIndexOffset:-200
     }).addTo(GR.map));
   }
-  // Cone lines: player → front and back green
-  const COL={front_green:'rgba(26,188,156,0.55)',mid_green:'rgba(46,204,113,0.55)',back_green:'rgba(231,76,60,0.55)',pin:'rgba(241,196,15,0.8)'};
-  const LBL={front_green:'Front',mid_green:'Mid',back_green:'Back',pin:'Pin'};
-  const frontPt=holePts.find(p=>p.type==='front_green');
-  const backPt=holePts.find(p=>p.type==='back_green');
-  if(frontPt)GR.greenLayers.push(L.polyline([pLL,[frontPt.lat,frontPt.lng]],{color:COL.front_green,weight:1,dashArray:'4,5',interactive:false}).addTo(GR.map));
-  if(backPt) GR.greenLayers.push(L.polyline([pLL,[backPt.lat,backPt.lng]], {color:COL.back_green, weight:1,dashArray:'4,5',interactive:false}).addTo(GR.map));
-  // Survey point dots + distance badges
+  const COL={front_green:'rgba(26,188,156,0.55)',mid_green:'rgba(46,204,113,0.55)',back_green:'rgba(231,76,60,0.55)',pin:'rgba(241,196,15,0.8)',est:'rgba(180,180,180,0.6)'};
+  const LBL={front_green:'Front',mid_green:'Mid',back_green:'Back',pin:'Pin',est:'Green~'};
+  // Cone lines: player → front and back (survey only)
+  if(usingSurvey){
+    const frontPt=holePts.find(p=>p.type==='front_green');
+    const backPt=holePts.find(p=>p.type==='back_green');
+    if(frontPt)GR.greenLayers.push(L.polyline([pLL,[frontPt.lat,frontPt.lng]],{color:COL.front_green,weight:1,dashArray:'4,5',interactive:false}).addTo(GR.map));
+    if(backPt) GR.greenLayers.push(L.polyline([pLL,[backPt.lat,backPt.lng]], {color:COL.back_green, weight:1,dashArray:'4,5',interactive:false}).addTo(GR.map));
+  }
+  // Point dots + distance badges
   holePts.forEach((pt,i)=>{
     const d=dists[i],col=COL[pt.type]||'rgba(255,255,255,0.7)',lbl=LBL[pt.type]||pt.type;
-    GR.greenLayers.push(L.circleMarker([pt.lat,pt.lng],{radius:5,color:'#fff',weight:1.5,fillColor:col.replace(/[\d.]+\)$/,'1)'),fillOpacity:1,interactive:false}).addTo(GR.map));
+    const dotColor=col.replace(/[\d.]+\)$/,'1)');
+    GR.greenLayers.push(L.circleMarker([pt.lat,pt.lng],{radius:pt.type==='est'?7:5,color:'#fff',weight:pt.type==='est'?1:1.5,fillColor:dotColor,fillOpacity:pt.type==='est'?0.5:1,interactive:false}).addTo(GR.map));
     GR.greenLayers.push(L.marker([pt.lat,pt.lng],{
-      icon:L.divIcon({className:'',html:`<div style="background:${col.replace(/[\d.]+\)$/,'0.85)')};color:#000;font-size:9px;font-weight:700;padding:2px 5px;border-radius:3px;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,0.9);margin-top:9px">${lbl} ${d}m</div>`,iconSize:[64,16],iconAnchor:[32,-4]}),
+      icon:L.divIcon({className:'',html:`<div style="background:${col.replace(/[\d.]+\)$/,'0.85)')};color:#000;font-size:9px;font-weight:700;padding:2px 5px;border-radius:3px;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,0.9);margin-top:9px">${lbl} ${d}m</div>`,iconSize:[68,16],iconAnchor:[34,-4]}),
       interactive:false,zIndexOffset:500
     }).addTo(GR.map));
   });
