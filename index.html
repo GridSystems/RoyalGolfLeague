@@ -1402,19 +1402,6 @@ function toggleGreenZoom(){
   document.querySelectorAll('.green-zoom-btn').forEach(b=>{b.classList.add('selected');b.textContent='📐 ✕';});
 }
 // ── Distance rings (📏 Rings) ─────────────────────────────────────────────────
-function bearingDeg(lat1,lng1,lat2,lng2){
-  const dLng=(lng2-lng1)*Math.PI/180;
-  const y=Math.sin(dLng)*Math.cos(lat2*Math.PI/180);
-  const x=Math.cos(lat1*Math.PI/180)*Math.sin(lat2*Math.PI/180)-Math.sin(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.cos(dLng);
-  return(Math.atan2(y,x)*180/Math.PI+360)%360;
-}
-function pointAtBearingDist(lat,lng,brg,distM){
-  const R=6371000,δ=distM/R,θ=brg*Math.PI/180;
-  const φ1=lat*Math.PI/180,λ1=lng*Math.PI/180;
-  const φ2=Math.asin(Math.sin(φ1)*Math.cos(δ)+Math.cos(φ1)*Math.sin(δ)*Math.cos(θ));
-  const λ2=λ1+Math.atan2(Math.sin(θ)*Math.sin(δ)*Math.cos(φ1),Math.cos(δ)-Math.sin(φ1)*Math.sin(φ2));
-  return[φ2*180/Math.PI,λ2*180/Math.PI];
-}
 function toggleDistRings(){
   if(!GR||!GR.map)return;
   if(GR.distRings){
@@ -1451,17 +1438,6 @@ function drawDistRings(){
       icon:L.divIcon({className:'',html:`<div style="font-size:9px;color:rgba(100,200,255,${isCentre?'0.95':'0.6'});font-weight:600;white-space:nowrap;text-shadow:0 1px 2px #000">${u}${isYd?'y':'m'}</div>`,iconSize:[28,12],iconAnchor:[14,6]}),
       interactive:false,zIndexOffset:-200
     }).addTo(GR.map));
-  }
-  // Cone: bearing from player towards green
-  const hd=HOLE_DATA[GR.currentHole-1];
-  const surveyPts=(GR.surveyPoints||[]).filter(p=>p.hole===GR.currentHole&&['mid_green','front_green','back_green'].includes(p.type));
-  const midPt=surveyPts.find(p=>p.type==='mid_green')||surveyPts[0];
-  const target=midPt||(hd&&hd.green?hd.green:null);
-  if(target){
-    const brg=bearingDeg(GR.currentLat,GR.currentLng,target.lat,target.lng);
-    const coneDistM=isYd?(endU+20)*YD:(endU+20);
-    GR.distRingLayers.push(L.polyline([pLL,pointAtBearingDist(GR.currentLat,GR.currentLng,(brg-15+360)%360,coneDistM)],{color:'rgba(100,180,255,0.28)',weight:1,dashArray:'4,8',interactive:false}).addTo(GR.map));
-    GR.distRingLayers.push(L.polyline([pLL,pointAtBearingDist(GR.currentLat,GR.currentLng,(brg+15)%360,coneDistM)],{color:'rgba(100,180,255,0.28)',weight:1,dashArray:'4,8',interactive:false}).addTo(GR.map));
   }
   // Player dot
   GR.distRingLayers.push(L.circleMarker(pLL,{radius:6,color:'#fff',weight:2,fillColor:'#64b4ff',fillOpacity:1,interactive:false}).addTo(GR.map));
