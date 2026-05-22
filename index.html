@@ -1873,7 +1873,8 @@ async function heJump(h){heFlushInputs();hePatchAll();HE.currentHole=h;HE.curren
 async function autoResumeGroup(){
   const raw=localStorage.getItem('sl_active_group');
   if(!raw)return;
-  const saved=JSON.parse(raw);
+  let saved;
+  try{saved=JSON.parse(raw);}catch(e){localStorage.removeItem('sl_active_group');return;}
   if(saved.date!==today()){localStorage.removeItem('sl_active_group');return;}
   const td=today();
   const playerList=[];
@@ -1885,20 +1886,21 @@ async function autoResumeGroup(){
     if(!p)continue;
     const r=allRounds.find(ar=>ar.player_id===id&&ar.date===td&&ar.holes.filter(h=>h&&h.score!=null).length<18);
     if(!r)continue;
-    const tee=getTee(teeId||'57');
+    const tee=getTee(teeId||'platinum');
     const index=hcpOnDate(p,td);
     const phcp=index!=null?calcPlayingHcp(index,tee):null;
     scores[id]=r.holes.map(h=>h?h.score:null);
     roundIds[id]=r.id;
-    playerList.push({p,phcp,index,tee,teeId:teeId||'57'});
-    if(id===saved.scorerPlayerId){
-      const firstUnscored=r.holes.find(h=>h&&h.score==null);
-      startAtHole=firstUnscored?firstUnscored.hole:1;
+    playerList.push({p,phcp,index,tee,teeId:teeId||'platinum'});
+    const firstUnscored=r.holes.find(h=>h&&h.score==null);
+    const resumeHole=firstUnscored?firstUnscored.hole:18;
+    if(id===saved.scorerPlayerId||startAtHole===1){
+      startAtHole=resumeHole;
     }
   }
   if(!playerList.length){localStorage.removeItem('sl_active_group');checkForResumableRounds();return;}
   groupPlayerIds=playerList.map(x=>x.p.id);
-  HE={playerList,scores,roundIds,currentHole:startAtHole,currentPidx:0,startHole:startAtHole,date:td,notes:'',teeTime:null};
+  HE={playerList,scores,roundIds,currentHole:startAtHole,currentPidx:0,startHole:saved.startHole||1,date:td,notes:'',teeTime:null};
   document.getElementById('logStep1').style.display='none';
   document.getElementById('logStep1b').style.display='none';
   document.getElementById('logStep2').style.display='block';
@@ -1915,7 +1917,7 @@ function checkForResumableRounds(){
     try{
       const saved=JSON.parse(raw);
       if(saved.date===td&&saved.players&&saved.players.length){
-        const names=saved.players.map(({id})=>players.find(x=>x.id===id)?.name?.split(' ')[0]||'?').join(', ');
+        const names=saved.players.map(({id})=>{const p=players.find(x=>x.id===id)||pendingPlayers.find(x=>x.id===id);return p?.name?.split(' ')[0]||'?';}).join(', ');
         panel.style.display='block';
         panel.innerHTML=`<div style="background:rgba(130,170,240,0.1);border:2px solid rgba(130,170,240,0.4);border-radius:12px;padding:1rem 1.2rem;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
           <div>
@@ -2521,7 +2523,7 @@ async function startGroupEntry(){
   HE.teeTime=teeTime;
   await heInit(playerList,date,document.getElementById('roundNotes').value.trim(),startHole);
 }
-function backToSetup(){document.getElementById('logStep2').style.display='none';document.getElementById('logStep1b').style.display='none';document.getElementById('logStep1').style.display='block';}
+function backToSetup(){localStorage.removeItem('sl_active_group');document.getElementById('logStep2').style.display='none';document.getElementById('logStep1b').style.display='none';document.getElementById('logStep1').style.display='block';}
 async function saveGroupRound(){
   heFlushInputs();
   // Validate minimum holes
@@ -2534,6 +2536,7 @@ async function saveGroupRound(){
     const rid=HE.roundIds[p.id];
     if(!rid||!allRounds.find(x=>x.id===rid)){
       alert(`${p.name}'s round no longer exists — it may have been deleted. Returning to setup.`);
+      localStorage.removeItem('sl_active_group');
       groupPlayerIds=[];document.getElementById('roundNotes').value='';
       document.getElementById('logStep2').style.display='none';document.getElementById('logStep1').style.display='block';
       buildPlayerCheckboxes();return;
