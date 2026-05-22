@@ -1311,10 +1311,15 @@ async function recordShot(type){
         if(!GR||!GR.pendingShot)return;
         GR.pendingShot.lat=pos.coords.latitude;
         GR.pendingShot.lng=pos.coords.longitude;
+        GR.pendingShot.accuracy=pos.coords.accuracy;
         GR.pendingShot.locating=false;
         GR.currentLat=pos.coords.latitude;GR.currentLng=pos.coords.longitude;
         const el=document.getElementById('gpsLocStatus');
-        if(el){el.textContent='📍 Located ✓';el.style.color='rgba(127,204,158,0.8)';}
+        if(el){
+          const acc=pos.coords.accuracy.toFixed(0);
+          el.textContent=`📍 ±${acc}m`;
+          el.style.color=pos.coords.accuracy<=5?'rgba(127,204,158,0.9)':'rgba(240,180,60,0.9)';
+        }
       },
       ()=>{
         if(!GR||!GR.pendingShot)return;
