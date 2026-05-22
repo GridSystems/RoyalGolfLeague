@@ -1102,7 +1102,7 @@ async function startGpsRound(){
       selectedClub:null,selectedWeight:'full',selectedLie:'fairway',selectedDirection:null,selectedOutcome:null,
       pendingShot:null,chipAndPutt:false,scoringForIds:[..._gpsScoreForIds],_pendingFinish:false,
       holeScores:{},provisionalShotId:null,
-      map:null,markers:[],polylines:[],shots:[],surveyPoints:[],greenZoom:false,greenLayers:[],
+      map:null,markers:[],polylines:[],shots:[],surveyPoints:[],greenZoom:false,greenLayers:[],greenLabelMarkers:[],_greenMoveHandler:null,
       distRings:false,distRingLayers:[],distRingLabelMarkers:[],distRingCentre:150,distRingInterval:10,distConesOpen:false,_distRingMoveHandler:null
     };
     try{
@@ -1185,7 +1185,7 @@ function enterChipAndPutt(){
 }
 function renderGpsHole(){
   // Green zoom layers are tied to the map instance — reset on every re-render
-  if(GR){GR.greenZoom=false;GR.greenLayers=[];GR.distRingLayers=[];GR.distRingLabelMarkers=[];GR._distRingMoveHandler=null;}
+  if(GR){GR.greenZoom=false;GR.greenLayers=[];GR.greenLabelMarkers=[];GR._greenMoveHandler=null;GR.distRingLayers=[];GR.distRingLabelMarkers=[];GR._distRingMoveHandler=null;}
   const el=document.getElementById('trackContent');
   const p=players.find(x=>x.id===activeId);
   const holeShots=GR.shots.filter(s=>s.hole===GR.currentHole);
@@ -1343,8 +1343,9 @@ function toggleGreenZoom(){
   if(!GR||!GR.map)return;
   // Close: remove layers, restore normal shot view
   if(GR.greenZoom){
+    if(GR._greenMoveHandler){GR.map.off('moveend',GR._greenMoveHandler);GR._greenMoveHandler=null;}
     GR.greenLayers.forEach(l=>l.remove());
-    GR.greenLayers=[];
+    GR.greenLayers=[];GR.greenLabelMarkers=[];
     GR.greenZoom=false;
     document.querySelectorAll('.green-zoom-btn').forEach(b=>{b.classList.remove('selected');b.textContent='📐 Green';});
     drawShotMap(GR.shots.filter(s=>s.hole===GR.currentHole));
@@ -1358,54 +1359,70 @@ function toggleGreenZoom(){
   const holePts=usingSurvey?surveyPts:(hd&&hd.green?[{type:'est',lat:hd.green.lat,lng:hd.green.lng}]:[]);
   if(!holePts.length){toast('No green data for hole '+GR.currentHole);return;}
   GR.greenZoom=true;
-  GR.greenLayers=[];
+  GR.greenLayers=[];GR.greenLabelMarkers=[];
+  if(GR._greenMoveHandler){GR.map.off('moveend',GR._greenMoveHandler);GR._greenMoveHandler=null;}
   const pLL=[GR.currentLat,GR.currentLng];
-  const dists=holePts.map(p=>haversineM(GR.currentLat,GR.currentLng,p.lat,p.lng));
-  const minD=Math.max(2,Math.min(...dists)-8);
-  const maxD=Math.max(...dists)+8;
-  // Rings every 2 units in player's preferred unit
   const isYd=getUnits()==='yd';
-  const YD=0.9144; // metres per yard
-  const minU=isYd?Math.round(minD/YD):minD;
-  const maxU=isYd?Math.round(maxD/YD):maxD;
-  for(let u=Math.ceil(minU/2)*2;u<=maxU;u+=2){
-    const radiusM=isYd?u*YD:u;
-    GR.greenLayers.push(L.circle(pLL,{radius:radiusM,color:'rgba(255,215,0,0.22)',weight:1,fill:false,dashArray:'2,7',interactive:false}).addTo(GR.map));
-    const labelLat=GR.currentLat+(radiusM/111320);
-    GR.greenLayers.push(L.marker([labelLat,GR.currentLng],{
-      icon:L.divIcon({className:'',html:`<div style="font-size:9px;color:rgba(255,215,0,0.7);font-weight:600;white-space:nowrap;text-shadow:0 1px 2px #000">${u}${isYd?'y':'m'}</div>`,iconSize:[28,12],iconAnchor:[14,6]}),
-      interactive:false,zIndexOffset:-200
-    }).addTo(GR.map));
-  }
-  const COL={front_green:'rgba(26,188,156,0.55)',mid_green:'rgba(46,204,113,0.55)',back_green:'rgba(231,76,60,0.55)',est:'rgba(180,180,180,0.6)'};
+  const YD=0.9144;
+  const COL={front_green:'rgba(26,188,156,0.85)',mid_green:'rgba(46,204,113,0.85)',back_green:'rgba(231,76,60,0.85)',est:'rgba(200,200,200,0.85)'};
   const LBL={front_green:'Front',mid_green:'Mid',back_green:'Back',est:'Green~'};
-  // Cone lines: player → front and back (survey only)
-  if(usingSurvey){
-    const frontPt=holePts.find(p=>p.type==='front_green');
-    const backPt=holePts.find(p=>p.type==='back_green');
-    if(frontPt)GR.greenLayers.push(L.polyline([pLL,[frontPt.lat,frontPt.lng]],{color:COL.front_green,weight:1,dashArray:'4,5',interactive:false}).addTo(GR.map));
-    if(backPt) GR.greenLayers.push(L.polyline([pLL,[backPt.lat,backPt.lng]], {color:COL.back_green, weight:1,dashArray:'4,5',interactive:false}).addTo(GR.map));
-  }
-  // Point dots + distance badges
-  holePts.forEach((pt,i)=>{
-    const d=dists[i],col=COL[pt.type]||'rgba(255,255,255,0.7)',lbl=LBL[pt.type]||pt.type;
-    const dotColor=col.replace(/[\d.]+\)$/,'1)');
-    GR.greenLayers.push(L.circleMarker([pt.lat,pt.lng],{radius:pt.type==='est'?7:5,color:'#fff',weight:pt.type==='est'?1:1.5,fillColor:dotColor,fillOpacity:pt.type==='est'?0.5:1,interactive:false}).addTo(GR.map));
-    GR.greenLayers.push(L.marker([pt.lat,pt.lng],{
-      icon:L.divIcon({className:'',html:`<div style="background:${col.replace(/[\d.]+\)$/,'0.85)')};color:#000;font-size:9px;font-weight:700;padding:2px 5px;border-radius:3px;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,0.9);margin-top:9px">${lbl} ${d}m</div>`,iconSize:[68,16],iconAnchor:[34,-4]}),
-      interactive:false,zIndexOffset:500
-    }).addTo(GR.map));
-  });
-  // Player dot
-  GR.greenLayers.push(L.circleMarker(pLL,{radius:7,color:'#fff',weight:2,fillColor:'#ffd700',fillOpacity:1,interactive:false}).addTo(GR.map));
-  // Zoom to 50×50m area centred on green mid-point
+  // Centre on mid_green (or best available), zoom to 50×50m first so bestLabelPos has correct bounds
   const midPt=holePts.find(p=>p.type==='mid_green')||holePts[Math.floor(holePts.length/2)]||holePts[0];
   const halfDegLat=25/111320;
   const halfDegLng=25/(111320*Math.cos(midPt.lat*Math.PI/180));
-  GR.map.fitBounds([
-    [midPt.lat-halfDegLat, midPt.lng-halfDegLng],
-    [midPt.lat+halfDegLat, midPt.lng+halfDegLng]
-  ]);
+  GR.map.fitBounds([[midPt.lat-halfDegLat,midPt.lng-halfDegLng],[midPt.lat+halfDegLat,midPt.lng+halfDegLng]]);
+  // Ring range: midGreen distance ±50 units, every 5
+  const midDM=haversineM(GR.currentLat,GR.currentLng,midPt.lat,midPt.lng);
+  const midU=isYd?Math.round(midDM/YD):Math.round(midDM);
+  const startU=Math.max(5,midU-50);
+  const endU=midU+50;
+  const brg=bearingDeg(GR.currentLat,GR.currentLng,midPt.lat,midPt.lng);
+  const offsetM=isYd?4*YD:4;
+  let ri=0;
+  for(let u=Math.ceil(startU/5)*5;u<=endU;u+=5){
+    const radiusM=isYd?u*YD:u;
+    const isMid=u===midU||Math.abs(u-midU)<3;
+    // Dim full ring
+    GR.greenLayers.push(L.circle(pLL,{radius:radiusM,color:ringCol(ri,isMid?0.4:0.18),weight:1,fill:false,dashArray:'3,9',interactive:false}).addTo(GR.map));
+    // Bright arc at green bearing
+    GR.greenLayers.push(L.polyline(arcPoints(GR.currentLat,GR.currentLng,radiusM,brg-15,brg+15),{
+      color:ringCol(ri,isMid?1:0.7),weight:isMid?2.5:1.5,fill:false,interactive:false
+    }).addTo(GR.map));
+    // Label — positioned in current green view, repositioned on pan
+    const lblPt=bestLabelPos(GR.currentLat,GR.currentLng,radiusM,brg,GR.map.getBounds(),offsetM);
+    const lbl=L.marker(lblPt,{
+      icon:L.divIcon({className:'',html:`<div style="font-size:9px;color:${ringCol(ri,1)};font-weight:700;white-space:nowrap;text-shadow:0 1px 3px #000;background:rgba(0,0,0,0.65);padding:1px 4px;border-radius:3px;border:1px solid ${ringCol(ri,0.5)}">${u}${isYd?'y':'m'}</div>`,iconSize:[32,14],iconAnchor:[16,7]}),
+      interactive:false,zIndexOffset:200
+    }).addTo(GR.map);
+    GR.greenLayers.push(lbl);
+    GR.greenLabelMarkers.push({marker:lbl,radiusM});
+    ri++;
+  }
+  // Cone edge lines from player to beyond green
+  const coneDistM=isYd?(endU+20)*YD:(endU+20);
+  GR.greenLayers.push(L.polyline([pLL,pointAtBearingDist(GR.currentLat,GR.currentLng,(brg-15+360)%360,coneDistM)],{color:'rgba(255,255,255,0.18)',weight:1,dashArray:'4,8',interactive:false}).addTo(GR.map));
+  GR.greenLayers.push(L.polyline([pLL,pointAtBearingDist(GR.currentLat,GR.currentLng,(brg+15)%360,coneDistM)],{color:'rgba(255,255,255,0.18)',weight:1,dashArray:'4,8',interactive:false}).addTo(GR.map));
+  // Survey point dots + distance badges
+  const dists=holePts.map(p=>haversineM(GR.currentLat,GR.currentLng,p.lat,p.lng));
+  holePts.forEach((pt,i)=>{
+    const d=dists[i],col=COL[pt.type]||'rgba(255,255,255,0.85)',lbl=LBL[pt.type]||pt.type;
+    GR.greenLayers.push(L.circleMarker([pt.lat,pt.lng],{radius:pt.type==='est'?7:6,color:'#fff',weight:1.5,fillColor:col,fillOpacity:1,interactive:false}).addTo(GR.map));
+    GR.greenLayers.push(L.marker([pt.lat,pt.lng],{
+      icon:L.divIcon({className:'',html:`<div style="background:rgba(0,0,0,0.75);color:${col};font-size:9px;font-weight:700;padding:2px 5px;border-radius:3px;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,0.9);margin-top:9px;border:1px solid ${col}">${lbl} ${dispDist(Math.round(d))}</div>`,iconSize:[80,16],iconAnchor:[40,-4]}),
+      interactive:false,zIndexOffset:500
+    }).addTo(GR.map));
+  });
+  // Player dot (if visible in green view)
+  GR.greenLayers.push(L.circleMarker(pLL,{radius:6,color:'#fff',weight:2,fillColor:'#ffd700',fillOpacity:1,interactive:false}).addTo(GR.map));
+  // Reposition labels on pan
+  GR._greenMoveHandler=()=>{
+    if(!GR||!GR.map||!GR.greenZoom)return;
+    const bounds=GR.map.getBounds();
+    GR.greenLabelMarkers.forEach(({marker,radiusM})=>{
+      marker.setLatLng(bestLabelPos(GR.currentLat,GR.currentLng,radiusM,brg,bounds,offsetM));
+    });
+  };
+  GR.map.on('moveend',GR._greenMoveHandler);
   document.querySelectorAll('.green-zoom-btn').forEach(b=>{b.classList.add('selected');b.textContent='📐 ✕';});
 }
 // ── Distance rings (📏 Rings) ─────────────────────────────────────────────────
