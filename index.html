@@ -1348,7 +1348,7 @@ function saveHoleScore(finishAfter=false){
     finishGpsRound();
   }
 }
-function finishGpsRound(){
+async function finishGpsRound(){
   const scores=GR.holeScores;
   const holesRecorded=Object.keys(scores).length;
   if(holesRecorded===0){
@@ -1356,27 +1356,36 @@ function finishGpsRound(){
     abandonGpsRound();return;
   }
   if(!confirm(`Transfer ${holesRecorded} hole scores to score entry?`))return;
+  const savedScores={...scores};
+  const savedDate=GR.date;
+  const savedTeeId=GR.teeId;
+  const pid=activeId;
   if(GR.map){GR.map.remove();}
   if(weatherInterval){clearInterval(weatherInterval);weatherInterval=null;}
-  const savedScores={...scores};
   GR=null;
   const logTab=document.querySelector('.nav-tab[onclick*="log"]');
   showView('log',logTab);
-  setTimeout(()=>{
-    const pid=activeId;
-    if(HE&&HE.roundIds&&HE.roundIds[pid]&&HE.scores&&HE.scores[pid]&&HE.playerList&&HE.playerList.find(x=>x.p.id===pid)){
-      for(let h=1;h<=18;h++){
-        if(savedScores[h]!=null){
-          HE.scores[pid][h-1]=savedScores[h];
-        }
-      }
-      heRender();
-      hePatchAll().then(()=>toast(`${holesRecorded} hole scores saved from GPS round ✓`))
-        .catch(()=>toast(`${holesRecorded} hole scores pre-filled — tap ✓ to save`));
-    } else {
-      toast(`${holesRecorded} GPS scores saved — start a round above, then enter scores manually`);
+  const player=players.find(p=>p.id===pid);
+  if(!player){toast('No active player — cannot create round');return;}
+  const heReady=HE&&HE.roundIds&&HE.roundIds[pid]&&HE.scores&&HE.scores[pid]&&HE.playerList&&HE.playerList.find(x=>x.p.id===pid);
+  if(!heReady){
+    const teeId=savedTeeId||'platinum';
+    const index=hcpOnDate(player,savedDate);
+    document.getElementById('logStep1').style.display='none';
+    document.getElementById('logStep2').style.display='block';
+    await heInit([{p:player,index,teeId}],savedDate,'',1);
+  }
+  if(HE&&HE.scores&&HE.scores[pid]){
+    for(let h=1;h<=18;h++){
+      if(savedScores[h]!=null)HE.scores[pid][h-1]=savedScores[h];
     }
-  },300);
+    heRender();
+    hePatchAll()
+      .then(()=>toast(`${holesRecorded} hole scores saved from GPS round ✓`))
+      .catch(()=>toast(`${holesRecorded} scores pre-filled — tap ✓ to save`));
+  } else {
+    toast('Could not transfer scores — round creation failed');
+  }
 }
 function renderTrackView(){
   const el=document.getElementById('trackContent');
