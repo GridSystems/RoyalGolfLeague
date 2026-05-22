@@ -990,6 +990,38 @@ function selectGpsTee(id,el){
   document.querySelectorAll('#gpsTeeSelect .tee-opt').forEach(o=>o.classList.remove('selected'));
   el.classList.add('selected');
 }
+let _gpsScoreForIds=[];
+function toggleScoringFor(pid,el){
+  const idx=_gpsScoreForIds.indexOf(pid);
+  if(idx===-1){
+    _gpsScoreForIds.push(pid);
+    el.style.border='1px solid rgba(201,168,76,0.5)';
+    el.style.background='rgba(201,168,76,0.1)';
+    el.querySelector('.sfcheck').textContent='✓';
+  }else{
+    _gpsScoreForIds.splice(idx,1);
+    el.style.border='1px solid rgba(255,255,255,0.12)';
+    el.style.background='rgba(0,0,0,0.2)';
+    el.querySelector('.sfcheck').textContent='';
+  }
+}
+function buildScoringForList(date){
+  const td=date||today();
+  const myRound=allRounds.find(r=>r.player_id===activeId&&r.date===td);
+  const myTeeTime=myRound?.tee_time||null;
+  const seen=new Set();
+  return allRounds.filter(r=>{
+    if(r.player_id===activeId)return false;
+    if(r.date!==td)return false;
+    if(myTeeTime&&r.tee_time&&r.tee_time!==myTeeTime)return false;
+    if(seen.has(r.player_id))return false;
+    seen.add(r.player_id);
+    return true;
+  }).map(r=>{
+    const p=players.find(x=>x.id===r.player_id);
+    return p?{p,roundId:r.id}:null;
+  }).filter(Boolean);
+}
 function renderGpsStart(){
   const el=document.getElementById('trackContent');
   const p=players.find(x=>x.id===activeId);
@@ -1014,6 +1046,16 @@ function renderGpsStart(){
             </div>
           </div>
         </div>
+        ${(()=>{const date=document.getElementById('gpsDate')?.value||today();const list=buildScoringForList(date);return list.length?`<div>
+          <label style="font-size:0.78rem;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:0.05em">Scoring for</label>
+          <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px" id="scoringForList">
+            ${list.map(({p})=>`<div onclick="toggleScoringFor(${p.id},this)" style="display:flex;align-items:center;gap:8px;padding:7px 12px;border-radius:8px;cursor:pointer;border:1px solid rgba(255,255,255,0.12);background:rgba(0,0,0,0.2);user-select:none" data-pid="${p.id}">
+              <div style="width:20px;height:20px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.58rem;font-weight:700;color:#fff">${ini(p.name)}</div>
+              <span style="font-size:0.85rem;flex:1">${p.name}</span>
+              <span class="sfcheck" style="width:18px;text-align:center;color:var(--gold);font-size:0.8rem"></span>
+            </div>`).join('')}
+          </div>
+        </div>`:'';})()}
         <div style="display:flex;gap:10px;justify-content:flex-end">
           <button class="btn btn-primary" onclick="startGpsRound()">Start Tracking →</button>
         </div>
@@ -1034,13 +1076,14 @@ async function startGpsRound(){
     GR={
       date,teeId:gpsTeeId,currentHole:startHole,
       selectedClub:null,selectedWeight:'full',selectedLie:'fairway',selectedDirection:null,selectedOutcome:null,
-      pendingShot:null,
+      pendingShot:null,scoringForIds:[..._gpsScoreForIds],
       holeScores:{},provisionalShotId:null,
       map:null,markers:[],polylines:[],shots:[]
     };
     try{
       GR.shots=await sbGet('gps_shots',`player_id=eq.${activeId}&round_date=eq.${date}&order=hole.asc,shot_num.asc`);
     }catch(e){GR.shots=[];}
+    _gpsScoreForIds=[];
     renderGpsHole();
   }catch(e){
     alert('Could not get GPS location. Please allow location access and try again.');
