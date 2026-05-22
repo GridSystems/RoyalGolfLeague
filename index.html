@@ -1082,7 +1082,7 @@ async function startGpsRound(){
     GR={
       date,teeId:gpsTeeId,currentHole:startHole,
       selectedClub:null,selectedWeight:'full',selectedLie:'fairway',selectedDirection:null,selectedOutcome:null,
-      pendingShot:null,scoringForIds:[..._gpsScoreForIds],_pendingFinish:false,
+      pendingShot:null,chipAndPutt:false,scoringForIds:[..._gpsScoreForIds],_pendingFinish:false,
       holeScores:{},provisionalShotId:null,
       map:null,markers:[],polylines:[],shots:[]
     };
@@ -1138,6 +1138,29 @@ function selectGpsOutcome(outcome,el){
   const note=document.getElementById('outcomeNote');
   if(note)note.style.display=GR.selectedOutcome?'block':'none';
 }
+function enterChipAndPutt(){
+  if(!GR)return;
+  GR.chipAndPutt=true;
+  renderGpsHole();
+  // Record current GPS silently as ball-on-green marker
+  navigator.geolocation.getCurrentPosition(
+    async pos=>{
+      if(!GR||!GR.chipAndPutt)return;
+      const holeShots=GR.shots.filter(s=>s.hole===GR.currentHole);
+      const payload={
+        player_id:activeId,round_date:GR.date,hole:GR.currentHole,
+        shot_num:holeShots.length+1,type:'normal',
+        lat:pos.coords.latitude,lng:pos.coords.longitude,
+        club:null,shot_weight:null,lie:'green',direction:null,shot_outcome:null,
+        wind_speed:currentWeather?.speed_kmh??null,wind_dir:currentWeather?.dir??null,wind_deg:currentWeather?.deg??null
+      };
+      const [saved]=await sbInsert('gps_shots',payload).catch(()=>[null]);
+      if(GR){GR.shots.push(saved||{...payload,id:Date.now()});GR.currentLat=pos.coords.latitude;GR.currentLng=pos.coords.longitude;}
+    },
+    ()=>{/* silent — GPS optional here */},
+    {enableHighAccuracy:true,timeout:6000}
+  );
+}
 function renderGpsHole(){
   const el=document.getElementById('trackContent');
   const p=players.find(x=>x.id===activeId);
@@ -1180,6 +1203,11 @@ function renderGpsHole(){
         <button class="btn btn-primary" style="flex:1" onclick="savePendingShot()">Save Shot →</button>
       </div>
     </div>`:
+    GR.chipAndPutt?
+    `<div style="padding:1.5rem 1rem;display:flex;flex-direction:column;align-items:center;gap:1.2rem;border-top:1px solid var(--border)">
+      <div style="font-size:0.82rem;color:rgba(255,255,255,0.35);text-align:center">Chip and putt out, then end the hole</div>
+      <button class="btn btn-primary" style="width:100%;padding:0.9rem;font-size:1rem" onclick="confirmEndHole()">End Hole →</button>
+    </div>`:
     `<div class="gps-actions">
       <button class="btn-hit" onclick="recordShot('normal')">🎯 Hit</button>
       <button class="btn-shot-type" onclick="recordShot('drop')">⬇ Drop</button>
@@ -1197,7 +1225,7 @@ function renderGpsHole(){
           <div style="font-family:'Playfair Display',serif;color:var(--gold-l);font-size:1.1rem">Hole ${GR.currentHole}</div>
           <div style="font-size:0.72rem;color:rgba(255,255,255,0.4)">Par ${par} · SI ${HOLE_HCP[GR.currentHole-1]} · Shot ${shotCount+1}${dtg!=null?` · <span id="gpsDist" style="color:#d4b483;font-weight:600">${dtg}m ⛳</span>`:'&thinsp;<span id="gpsDist"></span>'}</div>
         </div>
-        <button class="btn btn-ghost btn-sm" onclick="confirmEndHole()">End Hole →</button>
+        ${GR.chipAndPutt?`<button class="btn btn-ghost btn-sm" onclick="confirmEndHole()">End Hole →</button>`:`<button class="btn btn-ghost btn-sm" onclick="enterChipAndPutt()">⛳ Chip &amp; Putt →</button>`}
       </div>
       <div id="gpsMap"></div>
       ${bodyHtml}
@@ -1434,7 +1462,7 @@ function renderMarkerScoring(idx){
     if(GR._pendingFinish){GR._pendingFinish=false;finishGpsRound();return;}
     if(GR.currentHole<18){
       GR.currentHole++;
-      GR.provisionalShotId=null;
+      GR.provisionalShotId=null;GR.chipAndPutt=false;
       renderGpsHole();
     }else{
       finishGpsRound();
