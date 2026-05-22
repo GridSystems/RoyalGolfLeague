@@ -1416,6 +1416,14 @@ function pointAtBearingDist(lat,lng,brg,distM){
   const λ2=λ1+Math.atan2(Math.sin(θ)*Math.sin(δ)*Math.cos(φ1),Math.cos(δ)-Math.sin(φ1)*Math.sin(φ2));
   return[φ2*180/Math.PI,λ2*180/Math.PI];
 }
+function arcPoints(lat,lng,radiusM,fromBrg,toBrg,steps=20){
+  const pts=[];
+  for(let i=0;i<=steps;i++){
+    const b=(fromBrg+(toBrg-fromBrg)*i/steps+360)%360;
+    pts.push(pointAtBearingDist(lat,lng,b,radiusM));
+  }
+  return pts;
+}
 function toggleDistRings(){
   if(!GR||!GR.map)return;
   if(GR.distRings){
@@ -1440,28 +1448,44 @@ function drawDistRings(){
   const pLL=[GR.currentLat,GR.currentLng];
   const startU=Math.max(interval,centre-50);
   const endU=centre+50;
-  for(let u=Math.ceil(startU/interval)*interval;u<=endU;u+=interval){
-    const radiusM=isYd?u*YD:u;
-    const isCentre=u===centre;
-    GR.distRingLayers.push(L.circle(pLL,{
-      radius:radiusM,color:isCentre?'rgba(100,190,255,0.55)':'rgba(100,180,255,0.22)',
-      weight:isCentre?1.5:1,fill:false,dashArray:isCentre?null:'3,9',interactive:false
-    }).addTo(GR.map));
-    const labelLat=GR.currentLat+(radiusM/111320);
-    GR.distRingLayers.push(L.marker([labelLat,GR.currentLng],{
-      icon:L.divIcon({className:'',html:`<div style="font-size:9px;color:rgba(100,200,255,${isCentre?'0.95':'0.6'});font-weight:600;white-space:nowrap;text-shadow:0 1px 2px #000">${u}${isYd?'y':'m'}</div>`,iconSize:[28,12],iconAnchor:[14,6]}),
-      interactive:false,zIndexOffset:-200
-    }).addTo(GR.map));
-  }
-  // Cone: aim direction = straight towards green (future: fairway routing)
+  // Aim bearing: straight towards green (future: fairway routing)
   const _hd=HOLE_DATA[GR.currentHole-1];
   const _sp=(GR.surveyPoints||[]).filter(p=>p.hole===GR.currentHole&&['mid_green','front_green','back_green'].includes(p.type));
   const _target=(_sp.find(p=>p.type==='mid_green')||_sp[0])||(_hd&&_hd.green?_hd.green:null);
-  if(_target){
-    const brg=bearingDeg(GR.currentLat,GR.currentLng,_target.lat,_target.lng);
-    const coneDistM=isYd?(endU+20)*YD:(endU+20);
-    GR.distRingLayers.push(L.polyline([pLL,pointAtBearingDist(GR.currentLat,GR.currentLng,(brg-15+360)%360,coneDistM)],{color:'rgba(100,180,255,0.35)',weight:1,dashArray:'4,8',interactive:false}).addTo(GR.map));
-    GR.distRingLayers.push(L.polyline([pLL,pointAtBearingDist(GR.currentLat,GR.currentLng,(brg+15)%360,coneDistM)],{color:'rgba(100,180,255,0.35)',weight:1,dashArray:'4,8',interactive:false}).addTo(GR.map));
+  const brg=_target?bearingDeg(GR.currentLat,GR.currentLng,_target.lat,_target.lng):null;
+  for(let u=Math.ceil(startU/interval)*interval;u<=endU;u+=interval){
+    const radiusM=isYd?u*YD:u;
+    const isCentre=u===centre;
+    // Dim full ring
+    GR.distRingLayers.push(L.circle(pLL,{
+      radius:radiusM,color:isCentre?'rgba(100,190,255,0.4)':'rgba(100,180,255,0.15)',
+      weight:isCentre?1.5:1,fill:false,dashArray:'3,9',interactive:false
+    }).addTo(GR.map));
+    if(brg!==null){
+      // Bright arc within cone on this ring
+      GR.distRingLayers.push(L.polyline(arcPoints(GR.currentLat,GR.currentLng,radiusM,brg-15,brg+15),{
+        color:isCentre?'rgba(100,200,255,0.95)':'rgba(100,185,255,0.6)',
+        weight:isCentre?3:2,fill:false,interactive:false
+      }).addTo(GR.map));
+      // Label at aim bearing, just outside ring
+      const lblPt=pointAtBearingDist(GR.currentLat,GR.currentLng,brg,radiusM+(isYd?5*YD:5));
+      GR.distRingLayers.push(L.marker(lblPt,{
+        icon:L.divIcon({className:'',html:`<div style="font-size:9px;color:rgba(100,210,255,${isCentre?'1':'0.7'});font-weight:700;white-space:nowrap;text-shadow:0 1px 3px #000;background:rgba(0,0,0,0.55);padding:1px 4px;border-radius:3px">${u}${isYd?'y':'m'}</div>`,iconSize:[32,14],iconAnchor:[16,7]}),
+        interactive:false,zIndexOffset:100
+      }).addTo(GR.map));
+    }else{
+      // No bearing — label north
+      GR.distRingLayers.push(L.marker([GR.currentLat+(radiusM/111320),GR.currentLng],{
+        icon:L.divIcon({className:'',html:`<div style="font-size:9px;color:rgba(100,200,255,${isCentre?'0.95':'0.6'});font-weight:600;white-space:nowrap;text-shadow:0 1px 2px #000">${u}${isYd?'y':'m'}</div>`,iconSize:[28,12],iconAnchor:[14,6]}),
+        interactive:false,zIndexOffset:-200
+      }).addTo(GR.map));
+    }
+  }
+  // Cone edge lines (thin guides from player to outer ring)
+  if(brg!==null){
+    const coneDistM=isYd?(endU+15)*YD:(endU+15);
+    GR.distRingLayers.push(L.polyline([pLL,pointAtBearingDist(GR.currentLat,GR.currentLng,(brg-15+360)%360,coneDistM)],{color:'rgba(100,180,255,0.28)',weight:1,dashArray:'4,8',interactive:false}).addTo(GR.map));
+    GR.distRingLayers.push(L.polyline([pLL,pointAtBearingDist(GR.currentLat,GR.currentLng,(brg+15)%360,coneDistM)],{color:'rgba(100,180,255,0.28)',weight:1,dashArray:'4,8',interactive:false}).addTo(GR.map));
   }
   // Player dot
   GR.distRingLayers.push(L.circleMarker(pLL,{radius:6,color:'#fff',weight:2,fillColor:'#64b4ff',fillOpacity:1,interactive:false}).addTo(GR.map));
