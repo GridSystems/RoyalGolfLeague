@@ -1656,23 +1656,24 @@ async function heInit(playerList,date,notes,startHole){
 }
 
 function holeState(h){
+  if(!HE||!HE.playerList)return null;
   // Returns null (no second scorer), 'waiting' (○), 'agree' (✓), or 'conflict' (⚠)
   const hasMarker=HE.playerList.some(({p})=>{
     const r=allRounds.find(x=>x.id===HE.roundIds[p.id]);
     return r&&r.marker_holes!=null;
   });
   if(!hasMarker)return null;
-  let anyConflict=false,allMatch=true;
+  let anyConflict=false,allMatch=true,anyScored=false;
   for(const{p}of HE.playerList){
     const r=allRounds.find(x=>x.id===HE.roundIds[p.id]);
     if(!r||!r.marker_holes){allMatch=false;continue;}
     const a=HE.scores[p.id][h-1];
     const b=r.marker_holes[h-1]?.score??null;
     if(a==null||b==null){allMatch=false;continue;}
-    if(a!==b){anyConflict=true;allMatch=false;}
+    if(a!==b){anyConflict=true;allMatch=false;}else{anyScored=true;}
   }
   if(anyConflict)return'conflict';
-  if(allMatch)return'agree';
+  if(allMatch&&anyScored)return'agree';
   return'waiting';
 }
 function saveActiveGroup(){
