@@ -1819,9 +1819,9 @@ async function acceptScore(pid,h,score,isLogScorer){
   if(_acceptInFlight)return;
   _acceptInFlight=true;
   const rid=HE.roundIds[pid];
-  if(!rid)return;
+  if(!rid){_acceptInFlight=false;return;}
   const r=allRounds.find(x=>x.id===rid);
-  if(!r)return;
+  if(!r){_acceptInFlight=false;return;}
   setLoading(true,'Saving…');
   try{
     if(isLogScorer){
