@@ -748,6 +748,7 @@ let GR = null;
 let currentWeather = null;
 let weatherInterval = null;
 let fineTypes=[],allFines=[];
+let editingFineTypeId=null;
 let saturdayEvents=[],saturdaySignups=[];
 const MOBILEPAY_FINES_URL='https://qr.mobilepay.dk/box/19b8d876-6c09-4fbd-b471-6d46df7c61e5/pay-in';
 let pendingDraw={};
@@ -2658,7 +2659,13 @@ async function deleteFine(id){
 function renderFineTypesList(){
   const el=document.getElementById('fineTypesList');if(!el)return;
   if(!fineTypes.length){el.innerHTML='<div style="font-size:0.82rem;color:rgba(255,255,255,0.35);padding:0.5rem 0">No fine types yet.</div>';return;}
-  el.innerHTML=fineTypes.map(ft=>`<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.06)"><span style="flex:1;font-size:0.88rem">${ft.name}</span><span style="font-family:'DM Mono',monospace;font-size:0.82rem;color:#f0a030">DKK ${ft.amount||10}</span><button class="btn btn-danger btn-sm" onclick="deleteFineType(${ft.id})">✕</button></div>`).join('');
+  const inputStyle='background:rgba(0,0,0,0.35);border:1px solid rgba(255,255,255,0.2);border-radius:5px;color:var(--cream);font-size:0.82rem;padding:3px 7px;outline:none';
+  el.innerHTML=fineTypes.map(ft=>{
+    if(ft.id===editingFineTypeId){
+      return`<div style="display:flex;align-items:center;gap:6px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.06)"><input id="eftName_${ft.id}" value="${ft.name.replace(/"/g,'&quot;')}" style="${inputStyle};flex:1" placeholder="Name"><input id="eftAmt_${ft.id}" type="number" min="0" step="1" value="${ft.amount||10}" style="${inputStyle};width:64px" placeholder="DKK"><button class="btn btn-primary btn-sm" onclick="saveFineType(${ft.id})">✓</button><button class="btn btn-ghost btn-sm" onclick="cancelEditFineType()">✕</button></div>`;
+    }
+    return`<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.06)"><span style="flex:1;font-size:0.88rem">${ft.name}</span><span style="font-family:'DM Mono',monospace;font-size:0.82rem;color:#f0a030">DKK ${ft.amount||10}</span><button class="btn btn-ghost btn-sm" onclick="editFineType(${ft.id})" title="Edit">✏️</button><button class="btn btn-danger btn-sm" onclick="deleteFineType(${ft.id})">✕</button></div>`;
+  }).join('');
 }
 
 async function addFineType(){
@@ -2669,6 +2676,26 @@ async function addFineType(){
   setLoading(true,'Saving…');
   try{const[saved]=await sbInsert('fine_types',payload);fineTypes.push(saved||payload);fineTypes.sort((a,b)=>a.name.localeCompare(b.name));toast('Fine type added ✓');document.getElementById('newFineTypeName').value='';renderFineTypesList();}
   catch(e){alert('Error: '+e.message);}finally{setLoading(false);}
+}
+
+function editFineType(id){editingFineTypeId=id;renderFineTypesList();const el=document.getElementById(`eftName_${id}`);if(el)el.focus();}
+function cancelEditFineType(){editingFineTypeId=null;renderFineTypesList();}
+async function saveFineType(id){
+  const nameEl=document.getElementById(`eftName_${id}`);
+  const amtEl=document.getElementById(`eftAmt_${id}`);
+  const name=(nameEl?.value||'').trim();
+  const amount=parseFloat(amtEl?.value)||10;
+  if(!name){nameEl?.focus();return;}
+  setLoading(true,'Saving…');
+  try{
+    await sbUpdate('fine_types',id,{name,amount});
+    const ft=fineTypes.find(x=>x.id===id);
+    if(ft){ft.name=name;ft.amount=amount;}
+    fineTypes.sort((a,b)=>a.name.localeCompare(b.name));
+    editingFineTypeId=null;
+    toast('Fine type updated ✓');
+    renderFineTypesList();
+  }catch(e){alert('Error: '+e.message);}finally{setLoading(false);}
 }
 
 async function deleteFineType(id){
