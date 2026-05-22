@@ -1076,7 +1076,7 @@ async function startGpsRound(){
     GR={
       date,teeId:gpsTeeId,currentHole:startHole,
       selectedClub:null,selectedWeight:'full',selectedLie:'fairway',selectedDirection:null,selectedOutcome:null,
-      pendingShot:null,scoringForIds:[..._gpsScoreForIds],
+      pendingShot:null,scoringForIds:[..._gpsScoreForIds],_pendingFinish:false,
       holeScores:{},provisionalShotId:null,
       map:null,markers:[],polylines:[],shots:[]
     };
@@ -1402,7 +1402,8 @@ function saveHoleScore(finishAfter=false){
   }
 }
 function renderMarkerScoring(idx){
-  if(!GR||!GR.scoringForIds||idx>=GR.scoringForIds.length){
+  if(!GR)return;
+  if(!GR.scoringForIds||idx>=GR.scoringForIds.length){
     // All players done — advance hole or finish
     if(GR._pendingFinish){GR._pendingFinish=false;finishGpsRound();return;}
     if(GR.currentHole<18){
