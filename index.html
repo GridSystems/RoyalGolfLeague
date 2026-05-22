@@ -1390,13 +1390,81 @@ function saveHoleScore(finishAfter=false){
   const val=parseInt(document.getElementById('holeScoreInput').value,10);
   if(!val||val<1){alert('Enter a valid score.');return;}
   GR.holeScores[GR.currentHole]=val;
-  if(!finishAfter&&GR.currentHole<18){
+  GR._pendingFinish=finishAfter||(GR.currentHole>=18);
+  if(GR.scoringForIds&&GR.scoringForIds.length>0){
+    renderMarkerScoring(0);
+  }else if(!finishAfter&&GR.currentHole<18){
     GR.currentHole++;
     GR.provisionalShotId=null;
     renderGpsHole();
-  } else {
+  }else{
     finishGpsRound();
   }
+}
+function renderMarkerScoring(idx){
+  if(!GR||!GR.scoringForIds||idx>=GR.scoringForIds.length){
+    // All players done — advance hole or finish
+    if(GR._pendingFinish){GR._pendingFinish=false;finishGpsRound();return;}
+    if(GR.currentHole<18){
+      GR.currentHole++;
+      GR.provisionalShotId=null;
+      renderGpsHole();
+    }else{
+      finishGpsRound();
+    }
+    return;
+  }
+  const pid=GR.scoringForIds[idx];
+  const p=players.find(x=>x.id===pid);
+  if(!p){renderMarkerScoring(idx+1);return;}
+  const hole=GR.currentHole;
+  const par=HOLE_PARS[hole-1];
+  const el=document.getElementById('trackContent');
+  el.innerHTML=`
+    <div class="panel">
+      <div class="ph"><span class="pt">Score for ${p.name}</span></div>
+      <div class="pb" style="display:flex;flex-direction:column;gap:16px">
+        <div class="stats-row">
+          <div class="sc"><div class="sl">Hole</div><div class="sv">${hole}</div></div>
+          <div class="sc"><div class="sl">Par</div><div class="sv">${par}</div></div>
+        </div>
+        <div class="fgi">
+          <label>Gross Score for ${p.name}</label>
+          <input type="number" id="markerScoreInput" value="${par}" min="1" max="20" inputmode="numeric">
+        </div>
+        <div class="fa">
+          <button class="btn btn-ghost" onclick="renderMarkerScoring(${idx+1})">Skip</button>
+          <button class="btn btn-primary" onclick="saveMarkerHoleScore(${pid},${idx})">
+            ${idx<GR.scoringForIds.length-1?'Next Player →':'Done ✓'}
+          </button>
+        </div>
+      </div>
+    </div>`;
+  setTimeout(()=>{const i=document.getElementById('markerScoreInput');if(i){i.focus();i.select();}},50);
+}
+async function saveMarkerHoleScore(pid,idx){
+  const val=parseInt(document.getElementById('markerScoreInput').value,10);
+  if(!val||val<1){alert('Enter a valid score.');return;}
+  const hole=GR.currentHole;
+  const r=allRounds.find(x=>x.player_id===pid&&x.date===GR.date&&x.holes.filter(h=>h&&h.score!=null).length<18);
+  if(!r){
+    const p=players.find(x=>x.id===pid);
+    toast(`No active round for ${p?.name||pid} — skipping`);
+    renderMarkerScoring(idx+1);
+    return;
+  }
+  setLoading(true,'Saving…');
+  try{
+    const mh=r.marker_holes?r.marker_holes.map(x=>({...x})):Array.from({length:18},(_,i)=>({hole:i+1,score:null,par:HOLE_PARS[i],hcp:HOLE_HCP[i]}));
+    mh[hole-1]={...mh[hole-1],score:val};
+    const updates={marker_holes:mh};
+    if(!r.marker_id)updates.marker_id=activeId;
+    await sbUpdate('rounds',r.id,updates);
+    r.marker_holes=mh;
+    if(!r.marker_id)r.marker_id=activeId;
+  }catch(e){alert('Error saving score: '+e.message);}
+  finally{setLoading(false);}
+  renderMarkerScoring(idx+1);
 }
 async function finishGpsRound(){
   const scores=GR.holeScores;
