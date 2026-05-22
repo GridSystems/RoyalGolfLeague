@@ -2028,7 +2028,7 @@ function renderSaturdayAdmin(){
   el.innerHTML=sats.map(date=>{
     const event=saturdayEvents.find(e=>e.date===date);
     const locked=event?.locked||false;
-    const teeTimes=event?.tee_times||['08:30','08:40','08:50'];
+    const teeTimes=(event?.tee_times||['08:30','08:40','08:50']).slice().sort();
     const signups=saturdaySignups.filter(s=>s.date===date);
     const n=signups.length;
     const numGroups=n<=4?1:n<=8?2:3;
@@ -2048,6 +2048,7 @@ function renderSaturdayAdmin(){
         </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
           <button class="btn btn-ghost btn-sm" onclick="toggleSatLock('${date}')" style="font-size:0.75rem">${locked?'🔓 Unlock':'🔒 Lock sign-ups'}</button>
+          <button class="btn btn-ghost btn-sm" onclick="saveTeeTimesOnly('${date}')" style="font-size:0.75rem">💾 Times</button>
           ${n?`<button class="btn btn-primary btn-sm" onclick="generateDraw('${date}')" style="font-size:0.75rem">🎲 Randomise</button>`:''}
           ${hasAlloc?`<button class="btn btn-warn btn-sm" onclick="saveDraw('${date}')" style="font-size:0.75rem">💾 Save Draw</button>`:''}
         </div>
@@ -2088,7 +2089,7 @@ async function adminAddSaturdayPlayer(date){
   const ttSel=document.getElementById(`satAddTeeTime_${date}`);
   const teeTime=ttSel?.value||null;
   const event=saturdayEvents.find(e=>e.date===date);
-  const teeTimes=event?.tee_times||['08:30','08:40','08:50'];
+  const teeTimes=(event?.tee_times||['08:30','08:40','08:50']).slice().sort();
   const groupNum=teeTime?(teeTimes.indexOf(teeTime)+1||1):null;
   try{
     const payload={id:Date.now()+Math.floor(Math.random()*9999),player_id:pid,date,
@@ -2120,7 +2121,7 @@ async function adminRemoveSaturdayPlayer(signupId,date){
 }
 async function adminMoveTeeTime(signupId,date,newTeeTime){
   const event=saturdayEvents.find(e=>e.date===date);
-  const teeTimes=event?.tee_times||['08:30','08:40','08:50'];
+  const teeTimes=(event?.tee_times||['08:30','08:40','08:50']).slice().sort();
   const newGroupNum=teeTimes.indexOf(newTeeTime)+1||1;
   const s=saturdaySignups.find(x=>x.id===signupId);
   if(!s)return;
@@ -2136,7 +2137,7 @@ function renderTeeSheet(){
   const allP=[...players,...pendingPlayers];
   el.innerHTML=sats.map(date=>{
     const event=saturdayEvents.find(e=>e.date===date);
-    const teeTimes=event?.tee_times||['08:30','08:40','08:50'];
+    const teeTimes=(event?.tee_times||['08:30','08:40','08:50']).slice().sort();
     const signups=saturdaySignups.filter(s=>s.date===date);
     const dateObj=new Date(date+'T00:00:00');
     const isToday=date===today();
@@ -2209,7 +2210,7 @@ function generateDraw(date){
   const signups=saturdaySignups.filter(s=>s.date===date);
   const n=signups.length;if(!n){alert('No sign-ups to allocate.');return;}
   const ttInput=document.getElementById(`satTT_${date}`);
-  const teeTimes=(ttInput?.value||'08:30,08:40,08:50').split(',').map(t=>t.trim()).filter(Boolean);
+  const teeTimes=(ttInput?.value||'08:30,08:40,08:50').split(',').map(t=>t.trim()).filter(Boolean).sort();
   const numGroups=n<=4?1:n<=8?2:3;
   // Early requesters are always pinned to group 1 (first tee time); rest are shuffled
   const early=signups.filter(s=>s.early_tee_request);
@@ -2229,11 +2230,21 @@ function generateDraw(date){
   pendingDraw[date]={teeTimes};
   renderSaturdayAdmin();
 }
+async function saveTeeTimesOnly(date){
+  const ttInput=document.getElementById(`satTT_${date}`);
+  const teeTimes=(ttInput?.value||'08:30,08:40,08:50').split(',').map(t=>t.trim()).filter(Boolean).sort();
+  let event=saturdayEvents.find(e=>e.date===date);
+  try{
+    if(!event){const payload={id:Date.now()+Math.floor(Math.random()*9999),date,locked:false,tee_times:teeTimes};const[saved]=await sbInsert('saturday_events',payload);saturdayEvents.push(event=saved||payload);}
+    else{await sbUpdate('saturday_events',event.id,{tee_times:teeTimes});event.tee_times=teeTimes;}
+    toast('Tee times saved ✓');renderSaturdayAdmin();renderSaturdayView();renderTeeSheet();
+  }catch(e){alert('Error: '+e.message);}
+}
 async function saveDraw(date){
   if(!pendingDraw[date]){alert('Randomise first.');return;}
   const signups=saturdaySignups.filter(s=>s.date===date);
   const ttInput=document.getElementById(`satTT_${date}`);
-  const teeTimes=(ttInput?.value||'08:30,08:40,08:50').split(',').map(t=>t.trim()).filter(Boolean);
+  const teeTimes=(ttInput?.value||'08:30,08:40,08:50').split(',').map(t=>t.trim()).filter(Boolean).sort();
   let event=saturdayEvents.find(e=>e.date===date);
   setLoading(true,'Saving draw…');
   try{
@@ -2251,7 +2262,7 @@ async function saveDraw(date){
 }
 async function toggleSatLock(date){
   const ttInput=document.getElementById(`satTT_${date}`);
-  const teeTimes=(ttInput?.value||'08:30,08:40,08:50').split(',').map(t=>t.trim()).filter(Boolean);
+  const teeTimes=(ttInput?.value||'08:30,08:40,08:50').split(',').map(t=>t.trim()).filter(Boolean).sort();
   let event=saturdayEvents.find(e=>e.date===date);
   const newLocked=!event?.locked;
   try{
