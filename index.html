@@ -1260,10 +1260,10 @@ function renderGpsHole(){
       ${bodyHtml}
       ${GR.distRings?`<div style="display:flex;gap:8px;align-items:center;padding:8px 12px;background:rgba(100,160,255,0.08);border-top:1px solid rgba(100,180,255,0.18);flex-wrap:wrap">
         <button class="btn btn-ghost btn-sm" onclick="shiftDistRings(-50)" style="min-width:44px">−50</button>
-        <span style="font-size:0.8rem;color:rgba(100,190,255,0.9);font-weight:600;min-width:58px;text-align:center">~${GR.distRingCentre}${getUnits()}</span>
+        <span id="distRingCentreDisplay" style="font-size:0.8rem;color:rgba(100,190,255,0.9);font-weight:600;min-width:58px;text-align:center">~${GR.distRingCentre}${getUnits()}</span>
         <button class="btn btn-ghost btn-sm" onclick="shiftDistRings(50)" style="min-width:44px">+50</button>
         <div style="width:1px;height:18px;background:rgba(255,255,255,0.12);margin:0 2px"></div>
-        <button class="btn btn-ghost btn-sm" onclick="cycleDistInterval()" style="min-width:48px">±${GR.distRingInterval}</button>
+        <button id="distRingIntervalBtn" class="btn btn-ghost btn-sm" onclick="cycleDistInterval()" style="min-width:48px">±${GR.distRingInterval}</button>
         <span style="font-size:0.7rem;color:rgba(255,255,255,0.3)">interval</span>
       </div>`:''}
       <div id="gpsMap"></div>
@@ -1460,7 +1460,7 @@ function bestLabelPos(lat,lng,radiusM,brg,bounds,offsetM){
   }
   return pointAtBearingDist(lat,lng,brg,radiusM+offsetM);
 }
-function drawDistRings(){
+function drawDistRings(refit=true){
   if(GR._distRingMoveHandler){GR.map&&GR.map.off('moveend',GR._distRingMoveHandler);GR._distRingMoveHandler=null;}
   (GR.distRingLayers||[]).forEach(l=>l.remove());
   GR.distRingLayers=[];GR.distRingLabelMarkers=[];
@@ -1504,10 +1504,12 @@ function drawDistRings(){
   GR.distRingLayers.push(L.polyline([pLL,pointAtBearingDist(GR.currentLat,GR.currentLng,(brg+15)%360,coneDistM)],{color:'rgba(255,255,255,0.18)',weight:1,dashArray:'4,8',interactive:false}).addTo(GR.map));
   // Player dot
   GR.distRingLayers.push(L.circleMarker(pLL,{radius:6,color:'#fff',weight:2,fillColor:'#fff',fillOpacity:0.9,interactive:false}).addTo(GR.map));
-  // Fit map
-  const maxRadM=isYd?(endU+15)*YD:(endU+15);
-  const deg=maxRadM/111320;
-  GR.map.fitBounds([[GR.currentLat-deg,GR.currentLng-deg],[GR.currentLat+deg,GR.currentLng+deg]],{padding:[20,20]});
+  // Fit map only on initial activation, not on shift/interval changes
+  if(refit){
+    const maxRadM=isYd?(endU+15)*YD:(endU+15);
+    const deg=maxRadM/111320;
+    GR.map.fitBounds([[GR.currentLat-deg,GR.currentLng-deg],[GR.currentLat+deg,GR.currentLng+deg]],{padding:[20,20]});
+  }
   // Reposition labels whenever map is panned
   GR._distRingMoveHandler=()=>{
     if(!GR||!GR.map||!GR.distRings)return;
@@ -1521,13 +1523,17 @@ function drawDistRings(){
 function shiftDistRings(delta){
   if(!GR)return;
   GR.distRingCentre=Math.max(GR.distRingInterval||10,(GR.distRingCentre||150)+delta);
-  renderGpsHole();
+  drawDistRings(false);
+  const el=document.getElementById('distRingCentreDisplay');
+  if(el)el.textContent=`~${GR.distRingCentre}${getUnits()}`;
 }
 function cycleDistInterval(){
   if(!GR)return;
   const opts=[5,10,20];
   GR.distRingInterval=opts[(opts.indexOf(GR.distRingInterval||10)+1)%opts.length];
-  renderGpsHole();
+  drawDistRings(false);
+  const el=document.getElementById('distRingIntervalBtn');
+  if(el)el.textContent=`±${GR.distRingInterval}`;
 }
 function toggleDistCones(){
   if(!GR)return;
