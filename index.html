@@ -2635,8 +2635,29 @@ async function startGroupEntry(){
   await heInit(playerList,date,document.getElementById('roundNotes').value.trim(),startHole);
 }
 function backToSetup(){localStorage.removeItem('sl_active_group');document.getElementById('logStep2').style.display='none';document.getElementById('logStep1b').style.display='none';document.getElementById('logStep1').style.display='block';}
+function getConflicts(){
+  const out=[];
+  for(let h=1;h<=18;h++){
+    const names=[];
+    for(const{p}of HE.playerList){
+      const r=allRounds.find(x=>x.id===HE.roundIds[p.id]);
+      if(!r||!r.marker_holes)continue;
+      const a=HE.scores[p.id][h-1];
+      const b=r.marker_holes[h-1]?.score??null;
+      if(a!=null&&b!=null&&a!==b)names.push(p.name.split(' ')[0]);
+    }
+    if(names.length)out.push({hole:h,names});
+  }
+  return out;
+}
 async function saveGroupRound(){
   heFlushInputs();
+  // Block save if dual-scorer conflicts exist
+  const conflicts=getConflicts();
+  if(conflicts.length){
+    alert('Cannot save — unresolved conflicts on '+conflicts.map(c=>`Hole ${c.hole} (${c.names.join(', ')})`).join(', '));
+    return;
+  }
   // Validate minimum holes
   for(const{p}of HE.playerList){
     const filled=HE.scores[p.id].filter(x=>x!==null).length;
