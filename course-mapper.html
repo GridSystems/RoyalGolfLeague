@@ -118,6 +118,18 @@
     .sv-list-acc    { color: #556; font-size: 10px; }
     .sv-list-del    { background: none; border: none; color: #e94560; font-size: 18px; cursor: pointer; padding: 0 2px; line-height: 1; }
     .sv-copy-btn    { width: 100%; padding: 10px; border-radius: 7px; border: 1px solid #555; background: none; color: #aaa; font-size: 12px; font-weight: 600; cursor: pointer; }
+    /* Survey capture button groups */
+    .sv-group { display: flex; flex-direction: column; gap: 5px; }
+    .sv-group-label { font-size: 10px; text-transform: uppercase; letter-spacing: 1.2px; color: #556; font-weight: 700; }
+    .sv-capture-grid { display: grid; gap: 6px; }
+    .sv-capture-grid-2 { grid-template-columns: 1fr 1fr; }
+    .sv-capture-grid-3 { grid-template-columns: 1fr 1fr 1fr; }
+    .sv-capture-btn { padding: 11px 4px; border-radius: 8px; border: 1px solid #2a2a4e; background: #1a1a3e; color: #bbb; cursor: pointer; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 3px; -webkit-tap-highlight-color: transparent; }
+    .sv-capture-btn:active { background: #0f3460; }
+    .sv-capture-btn.sv-feat-rec { border-color: #27ae60; color: #4caf50; }
+    .sv-capture-btn.sv-feat-saved { background: #1a4a2e; border-color: #2ecc71; color: #2ecc71; }
+    .sc-icon { font-size: 20px; line-height: 1; }
+    .sc-label { font-size: 10px; font-weight: 600; }
     @media (max-width: 640px) {
       #topbar { flex-wrap: wrap; gap: 6px; padding: 6px 10px; }
       #topbar h1 { font-size: 13px; }
@@ -514,6 +526,8 @@ let surveyHole      = 1;
 let surveyFeature   = 'front_green';
 let surveyGpsPos    = null;
 let surveyPoints    = [];
+let surveyGpsWatchId   = null;
+let surveyLastRecorded = null;
 const OVERLAY_OPAC  = [0.7, 0.5, 0.3, 0.9];
 let overlayOpacIdx  = 0;
 
@@ -1069,33 +1083,47 @@ function toggleSurveyPanel() {
   document.getElementById('surveyPanel').style.display = surveyPanelOpen ? 'block' : 'none';
   document.getElementById('surveyBtn').classList.toggle('active', surveyPanelOpen);
   if (surveyPanelOpen) {
+    startSurveyGpsWatch();
     renderSurveyPanel();
-    fetchSurveyGps();
     loadSurveyPoints().then(() => renderSurveyPanel());
+  } else {
+    stopSurveyGpsWatch();
   }
 }
 
-function fetchSurveyGps() {
+function startSurveyGpsWatch() {
+  if (!navigator.geolocation || surveyGpsWatchId !== null) return;
   surveyGpsPos = null;
-  renderSurveyPanel();
-  if (!navigator.geolocation) {
-    console.warn('Geolocation not available');
-    return;
-  }
-  navigator.geolocation.getCurrentPosition(
+  surveyGpsWatchId = navigator.geolocation.watchPosition(
     pos => { surveyGpsPos = pos; renderSurveyPanel(); },
-    err => { console.warn('GPS error', err.code, err.message); renderSurveyPanel(); },
-    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    err => { console.warn('GPS watch error', err); },
+    { enableHighAccuracy: true, maximumAge: 3000 }
   );
+}
+
+function stopSurveyGpsWatch() {
+  if (surveyGpsWatchId !== null) {
+    navigator.geolocation.clearWatch(surveyGpsWatchId);
+    surveyGpsWatchId = null;
+  }
+  surveyGpsPos = null;
 }
 
 // ── Survey panel render ─────────────────────────────────────────────────────
 function setSurveyHole(h) { surveyHole = h; renderSurveyPanel(); }
-function setSurveyFeature(t) { surveyFeature = t; renderSurveyPanel(); }
 
 function renderSurveyPanel() {
   if (!surveyPanelOpen) return;
   const body = document.getElementById('surveyPanelBody');
+
+  // GPS status bar (always-live via watchPosition)
+  let gpsHtml;
+  if (!surveyGpsPos) {
+    gpsHtml = '<div class="sv-gps-row"><span class="sv-gps-coords" style="color:#556">📍 Fetching GPS…</span><span style="color:#556;font-size:11px">—</span></div>';
+  } else {
+    const acc = surveyGpsPos.coords.accuracy.toFixed(0);
+    gpsHtml = `<div class="sv-gps-row"><span class="sv-gps-coords">📍 ${surveyGpsPos.coords.latitude.toFixed(5)}°N&nbsp;${surveyGpsPos.coords.longitude.toFixed(5)}°E</span><span class="${acc<=5?'sv-gps-good':'sv-gps-poor'}">±${acc}m</span></div>`;
+  }
 
   // Hole selector
   let holeHtml = '<div class="sv-section-label">Hole</div><div class="sv-hole-row">';
@@ -1105,44 +1133,46 @@ function renderSurveyPanel() {
   }
   holeHtml += '</div>';
 
-  // Feature grid
-  let featHtml = '<div class="sv-section-label">Feature</div><div class="sv-feat-grid">';
-  for (const f of SURVEY_FEATURES) {
-    const isSel = surveyFeature === f.type;
-    const isRec = !f.multi && surveyPoints.some(p => p.hole === surveyHole && p.type === f.type);
-    featHtml += `<button class="sv-feat-btn${isSel?' sv-feat-sel':''}${isRec?' sv-feat-rec':''}" onclick="setSurveyFeature('${f.type}')">${f.icon}<br><span>${f.label}${isRec?' ✓':''}</span></button>`;
-  }
-  featHtml += '</div>';
+  // Capture button groups — tap a button to record immediately
+  const btnHtml = type => {
+    const f = SURVEY_FEATURES.find(x => x.type === type);
+    if (!f) return '';
+    const isRec = !f.multi && surveyPoints.some(p => p.hole === surveyHole && p.type === type);
+    const justSaved = surveyLastRecorded && surveyLastRecorded.type === type;
+    return `<button class="sv-capture-btn${isRec?' sv-feat-rec':''}${justSaved?' sv-feat-saved':''}" onclick="quickRecord('${type}')"><span class="sc-icon">${justSaved?'✓':f.icon}</span><span class="sc-label">${f.label}${isRec&&!justSaved?' ✓':''}</span></button>`;
+  };
+  const group = (label, types, cols) =>
+    `<div class="sv-group"><div class="sv-group-label">${label}</div><div class="sv-capture-grid sv-capture-grid-${cols}">${types.map(btnHtml).join('')}</div></div>`;
 
-  // Instruction note for multi-instance features
-  const feat = SURVEY_FEATURES.find(f => f.type === surveyFeature);
-  let noteHtml = '';
-  if (feat && feat.multi) {
-    const cnt = surveyPoints.filter(p => p.hole === surveyHole && p.type === surveyFeature).length;
-    noteHtml = `<div class="sv-note">${feat.icon} <b>${feat.label}</b> — tap Record each time you're at a new one. ${cnt > 0 ? cnt + ' recorded.' : ''}</div>`;
-  }
+  const featHtml =
+    group('Green', ['front_green','mid_green','back_green','pin'], 2) +
+    group('Course', ['tee','fairway_start','fairway_end'], 3) +
+    group('Hazards', ['bunker','water'], 2) +
+    group('Distances', ['dist_200','dist_150','dist_100'], 3);
 
-  // GPS readout
-  let gpsHtml;
-  if (!surveyGpsPos) {
-    gpsHtml = '<div class="sv-gps-row"><span class="sv-gps-coords" style="color:#556">Fetching GPS…</span><span style="color:#556;font-size:11px">—</span></div>';
-  } else {
-    const acc = surveyGpsPos.coords.accuracy.toFixed(0);
-    gpsHtml = `<div class="sv-gps-row"><span class="sv-gps-coords">${surveyGpsPos.coords.latitude.toFixed(5)}°N&nbsp;&nbsp;${surveyGpsPos.coords.longitude.toFixed(5)}°E</span><span class="${acc<=3?'sv-gps-good':'sv-gps-poor'}">±${acc}m</span></div>`;
+  // Multi-feature counts note (e.g. "🟡 3  💧 1")
+  const multiCounts = {};
+  surveyPoints.filter(p => p.hole === surveyHole).forEach(p => {
+    const f = SURVEY_FEATURES.find(x => x.type === p.type);
+    if (f && f.multi) multiCounts[p.type] = (multiCounts[p.type]||0) + 1;
+  });
+  let countHtml = '';
+  if (Object.keys(multiCounts).length) {
+    const parts = Object.entries(multiCounts).map(([t,n]) => {
+      const f = SURVEY_FEATURES.find(x => x.type === t);
+      return `${f?f.icon:'?'} ${n}`;
+    });
+    countHtml = `<div class="sv-note">Hole ${surveyHole}: ${parts.join('&nbsp;&nbsp;')}</div>`;
   }
-
-  // Action buttons
-  const actionHtml = `<div class="sv-action-row"><button class="sv-btn-refresh" onclick="fetchSurveyGps()">↻ Refresh GPS</button><button class="sv-btn-record" id="surveyRecordBtn" onclick="recordSurveyPoint()">✓ Record</button></div>`;
 
   // Recorded list for this hole
   const holePoints = surveyPoints.filter(p => p.hole === surveyHole);
   const multiIdx = {};
   const labelled = holePoints.map(p => {
     const f = SURVEY_FEATURES.find(f => f.type === p.type);
-    if (f && f.multi) { multiIdx[p.type] = (multiIdx[p.type] || 0) + 1; return {...p, label: `${f.label} #${multiIdx[p.type]}`}; }
+    if (f && f.multi) { multiIdx[p.type] = (multiIdx[p.type]||0)+1; return {...p, label:`${f.label} #${multiIdx[p.type]}`}; }
     return {...p, label: f ? f.label : p.type};
   });
-
   let listHtml = `<div class="sv-list-header"><span>Recorded — Hole ${surveyHole}</span><span class="sv-list-count">${holePoints.length} point${holePoints.length!==1?'s':''}</span></div>`;
   if (holePoints.length === 0) {
     listHtml += '<div class="sv-list-empty">No points yet for this hole.</div>';
@@ -1152,31 +1182,35 @@ function renderSurveyPanel() {
     ).join('') + '</div>';
   }
 
-  // Copy button footer
   const copyHtml = '<button class="sv-copy-btn" id="surveyCopyBtn" onclick="copySurveyData()">📋 Copy Survey Data</button>';
 
-  body.innerHTML = holeHtml + featHtml + noteHtml + gpsHtml + actionHtml + listHtml + copyHtml;
+  body.innerHTML = gpsHtml + holeHtml + featHtml + countHtml + listHtml + copyHtml;
 }
 
 // ── Survey record / delete / copy ───────────────────────────────────────────
-async function recordSurveyPoint() {
+async function quickRecord(type) {
   if (!surveyGpsPos) {
-    const btn = document.getElementById('surveyRecordBtn');
-    if (btn) { btn.textContent = '⚠ Fetch GPS first'; setTimeout(() => { btn.textContent = '✓ Record'; }, 1500); }
+    // Flash GPS bar red to indicate GPS is needed
+    const bar = document.querySelector('.sv-gps-row');
+    if (bar) {
+      bar.style.border = '1px solid #e74c3c';
+      setTimeout(() => { if (bar) bar.style.border = ''; }, 1000);
+    }
     return;
   }
-  const feat = SURVEY_FEATURES.find(f => f.type === surveyFeature);
-  // Single-instance: delete existing same-hole same-type rows first
+  surveyFeature = type;
+  const feat = SURVEY_FEATURES.find(f => f.type === type);
+  // Single-instance: replace existing same-hole same-type point
   if (feat && !feat.multi) {
-    const existing = surveyPoints.filter(p => p.hole === surveyHole && p.type === surveyFeature);
+    const existing = surveyPoints.filter(p => p.hole === surveyHole && p.type === type);
     for (const p of existing) {
       try { await sbSurveyDelete(p.id); } catch(e) { console.error('Delete old point failed:', e); }
     }
-    surveyPoints = surveyPoints.filter(p => !(p.hole === surveyHole && p.type === surveyFeature));
+    surveyPoints = surveyPoints.filter(p => !(p.hole === surveyHole && p.type === type));
   }
   const payload = {
     hole:     surveyHole,
-    type:     surveyFeature,
+    type,
     lat:      surveyGpsPos.coords.latitude,
     lng:      surveyGpsPos.coords.longitude,
     accuracy: surveyGpsPos.coords.accuracy,
@@ -1184,17 +1218,13 @@ async function recordSurveyPoint() {
   try {
     const [inserted] = await sbSurveyInsert(payload);
     surveyPoints.push(inserted);
+    surveyLastRecorded = {type, ts: Date.now()};
     renderSurveyPanel();
-    const btn = document.getElementById('surveyRecordBtn');
-    if (btn) {
-      btn.textContent = '✓ Saved!';
-      btn.style.background = '#2ecc71';
-      setTimeout(() => { btn.textContent = '✓ Record'; btn.style.background = ''; }, 1200);
-    }
-  } catch (e) {
+    setTimeout(() => { surveyLastRecorded = null; renderSurveyPanel(); }, 1200);
+  } catch(e) {
     console.error('Failed to save survey point:', e);
-    const btn = document.getElementById('surveyRecordBtn');
-    if (btn) { btn.textContent = '⚠ Save failed'; setTimeout(() => { btn.textContent = '✓ Record'; }, 2000); }
+    const bar = document.querySelector('.sv-gps-row');
+    if (bar) { bar.innerHTML = '<span class="sv-gps-coords" style="color:#e74c3c">⚠ Save failed</span>'; setTimeout(() => renderSurveyPanel(), 2000); }
   }
 }
 
