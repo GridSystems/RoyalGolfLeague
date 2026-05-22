@@ -1398,8 +1398,14 @@ function toggleGreenZoom(){
   });
   // Player dot
   GR.greenLayers.push(L.circleMarker(pLL,{radius:7,color:'#fff',weight:2,fillColor:'#ffd700',fillOpacity:1,interactive:false}).addTo(GR.map));
-  // Zoom to fit player + green points
-  GR.map.fitBounds([pLL,...holePts.map(p=>[p.lat,p.lng])],{padding:[50,50]});
+  // Zoom to 50×50m area centred on green mid-point
+  const midPt=holePts.find(p=>p.type==='mid_green')||holePts[Math.floor(holePts.length/2)]||holePts[0];
+  const halfDegLat=25/111320;
+  const halfDegLng=25/(111320*Math.cos(midPt.lat*Math.PI/180));
+  GR.map.fitBounds([
+    [midPt.lat-halfDegLat, midPt.lng-halfDegLng],
+    [midPt.lat+halfDegLat, midPt.lng+halfDegLng]
+  ]);
   document.querySelectorAll('.green-zoom-btn').forEach(b=>{b.classList.add('selected');b.textContent='📐 ✕';});
 }
 // ── Distance rings (📏 Rings) ─────────────────────────────────────────────────
