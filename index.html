@@ -356,6 +356,7 @@ select option { background: #1a3a2a; }
         <div class="ph">
           <span class="pt" id="myTitle">My Rounds</span>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <button class="btn btn-ghost btn-sm" id="unitsBtn" onclick="toggleUnits()" style="font-weight:700;min-width:34px">m</button>
             <button class="btn btn-warn btn-sm" onclick="showMyHcp()" id="myHcpBtn" style="display:none">Update My HCP</button>
             <select id="sortSel" onchange="renderMyRounds()" style="background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.14);border-radius:6px;color:var(--cream);font-size:0.75rem;padding:4px 8px;outline:none">
               <option value="date-desc">Newest first</option><option value="date-asc">Oldest first</option>
@@ -793,6 +794,22 @@ function distToGreen(hole1based,lat,lng){
   const h=HOLE_DATA[hole1based-1];
   if(!h||!h.green||lat==null||lng==null)return null;
   return haversineM(lat,lng,h.green.lat,h.green.lng);
+}
+// ── Units preference ──────────────────────────────────────────────────────────
+function getUnits(){return localStorage.getItem('sl_units_'+(activeId||0))||'m';}
+function setUnits(u){localStorage.setItem('sl_units_'+(activeId||0),u);}
+function mToYd(m){return Math.round(m*1.09361);}
+function dispDist(m){const u=getUnits();return u==='yd'?(mToYd(m)+'y'):(m+'m');}
+function dispLong(m){return getUnits()==='yd'?((m/1609.34).toFixed(1)+'mi'):((m/1000).toFixed(1)+'km');}
+function toggleUnits(){
+  const u=getUnits()==='m'?'yd':'m';
+  setUnits(u);
+  updateUnitsBtn();
+  if(GR)renderGpsHole();
+}
+function updateUnitsBtn(){
+  const btn=document.getElementById('unitsBtn');
+  if(btn)btn.textContent=getUnits();
 }
 function windDegToText(deg){
   const dirs=['N','NE','E','SE','S','SW','W','NW'];
@@ -1232,7 +1249,7 @@ function renderGpsHole(){
       <div class="gps-hole-header">
         <div>
           <div style="font-family:'Playfair Display',serif;color:var(--gold-l);font-size:1.1rem">Hole ${GR.currentHole}</div>
-          <div style="font-size:0.72rem;color:rgba(255,255,255,0.4)">Par ${par} · SI ${HOLE_HCP[GR.currentHole-1]} · Shot ${shotCount+1}${dtg!=null?` · <span id="gpsDist" style="color:#d4b483;font-weight:600">${dtg}m ⛳</span>`:'&thinsp;<span id="gpsDist"></span>'}</div>
+          <div style="font-size:0.72rem;color:rgba(255,255,255,0.4)">Par ${par} · SI ${HOLE_HCP[GR.currentHole-1]} · Shot ${shotCount+1}${dtg!=null?` · <span id="gpsDist" style="color:#d4b483;font-weight:600">${dispDist(dtg)} ⛳</span>`:'&thinsp;<span id="gpsDist"></span>'}</div>
         </div>
         ${GR.chipAndPutt?`<button class="btn btn-ghost btn-sm" onclick="confirmEndHole()">End Hole →</button>`:`<button class="btn btn-ghost btn-sm" onclick="enterChipAndPutt()">⛳ Chip &amp; Putt →</button>`}
       </div>
@@ -1261,7 +1278,7 @@ function initGpsMap(holeShots){
     GR.currentLng=pos.coords.longitude;
     GR.map.setView([GR.currentLat,GR.currentLng],18);
     const badge=document.getElementById('gpsDist');
-    if(badge){const d=distToGreen(GR.currentHole,GR.currentLat,GR.currentLng);if(d!=null)badge.textContent=d+'m ⛳';}
+    if(badge){const d=distToGreen(GR.currentHole,GR.currentLat,GR.currentLng);if(d!=null)badge.textContent=dispDist(d)+' ⛳';}
   },()=>{},{enableHighAccuracy:true,timeout:5000});
   drawShotMap(holeShots);
 }
@@ -1282,7 +1299,7 @@ function drawShotMap(holeShots){
       iconSize:[24,24],iconAnchor:[12,12]
     });
     const label=isDrop?' ⬇':isReplay?' ↩':isProvisional?' P':'';
-    const distLabel=idx>0&&!isDrop?` ${gpsShots[idx-1]?haversineM(gpsShots[idx-1].lat,gpsShots[idx-1].lng,shot.lat,shot.lng)+'m':''}`:' Drop';
+    const distLabel=idx>0&&!isDrop?` ${gpsShots[idx-1]?dispDist(haversineM(gpsShots[idx-1].lat,gpsShots[idx-1].lng,shot.lat,shot.lng)):''}`:' Drop';
     const m=L.marker([shot.lat,shot.lng],{icon})
       .bindTooltip(`${shot.shot_num}${label}${idx>0?distLabel:''}`,{permanent:false,direction:'top'})
       .addTo(GR.map);
@@ -1333,12 +1350,17 @@ function toggleGreenZoom(){
   const dists=holePts.map(p=>haversineM(GR.currentLat,GR.currentLng,p.lat,p.lng));
   const minD=Math.max(2,Math.min(...dists)-8);
   const maxD=Math.max(...dists)+8;
-  // Rings every 2m
-  for(let d=Math.ceil(minD/2)*2;d<=maxD;d+=2){
-    GR.greenLayers.push(L.circle(pLL,{radius:d,color:'rgba(255,215,0,0.22)',weight:1,fill:false,dashArray:'2,7',interactive:false}).addTo(GR.map));
-    const labelLat=GR.currentLat+(d/111320);
+  // Rings every 2 units in player's preferred unit
+  const isYd=getUnits()==='yd';
+  const YD=0.9144; // metres per yard
+  const minU=isYd?Math.round(minD/YD):minD;
+  const maxU=isYd?Math.round(maxD/YD):maxD;
+  for(let u=Math.ceil(minU/2)*2;u<=maxU;u+=2){
+    const radiusM=isYd?u*YD:u;
+    GR.greenLayers.push(L.circle(pLL,{radius:radiusM,color:'rgba(255,215,0,0.22)',weight:1,fill:false,dashArray:'2,7',interactive:false}).addTo(GR.map));
+    const labelLat=GR.currentLat+(radiusM/111320);
     GR.greenLayers.push(L.marker([labelLat,GR.currentLng],{
-      icon:L.divIcon({className:'',html:`<div style="font-size:9px;color:rgba(255,215,0,0.7);font-weight:600;white-space:nowrap;text-shadow:0 1px 2px #000">${d}m</div>`,iconSize:[28,12],iconAnchor:[14,6]}),
+      icon:L.divIcon({className:'',html:`<div style="font-size:9px;color:rgba(255,215,0,0.7);font-weight:600;white-space:nowrap;text-shadow:0 1px 2px #000">${u}${isYd?'y':'m'}</div>`,iconSize:[28,12],iconAnchor:[14,6]}),
       interactive:false,zIndexOffset:-200
     }).addTo(GR.map));
   }
@@ -1767,10 +1789,10 @@ async function renderGpsStats(){
 
     el.innerHTML=`
       <div class="stats-row" style="margin-top:1rem">
-        ${avgDriver!=null?`<div class="sc"><div class="sl">Avg Drive</div><div class="sv">${avgDriver}m</div></div>`:''}
-        ${maxDriver!=null?`<div class="sc"><div class="sl">Longest Drive</div><div class="sv">${maxDriver}m</div></div>`:''}
+        ${avgDriver!=null?`<div class="sc"><div class="sl">Avg Drive</div><div class="sv">${dispDist(avgDriver)}</div></div>`:''}
+        ${maxDriver!=null?`<div class="sc"><div class="sl">Longest Drive</div><div class="sv">${dispDist(maxDriver)}</div></div>`:''}
         <div class="sc"><div class="sl">Avg Putts</div><div class="sv">${avgPutts}</div><div class="ss">per round</div></div>
-        <div class="sc"><div class="sl">Avg Distance</div><div class="sv">${(avgDist/1000).toFixed(1)}km</div><div class="ss">walked/round</div></div>
+        <div class="sc"><div class="sl">Avg Distance</div><div class="sv">${dispLong(avgDist)}</div><div class="ss">walked/round</div></div>
         <div class="sc"><div class="sl">GPS Rounds</div><div class="sv">${rounds.length}</div></div>
       </div>
       <div class="panel" style="margin-top:1rem">
@@ -1793,8 +1815,8 @@ async function renderGpsStats(){
                 <div style="flex:1;background:rgba(255,255,255,0.06);border-radius:4px;height:6px">
                   <div style="width:${barW}%;height:100%;background:var(--gold);border-radius:4px"></div>
                 </div>
-                <span style="font-family:'DM Mono',monospace;font-size:0.82rem;color:var(--gold-l)">${avg}m</span>
-                <span style="font-size:0.7rem;color:rgba(255,255,255,0.3)">(max ${max}m, ${v.count} shots)</span>
+                <span style="font-family:'DM Mono',monospace;font-size:0.82rem;color:var(--gold-l)">${dispDist(avg)}</span>
+                <span style="font-size:0.7rem;color:rgba(255,255,255,0.3)">(max ${dispDist(max)}, ${v.count} shots)</span>
               </div>`;
             }).join('');
           })()}
@@ -3336,6 +3358,7 @@ function setPlayer(id){
   localStorage.setItem('sl_active_player',id);closeModal('pickerModal');updateAdminUI();applyPendingUI();
   const hb=document.getElementById('myHcpBtn');if(hb)hb.style.display='inline-block';
   const bb=document.getElementById('myBagBtn');if(bb)bb.style.display='inline-block';
+  updateUnitsBtn();
 }
 function showAddPlayer(){
   if(!isAdmin()){alert('Only the admin can add players.');return;}
@@ -3513,7 +3536,7 @@ async function init(){
   populateYearSelects();renderTodayLb();renderGrid();
   // Restore last selected player
   const savedId=localStorage.getItem('sl_active_player');
-  if(savedId){const saved=players.find(p=>p.id==savedId)||pendingPlayers.find(p=>p.id==savedId);if(saved){activeId=saved.id;document.getElementById('playerName').textContent=saved.name;const av=document.getElementById('playerAvatar');av.textContent=ini(saved.name);av.style.background=clr(saved);const hb=document.getElementById('myHcpBtn');if(hb)hb.style.display='inline-block';const bb=document.getElementById('myBagBtn');if(bb)bb.style.display='inline-block';}}
+  if(savedId){const saved=players.find(p=>p.id==savedId)||pendingPlayers.find(p=>p.id==savedId);if(saved){activeId=saved.id;document.getElementById('playerName').textContent=saved.name;const av=document.getElementById('playerAvatar');av.textContent=ini(saved.name);av.style.background=clr(saved);const hb=document.getElementById('myHcpBtn');if(hb)hb.style.display='inline-block';const bb=document.getElementById('myBagBtn');if(bb)bb.style.display='inline-block';updateUnitsBtn();}}
   updateAdminUI();applyPendingUI();buildPlayerCheckboxes();checkForResumableRounds();
 
   setLoading(false);
