@@ -1098,11 +1098,12 @@ async function startGpsRound(){
     const {latitude:lat,longitude:lng}=pos.coords;
     GR={
       date,teeId:gpsTeeId,currentHole:startHole,
+      currentLat:lat,currentLng:lng,
       selectedClub:null,selectedWeight:'full',selectedLie:'fairway',selectedDirection:null,selectedOutcome:null,
       pendingShot:null,chipAndPutt:false,scoringForIds:[..._gpsScoreForIds],_pendingFinish:false,
       holeScores:{},provisionalShotId:null,
       map:null,markers:[],polylines:[],shots:[],surveyPoints:[],greenZoom:false,greenLayers:[],
-      distRings:false,distRingLayers:[],distRingCentre:150,distRingInterval:10
+      distRings:false,distRingLayers:[],distRingCentre:150,distRingInterval:10,distConesOpen:false
     };
     try{
       GR.shots=await sbGet('gps_shots',`player_id=eq.${activeId}&round_date=eq.${date}&order=hole.asc,shot_num.asc`);
@@ -1229,10 +1230,10 @@ function renderGpsHole(){
     GR.chipAndPutt?
     `<div style="padding:1.5rem 1rem;display:flex;flex-direction:column;align-items:center;gap:1.2rem;border-top:1px solid var(--border)">
       <div style="font-size:0.82rem;color:rgba(255,255,255,0.35);text-align:center">Chip and putt out, then end the hole</div>
-      <div style="display:flex;gap:8px;width:100%">
-        <button class="btn-shot-type green-zoom-btn" style="flex:0 0 auto" onclick="toggleGreenZoom()">📐 Green</button>
-        <button class="btn-shot-type dist-rings-btn${GR.distRings?' selected':''}" style="flex:0 0 auto" onclick="toggleDistRings()">📏 ${GR.distRings?'✕':'Rings'}</button>
-        <button class="btn btn-primary" style="flex:1;padding:0.9rem;font-size:1rem" onclick="confirmEndHole()">End Hole →</button>
+      <div style="display:flex;gap:8px;width:100%;flex-wrap:wrap">
+        <button class="btn-shot-type${(GR.greenZoom||GR.distRings)?' selected':''}" style="flex:0 0 auto" onclick="toggleDistCones()">${(GR.greenZoom||GR.distRings)?'Cones ✕':'Show Distance Cones'}</button>
+        ${GR.distConesOpen?`<button class="btn-shot-type" style="flex:0 0 auto" onclick="activateDistCone('me')">Show from Me</button><button class="btn-shot-type" style="flex:0 0 auto" onclick="activateDistCone('green')">Show Green</button>`:''}
+        <button class="btn btn-primary" style="flex:1;min-width:120px;padding:0.9rem;font-size:1rem" onclick="confirmEndHole()">End Hole →</button>
       </div>
     </div>`:
     `<div class="gps-actions">
@@ -1240,8 +1241,8 @@ function renderGpsHole(){
       <button class="btn-shot-type" onclick="recordShot('drop')">⬇ Drop</button>
       <button class="btn-shot-type" onclick="recordShot('replay')">↩ Replay</button>
       <button class="btn-shot-type provisional" onclick="recordShot('provisional')">P Provisional</button>
-      <button class="btn-shot-type green-zoom-btn" onclick="toggleGreenZoom()">📐 Green</button>
-      <button class="btn-shot-type dist-rings-btn${GR.distRings?' selected':''}" onclick="toggleDistRings()">📏 ${GR.distRings?'✕':'Rings'}</button>
+      <button class="btn-shot-type${(GR.greenZoom||GR.distRings)?' selected':''}" onclick="toggleDistCones()">${(GR.greenZoom||GR.distRings)?'Cones ✕':'Show Distance Cones'}</button>
+      ${GR.distConesOpen?`<button class="btn-shot-type" onclick="activateDistCone('me')">Show from Me</button><button class="btn-shot-type" onclick="activateDistCone('green')">Show Green</button>`:''}
       ${hasProvisional?`
       <button class="btn-shot-type" style="color:#7fcc9e;border-color:rgba(127,204,158,0.4)" onclick="resolveProvisional('found')">✓ Found Original</button>
       <button class="btn-shot-type" style="color:#f0c060;border-color:rgba(240,192,96,0.4)" onclick="resolveProvisional('inplay')">▶ Provisional In Play</button>`:''}
@@ -1479,6 +1480,24 @@ function cycleDistInterval(){
   const opts=[5,10,20];
   GR.distRingInterval=opts[(opts.indexOf(GR.distRingInterval||10)+1)%opts.length];
   renderGpsHole();
+}
+function toggleDistCones(){
+  if(!GR)return;
+  if(GR.greenZoom){toggleGreenZoom();return;}
+  if(GR.distRings){toggleDistRings();return;}
+  GR.distConesOpen=!GR.distConesOpen;
+  renderGpsHole();
+}
+function activateDistCone(mode){
+  if(!GR)return;
+  GR.distConesOpen=false;
+  if(mode==='me'){
+    if(!GR.currentLat||!GR.currentLng){toast('GPS position not acquired yet');return;}
+    GR.distRings=true;
+    renderGpsHole();
+  }else if(mode==='green'){
+    toggleGreenZoom();
+  }
 }
 async function recordShot(type){
   if(!GR||!activeId)return;
