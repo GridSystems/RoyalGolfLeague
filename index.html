@@ -1150,7 +1150,10 @@ function renderGpsHole(){
 
   const bodyHtml=GR.pendingShot?
     `<div style="padding:1rem;display:flex;flex-direction:column;gap:1.1rem;border-top:1px solid var(--border)">
-      <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.07em;color:rgba(255,255,255,0.4)">Shot ${shotCount+1} — describe the shot</div>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.07em;color:rgba(255,255,255,0.4)">Shot ${shotCount+1} — describe the shot</div>
+        <div id="gpsLocStatus" style="font-size:0.7rem;color:rgba(255,255,255,0.35)">${GR.pendingShot?.locating?'📍 Locating…':''}</div>
+      </div>
       <div>
         <div style="font-size:0.72rem;color:rgba(255,255,255,0.45);margin-bottom:7px;text-transform:uppercase;letter-spacing:0.05em">Lie</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap">${GPS_LIES.map(l=>`<button class="weight-btn lie-btn${GR.selectedLie===l.v?' selected':''}" onclick="selectGpsLie('${l.v}',this)">${l.l}</button>`).join('')}</div>
@@ -1271,7 +1274,31 @@ function drawShotMap(holeShots){
 }
 async function recordShot(type){
   if(!GR||!activeId)return;
-  setLoading(true,type==='normal'?'Getting location…':'Recording…');
+  if(type==='normal'){
+    // Show form immediately — GPS fetches in background
+    GR.pendingShot={lat:null,lng:null,type,locating:true};
+    renderGpsHole();
+    navigator.geolocation.getCurrentPosition(
+      pos=>{
+        if(!GR||!GR.pendingShot)return;
+        GR.pendingShot.lat=pos.coords.latitude;
+        GR.pendingShot.lng=pos.coords.longitude;
+        GR.pendingShot.locating=false;
+        GR.currentLat=pos.coords.latitude;GR.currentLng=pos.coords.longitude;
+        const el=document.getElementById('gpsLocStatus');
+        if(el){el.textContent='📍 Located ✓';el.style.color='rgba(127,204,158,0.8)';}
+      },
+      ()=>{
+        if(!GR||!GR.pendingShot)return;
+        GR.pendingShot.locating=false;
+        const el=document.getElementById('gpsLocStatus');
+        if(el){el.textContent='📍 No GPS';el.style.color='rgba(240,180,60,0.8)';}
+      },
+      {enableHighAccuracy:true,timeout:8000}
+    );
+    return;
+  }
+  setLoading(true,'Recording…');
   try{
     let lat=null,lng=null;
     try{
@@ -1281,14 +1308,7 @@ async function recordShot(type){
       lat=pos.coords.latitude;
       lng=pos.coords.longitude;
       GR.currentLat=lat; GR.currentLng=lng;
-    }catch(e){
-      if(type==='normal'){alert('Could not get GPS location: '+e.message);return;}
-    }
-    if(type==='normal'){
-      GR.pendingShot={lat,lng,type};
-      renderGpsHole();
-      return;
-    }
+    }catch(e){}
     const holeShots=GR.shots.filter(s=>s.hole===GR.currentHole);
     const shot_num=holeShots.length+1;
     const payload={
