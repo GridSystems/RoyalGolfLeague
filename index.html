@@ -1084,11 +1084,14 @@ async function startGpsRound(){
       selectedClub:null,selectedWeight:'full',selectedLie:'fairway',selectedDirection:null,selectedOutcome:null,
       pendingShot:null,chipAndPutt:false,scoringForIds:[..._gpsScoreForIds],_pendingFinish:false,
       holeScores:{},provisionalShotId:null,
-      map:null,markers:[],polylines:[],shots:[]
+      map:null,markers:[],polylines:[],shots:[],surveyPoints:[],greenZoom:false,greenLayers:[]
     };
     try{
       GR.shots=await sbGet('gps_shots',`player_id=eq.${activeId}&round_date=eq.${date}&order=hole.asc,shot_num.asc`);
     }catch(e){GR.shots=[];}
+    try{
+      GR.surveyPoints=await sbGet('survey_points','order=hole.asc');
+    }catch(e){GR.surveyPoints=[];}
     _gpsScoreForIds=[];
     renderGpsHole();
   }catch(e){
@@ -1162,6 +1165,8 @@ function enterChipAndPutt(){
   );
 }
 function renderGpsHole(){
+  // Green zoom layers are tied to the map instance — reset on every re-render
+  if(GR){GR.greenZoom=false;GR.greenLayers=[];}
   const el=document.getElementById('trackContent');
   const p=players.find(x=>x.id===activeId);
   const holeShots=GR.shots.filter(s=>s.hole===GR.currentHole);
@@ -1206,13 +1211,17 @@ function renderGpsHole(){
     GR.chipAndPutt?
     `<div style="padding:1.5rem 1rem;display:flex;flex-direction:column;align-items:center;gap:1.2rem;border-top:1px solid var(--border)">
       <div style="font-size:0.82rem;color:rgba(255,255,255,0.35);text-align:center">Chip and putt out, then end the hole</div>
-      <button class="btn btn-primary" style="width:100%;padding:0.9rem;font-size:1rem" onclick="confirmEndHole()">End Hole →</button>
+      <div style="display:flex;gap:8px;width:100%">
+        <button class="btn-shot-type green-zoom-btn" style="flex:0 0 auto" onclick="toggleGreenZoom()">📐 Green</button>
+        <button class="btn btn-primary" style="flex:1;padding:0.9rem;font-size:1rem" onclick="confirmEndHole()">End Hole →</button>
+      </div>
     </div>`:
     `<div class="gps-actions">
       <button class="btn-hit" onclick="recordShot('normal')">🎯 Hit</button>
       <button class="btn-shot-type" onclick="recordShot('drop')">⬇ Drop</button>
       <button class="btn-shot-type" onclick="recordShot('replay')">↩ Replay</button>
       <button class="btn-shot-type provisional" onclick="recordShot('provisional')">P Provisional</button>
+      <button class="btn-shot-type green-zoom-btn" onclick="toggleGreenZoom()">📐 Green</button>
       ${hasProvisional?`
       <button class="btn-shot-type" style="color:#7fcc9e;border-color:rgba(127,204,158,0.4)" onclick="resolveProvisional('found')">✓ Found Original</button>
       <button class="btn-shot-type" style="color:#f0c060;border-color:rgba(240,192,96,0.4)" onclick="resolveProvisional('inplay')">▶ Provisional In Play</button>`:''}
@@ -1299,6 +1308,57 @@ function drawShotMap(holeShots){
   } else if(gpsShots.length===1){
     GR.map.setView([gpsShots[0].lat,gpsShots[0].lng],18);
   }
+}
+function toggleGreenZoom(){
+  if(!GR||!GR.map)return;
+  // Close: remove layers, restore normal shot view
+  if(GR.greenZoom){
+    GR.greenLayers.forEach(l=>l.remove());
+    GR.greenLayers=[];
+    GR.greenZoom=false;
+    document.querySelectorAll('.green-zoom-btn').forEach(b=>{b.classList.remove('selected');b.textContent='📐 Green';});
+    drawShotMap(GR.shots.filter(s=>s.hole===GR.currentHole));
+    return;
+  }
+  if(!GR.currentLat||!GR.currentLng){toast('GPS position not acquired yet');return;}
+  const holePts=(GR.surveyPoints||[]).filter(p=>p.hole===GR.currentHole&&['front_green','mid_green','back_green','pin'].includes(p.type));
+  if(!holePts.length){toast('No survey points for hole '+GR.currentHole+' yet');return;}
+  GR.greenZoom=true;
+  GR.greenLayers=[];
+  const pLL=[GR.currentLat,GR.currentLng];
+  const dists=holePts.map(p=>haversineM(GR.currentLat,GR.currentLng,p.lat,p.lng));
+  const minD=Math.max(2,Math.min(...dists)-8);
+  const maxD=Math.max(...dists)+8;
+  // Rings every 2m
+  for(let d=Math.ceil(minD/2)*2;d<=maxD;d+=2){
+    GR.greenLayers.push(L.circle(pLL,{radius:d,color:'rgba(255,215,0,0.22)',weight:1,fill:false,dashArray:'2,7',interactive:false}).addTo(GR.map));
+    const labelLat=GR.currentLat+(d/111320);
+    GR.greenLayers.push(L.marker([labelLat,GR.currentLng],{
+      icon:L.divIcon({className:'',html:`<div style="font-size:9px;color:rgba(255,215,0,0.7);font-weight:600;white-space:nowrap;text-shadow:0 1px 2px #000">${d}m</div>`,iconSize:[28,12],iconAnchor:[14,6]}),
+      interactive:false,zIndexOffset:-200
+    }).addTo(GR.map));
+  }
+  // Cone lines: player → front and back green
+  const COL={front_green:'rgba(26,188,156,0.55)',mid_green:'rgba(46,204,113,0.55)',back_green:'rgba(231,76,60,0.55)',pin:'rgba(241,196,15,0.8)'};
+  const LBL={front_green:'Front',mid_green:'Mid',back_green:'Back',pin:'Pin'};
+  const frontPt=holePts.find(p=>p.type==='front_green');
+  const backPt=holePts.find(p=>p.type==='back_green');
+  if(frontPt)GR.greenLayers.push(L.polyline([pLL,[frontPt.lat,frontPt.lng]],{color:COL.front_green,weight:1,dashArray:'4,5',interactive:false}).addTo(GR.map));
+  if(backPt) GR.greenLayers.push(L.polyline([pLL,[backPt.lat,backPt.lng]], {color:COL.back_green, weight:1,dashArray:'4,5',interactive:false}).addTo(GR.map));
+  // Survey point dots + distance badges
+  holePts.forEach((pt,i)=>{
+    const d=dists[i],col=COL[pt.type]||'rgba(255,255,255,0.7)',lbl=LBL[pt.type]||pt.type;
+    GR.greenLayers.push(L.circleMarker([pt.lat,pt.lng],{radius:5,color:'#fff',weight:1.5,fillColor:col.replace(/[\d.]+\)$/,'1)'),fillOpacity:1,interactive:false}).addTo(GR.map));
+    GR.greenLayers.push(L.marker([pt.lat,pt.lng],{
+      icon:L.divIcon({className:'',html:`<div style="background:${col.replace(/[\d.]+\)$/,'0.85)')};color:#000;font-size:9px;font-weight:700;padding:2px 5px;border-radius:3px;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,0.9);margin-top:9px">${lbl} ${d}m</div>`,iconSize:[64,16],iconAnchor:[32,-4]}),
+      interactive:false,zIndexOffset:500
+    }).addTo(GR.map));
+  });
+  // Player dot
+  GR.greenLayers.push(L.circleMarker(pLL,{radius:7,color:'#fff',weight:2,fillColor:'#ffd700',fillOpacity:1,interactive:false}).addTo(GR.map));
+  // Zoom to fit player + green points
+  GR.map.fitBounds([pLL,...holePts.map(p=>[p.lat,p.lng])],{padding:[50,50]});
+  document.querySelectorAll('.green-zoom-btn').forEach(b=>{b.classList.add('selected');b.textContent='📐 ✕';});
 }
 async function recordShot(type){
   if(!GR||!activeId)return;
