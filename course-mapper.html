@@ -1134,6 +1134,68 @@ function renderSurveyPanel() {
   body.innerHTML = holeHtml + featHtml + noteHtml + gpsHtml + actionHtml + listHtml + copyHtml;
 }
 
+// ── Survey record / delete / copy ───────────────────────────────────────────
+async function recordSurveyPoint() {
+  if (!surveyGpsPos) {
+    const btn = document.getElementById('surveyRecordBtn');
+    if (btn) { btn.textContent = '⚠ Fetch GPS first'; setTimeout(() => { btn.textContent = '✓ Record'; }, 1500); }
+    return;
+  }
+  const feat = SURVEY_FEATURES.find(f => f.type === surveyFeature);
+  // Single-instance: delete existing same-hole same-type rows first
+  if (feat && !feat.multi) {
+    const existing = surveyPoints.filter(p => p.hole === surveyHole && p.type === surveyFeature);
+    for (const p of existing) {
+      try { await sbSurveyDelete(p.id); } catch(e) { console.error('Delete old point failed:', e); }
+    }
+    surveyPoints = surveyPoints.filter(p => !(p.hole === surveyHole && p.type === surveyFeature));
+  }
+  const payload = {
+    hole:     surveyHole,
+    type:     surveyFeature,
+    lat:      surveyGpsPos.coords.latitude,
+    lng:      surveyGpsPos.coords.longitude,
+    accuracy: surveyGpsPos.coords.accuracy,
+  };
+  try {
+    const [inserted] = await sbSurveyInsert(payload);
+    surveyPoints.push(inserted);
+    renderSurveyPanel();
+    const btn = document.getElementById('surveyRecordBtn');
+    if (btn) {
+      btn.textContent = '✓ Saved!';
+      btn.style.background = '#2ecc71';
+      setTimeout(() => { btn.textContent = '✓ Record'; btn.style.background = ''; }, 1200);
+    }
+  } catch (e) {
+    console.error('Failed to save survey point:', e);
+    const btn = document.getElementById('surveyRecordBtn');
+    if (btn) { btn.textContent = '⚠ Save failed'; setTimeout(() => { btn.textContent = '✓ Record'; }, 2000); }
+  }
+}
+
+async function deleteSurveyPoint(id) {
+  try {
+    await sbSurveyDelete(id);
+    surveyPoints = surveyPoints.filter(p => p.id !== id);
+    renderSurveyPanel();
+  } catch (e) {
+    console.error('Failed to delete survey point:', e);
+  }
+}
+
+function copySurveyData() {
+  navigator.clipboard.writeText(JSON.stringify(surveyPoints, null, 2)).then(() => {
+    const btn = document.getElementById('surveyCopyBtn');
+    if (btn) {
+      btn.textContent = '✓ Copied!';
+      btn.style.background = '#27ae60';
+      btn.style.color = '#fff';
+      setTimeout(() => { btn.textContent = '📋 Copy Survey Data'; btn.style.background = ''; btn.style.color = ''; }, 1500);
+    }
+  });
+}
+
 // ── Survey data load ────────────────────────────────────────────────────────
 async function loadSurveyPoints() {
   try {
@@ -1147,6 +1209,7 @@ async function loadSurveyPoints() {
 // ── Init ───────────────────────────────────────────────────────────────────
 redrawAllPolygons();
 renderHoleList();
+loadSurveyPoints();
 </script>
 </body>
 </html>
