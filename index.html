@@ -1475,13 +1475,16 @@ const RING_PALETTE=[
 ];
 function ringCol(idx,alpha){return RING_PALETTE[idx%RING_PALETTE.length].replace('{a}',alpha);}
 function bestLabelPos(lat,lng,radiusM,brg,bounds,offsetM){
-  for(let step=0;step<16;step++){
-    const a=pointAtBearingDist(lat,lng,(brg+step*22.5+360)%360,radiusM+offsetM);
+  // Search within ±90° of aim bearing only — never place labels behind the player
+  for(let step=0;step<=8;step++){
+    const a=pointAtBearingDist(lat,lng,(brg+step*11.25+360)%360,radiusM+offsetM);
     if(bounds.contains(a))return a;
-    const b=pointAtBearingDist(lat,lng,(brg-step*22.5+360)%360,radiusM+offsetM);
-    if(bounds.contains(b))return b;
+    if(step>0){
+      const b=pointAtBearingDist(lat,lng,(brg-step*11.25+360)%360,radiusM+offsetM);
+      if(bounds.contains(b))return b;
+    }
   }
-  return pointAtBearingDist(lat,lng,brg,radiusM+offsetM);
+  return pointAtBearingDist(lat,lng,brg,radiusM+offsetM); // fallback: aim bearing
 }
 function drawDistRings(refit=true){
   if(GR._distRingMoveHandler){GR.map&&GR.map.off('moveend',GR._distRingMoveHandler);GR._distRingMoveHandler=null;}
