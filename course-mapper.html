@@ -527,6 +527,7 @@ let surveyGpsPos    = null;
 let surveyPoints    = [];
 let surveyGpsWatchId   = null;
 let surveyLastRecorded = null;
+let surveySampling  = null; // { type, samples:[], deadline, intervalId }
 const OVERLAY_OPAC  = [0.7, 0.5, 0.3, 0.9];
 let overlayOpacIdx  = 0;
 
@@ -1094,9 +1095,13 @@ function startSurveyGpsWatch() {
   if (!navigator.geolocation || surveyGpsWatchId !== null) return;
   surveyGpsPos = null;
   surveyGpsWatchId = navigator.geolocation.watchPosition(
-    pos => { surveyGpsPos = pos; renderSurveyPanel(); },
+    pos => {
+      surveyGpsPos = pos;
+      if (surveySampling) surveySampling.samples.push(pos);
+      renderSurveyPanel();
+    },
     err => { console.warn('GPS watch error', err); },
-    { enableHighAccuracy: true, maximumAge: 3000 }
+    { enableHighAccuracy: true, maximumAge: 0 }
   );
 }
 
@@ -1117,7 +1122,15 @@ function renderSurveyPanel() {
 
   // GPS status bar (always-live via watchPosition)
   let gpsHtml;
-  if (!surveyGpsPos) {
+  if (surveySampling) {
+    const remaining = Math.max(0, Math.ceil((surveySampling.deadline - Date.now()) / 1000));
+    const bestAcc = surveySampling.samples.length
+      ? Math.min(...surveySampling.samples.map(s => s.coords.accuracy))
+      : (surveyGpsPos ? surveyGpsPos.coords.accuracy : null);
+    const feat = SURVEY_FEATURES.find(f => f.type === surveySampling.type);
+    const accCol = bestAcc != null ? (bestAcc <= 8 ? '#4caf50' : '#ff9800') : '#556';
+    gpsHtml = `<div class="sv-gps-row" style="border-color:#f39c12"><span class="sv-gps-coords" style="color:#f39c12">⏱ Sampling ${feat ? feat.label : surveySampling.type}… ${remaining}s (${surveySampling.samples.length} pts)</span><span style="font-size:11px;font-weight:700;color:${accCol}">${bestAcc != null ? '±' + bestAcc.toFixed(0) + 'm' : '—'}</span></div>`;
+  } else if (!surveyGpsPos) {
     gpsHtml = '<div class="sv-gps-row"><span class="sv-gps-coords" style="color:#556">📍 Fetching GPS…</span><span style="color:#556;font-size:11px">—</span></div>';
   } else {
     const acc = surveyGpsPos.coords.accuracy.toFixed(0);
@@ -1187,19 +1200,45 @@ function renderSurveyPanel() {
 }
 
 // ── Survey record / delete / copy ───────────────────────────────────────────
-async function quickRecord(type) {
+const SURVEY_SAMPLE_MS = 4000;
+
+function quickRecord(type) {
   if (!surveyGpsPos) {
-    // Flash GPS bar red to indicate GPS is needed
     const bar = document.querySelector('.sv-gps-row');
-    if (bar) {
-      bar.style.border = '1px solid #e74c3c';
-      setTimeout(() => { if (bar) bar.style.border = ''; }, 1000);
-    }
+    if (bar) { bar.style.border = '1px solid #e74c3c'; setTimeout(() => { if (bar) bar.style.border = ''; }, 1000); }
     return;
   }
-  surveyFeature = type;
+  // If already sampling this type, cancel it
+  if (surveySampling) {
+    clearInterval(surveySampling.intervalId);
+    surveySampling = null;
+    renderSurveyPanel();
+    return;
+  }
+  surveySampling = {
+    type,
+    samples: [surveyGpsPos],
+    deadline: Date.now() + SURVEY_SAMPLE_MS,
+    intervalId: null
+  };
+  surveySampling.intervalId = setInterval(() => {
+    renderSurveyPanel();
+    if (Date.now() >= surveySampling.deadline) {
+      clearInterval(surveySampling.intervalId);
+      finishSampling();
+    }
+  }, 250);
+  renderSurveyPanel();
+}
+
+async function finishSampling() {
+  if (!surveySampling) return;
+  const { type, samples } = surveySampling;
+  surveySampling = null;
+  if (!samples.length) { renderSurveyPanel(); return; }
+  // Pick the reading with lowest (best) accuracy value
+  const best = samples.reduce((a, b) => a.coords.accuracy < b.coords.accuracy ? a : b);
   const feat = SURVEY_FEATURES.find(f => f.type === type);
-  // Single-instance: replace existing same-hole same-type point
   if (feat && !feat.multi) {
     const existing = surveyPoints.filter(p => p.hole === surveyHole && p.type === type);
     for (const p of existing) {
@@ -1210,9 +1249,9 @@ async function quickRecord(type) {
   const payload = {
     hole:     surveyHole,
     type,
-    lat:      surveyGpsPos.coords.latitude,
-    lng:      surveyGpsPos.coords.longitude,
-    accuracy: surveyGpsPos.coords.accuracy,
+    lat:      best.coords.latitude,
+    lng:      best.coords.longitude,
+    accuracy: best.coords.accuracy,
   };
   try {
     const [inserted] = await sbSurveyInsert(payload);
