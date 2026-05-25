@@ -3698,7 +3698,7 @@ async function deleteRoundDirect(id){
   const p=players.find(x=>x.id===r.player_id);
   if(!confirm(`Delete ${p?p.name+'\'s':''} round on ${fd(r.date)}?`))return;
   setLoading(true,'Deleting…');
-  try{await sbDelete('rounds',id);allRounds=allRounds.filter(x=>x.id!==id);toast('Round deleted');renderAdminRounds();renderTodayLb();}
+  try{await sbDelete('rounds',id);allRounds=await sbGet('rounds','order=date.desc');toast('Round deleted');renderAdminRounds();renderTodayLb();}
   catch(e){alert('Error: '+e.message);}finally{setLoading(false);}
 }function openEditRound(id){
   editingRoundId=id;const r=allRounds.find(x=>x.id===id);if(!r)return;const p=players.find(x=>x.id===r.player_id);
@@ -3719,7 +3719,7 @@ async function saveRoundEdit(){
 async function deleteRoundAdmin(){
   if(!confirm('Delete this round permanently?'))return;
   setLoading(true,'Deleting…');
-  try{await sbDelete('rounds',editingRoundId);allRounds=allRounds.filter(r=>r.id!==editingRoundId);toast('Round deleted');closeModal('editRoundModal');renderAdminRounds();}
+  try{await sbDelete('rounds',editingRoundId);allRounds=await sbGet('rounds','order=date.desc');toast('Round deleted');closeModal('editRoundModal');renderAdminRounds();}
   catch(e){alert('Error: '+e.message);}finally{setLoading(false);}
 }
 
