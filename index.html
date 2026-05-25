@@ -759,6 +759,7 @@ const HOLE_DATA=[
 let players=[],allRounds=[],activeId=null,selColor=0;
 // ── GPS Tracker state ─────────────────────────────────────────────────────────
 let GR = null;
+let gpsWatchId = null;
 let currentWeather = null;
 let weatherInterval = null;
 let fineTypes=[],allFines=[];
@@ -1113,10 +1114,53 @@ async function startGpsRound(){
     }catch(e){GR.surveyPoints=[];}
     _gpsScoreForIds=[];
     renderGpsHole();
+    startGpsWatch();
   }catch(e){
     alert('Could not get GPS location. Please allow location access and try again.');
   }finally{setLoading(false);}
 }
+function startGpsWatch(){
+  if(gpsWatchId!==null||!navigator.geolocation)return;
+  gpsWatchId=navigator.geolocation.watchPosition(
+    pos=>{
+      if(!GR){stopGpsWatch();return;}
+      const firstFix=GR.currentAccuracy==null;
+      GR.currentLat=pos.coords.latitude;
+      GR.currentLng=pos.coords.longitude;
+      GR.currentAccuracy=pos.coords.accuracy;
+      // Centre map once on first watch fix
+      if(firstFix&&GR.map)GR.map.setView([GR.currentLat,GR.currentLng],18);
+      // Update distance-to-green badge
+      const distBadge=document.getElementById('gpsDist');
+      if(distBadge){const d=distToGreen(GR.currentHole,GR.currentLat,GR.currentLng);if(d!=null)distBadge.textContent=dispDist(d)+' ⛳';}
+      // Update accuracy badge
+      const accBadge=document.getElementById('gpsAccBadge');
+      if(accBadge){
+        accBadge.textContent=`📍 ±${Math.round(GR.currentAccuracy)}m`;
+        accBadge.style.color=GR.currentAccuracy<=5?'rgba(127,204,158,0.9)':'rgba(240,180,60,0.9)';
+      }
+      // Resolve pending shot that was still locating
+      if(GR.pendingShot&&GR.pendingShot.locating){
+        GR.pendingShot.lat=GR.currentLat;
+        GR.pendingShot.lng=GR.currentLng;
+        GR.pendingShot.accuracy=GR.currentAccuracy;
+        GR.pendingShot.locating=false;
+        const locEl=document.getElementById('gpsLocStatus');
+        if(locEl){locEl.textContent=`📍 ±${Math.round(GR.currentAccuracy)}m`;locEl.style.color=GR.currentAccuracy<=5?'rgba(127,204,158,0.9)':'rgba(240,180,60,0.9)';}
+      }
+    },
+    err=>{console.warn('GPS watch error:',err);},
+    {enableHighAccuracy:true,maximumAge:5000}
+  );
+}
+function stopGpsWatch(){
+  if(gpsWatchId!==null){navigator.geolocation.clearWatch(gpsWatchId);gpsWatchId=null;}
+}
+// Pause GPS watch when screen locks or app is backgrounded, resume on return
+document.addEventListener('visibilitychange',()=>{
+  if(!GR)return;
+  if(document.hidden){stopGpsWatch();}else{startGpsWatch();}
+});
 function renderClubPicker(player){
   const bag=(player?.bag&&player.bag.length)?player.bag:['Driver'];
   return bag.map(c=>`<button class="club-btn${GR.selectedClub===c?' selected':''}" onclick="selectGpsClub('${c.replace(/'/g,"\\'")}',this)">${escHtml(c)}</button>`).join('');
@@ -1164,25 +1208,21 @@ function enterChipAndPutt(){
   if(!GR)return;
   GR.chipAndPutt=true;
   renderGpsHole();
-  // Record current GPS silently as ball-on-green marker
-  navigator.geolocation.getCurrentPosition(
-    async pos=>{
-      if(!GR||!GR.chipAndPutt)return;
-      const holeShots=GR.shots.filter(s=>s.hole===GR.currentHole);
-      const payload={
-        player_id:activeId,round_date:GR.date,hole:GR.currentHole,
-        shot_num:holeShots.length+1,type:'normal',
-        lat:pos.coords.latitude,lng:pos.coords.longitude,
-        club:null,shot_weight:null,lie:'green',direction:null,shot_outcome:null,
-        wind_speed:currentWeather?.speed_kmh??null,wind_dir:currentWeather?.dir??null,wind_deg:currentWeather?.deg??null,
-        accuracy_m:pos.coords.accuracy??null
-      };
-      const [saved]=await sbInsert('gps_shots',payload).catch(()=>[null]);
-      if(GR){GR.shots.push(saved||{...payload,id:Date.now()});GR.currentLat=pos.coords.latitude;GR.currentLng=pos.coords.longitude;}
-    },
-    ()=>{/* silent — GPS optional here */},
-    {enableHighAccuracy:true,timeout:6000}
-  );
+  // Record current GPS silently as ball-on-green marker using warm watch position
+  if(GR.currentLat&&GR.currentLng){
+    const holeShots=GR.shots.filter(s=>s.hole===GR.currentHole);
+    const payload={
+      player_id:activeId,round_date:GR.date,hole:GR.currentHole,
+      shot_num:holeShots.length+1,type:'normal',
+      lat:GR.currentLat,lng:GR.currentLng,
+      club:null,shot_weight:null,lie:'green',direction:null,shot_outcome:null,
+      wind_speed:currentWeather?.speed_kmh??null,wind_dir:currentWeather?.dir??null,wind_deg:currentWeather?.deg??null,
+      accuracy_m:GR.currentAccuracy??null
+    };
+    sbInsert('gps_shots',payload).then(([saved])=>{
+      if(GR)GR.shots.push(saved||{...payload,id:Date.now()});
+    }).catch(()=>{});
+  }
 }
 function renderGpsHole(){
   // Green zoom layers are tied to the map instance — reset on every re-render
@@ -1289,17 +1329,9 @@ function initGpsMap(holeShots){
   L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{
     maxZoom:20,attribution:'Tiles © Esri'
   }).addTo(GR.map);
-  navigator.geolocation.getCurrentPosition(pos=>{
-    if(!GR.map)return;
-    GR.currentLat=pos.coords.latitude;
-    GR.currentLng=pos.coords.longitude;
-    GR.currentAccuracy=pos.coords.accuracy;
-    GR.map.setView([GR.currentLat,GR.currentLng],18);
-    const badge=document.getElementById('gpsDist');
-    if(badge){const d=distToGreen(GR.currentHole,GR.currentLat,GR.currentLng);if(d!=null)badge.textContent=dispDist(d)+' ⛳';}
-    const accBadge=document.getElementById('gpsAccBadge');
-    if(accBadge)accBadge.textContent=`📍 ±${Math.round(GR.currentAccuracy)}m`;
-  },()=>{},{enableHighAccuracy:true,timeout:5000});
+  // GPS position is maintained by the continuous watchPosition (startGpsWatch).
+  // Centre map on current known position if already acquired.
+  if(GR.currentLat&&GR.map)GR.map.setView([GR.currentLat,GR.currentLng],18);
   drawShotMap(holeShots);
   if(GR.distRings)drawDistRings();
 }
@@ -1590,46 +1622,17 @@ function activateDistCone(mode){
 async function recordShot(type){
   if(!GR||!activeId)return;
   if(type==='normal'){
-    // Show form immediately — GPS fetches in background
-    GR.pendingShot={lat:null,lng:null,type,locating:true};
+    // Use warm position from continuous watch; locating=true only if no fix yet
+    const hasPos=GR.currentLat!=null;
+    GR.pendingShot={lat:GR.currentLat,lng:GR.currentLng,accuracy:GR.currentAccuracy,type,locating:!hasPos};
     renderGpsHole();
-    navigator.geolocation.getCurrentPosition(
-      pos=>{
-        if(!GR||!GR.pendingShot)return;
-        GR.pendingShot.lat=pos.coords.latitude;
-        GR.pendingShot.lng=pos.coords.longitude;
-        GR.pendingShot.accuracy=pos.coords.accuracy;
-        GR.pendingShot.locating=false;
-        GR.currentLat=pos.coords.latitude;GR.currentLng=pos.coords.longitude;
-        GR.currentAccuracy=pos.coords.accuracy;
-        const el=document.getElementById('gpsLocStatus');
-        if(el){
-          const acc=pos.coords.accuracy.toFixed(0);
-          el.textContent=`📍 ±${acc}m`;
-          el.style.color=pos.coords.accuracy<=5?'rgba(127,204,158,0.9)':'rgba(240,180,60,0.9)';
-        }
-      },
-      ()=>{
-        if(!GR||!GR.pendingShot)return;
-        GR.pendingShot.locating=false;
-        const el=document.getElementById('gpsLocStatus');
-        if(el){el.textContent='📍 No GPS';el.style.color='rgba(240,180,60,0.8)';}
-      },
-      {enableHighAccuracy:true,timeout:8000}
-    );
+    // If no position yet, the watch callback will resolve locating when it fires
     return;
   }
   setLoading(true,'Recording…');
   try{
-    let lat=null,lng=null;
-    try{
-      const pos=await new Promise((res,rej)=>
-        navigator.geolocation.getCurrentPosition(res,rej,{enableHighAccuracy:true,timeout:8000})
-      );
-      lat=pos.coords.latitude;
-      lng=pos.coords.longitude;
-      GR.currentLat=lat; GR.currentLng=lng;
-    }catch(e){}
+    const lat=GR.currentLat??null;
+    const lng=GR.currentLng??null;
     const holeShots=GR.shots.filter(s=>s.hole===GR.currentHole);
     const shot_num=holeShots.length+1;
     const payload={
@@ -1695,6 +1698,7 @@ async function resolveProvisional(action){
 }
 function abandonGpsRound(){
   if(!confirm('Abandon GPS tracking for this round? Shots recorded so far are kept in the database.'))return;
+  stopGpsWatch();
   if(GR?.map){GR.map.remove();}
   if(weatherInterval){clearInterval(weatherInterval);weatherInterval=null;}
   GR=null;
@@ -1828,6 +1832,7 @@ async function finishGpsRound(){
   const savedDate=GR.date;
   const savedTeeId=GR.teeId;
   const pid=activeId;
+  stopGpsWatch();
   if(GR.map){GR.map.remove();}
   if(weatherInterval){clearInterval(weatherInterval);weatherInterval=null;}
   GR=null;
@@ -3142,7 +3147,7 @@ async function saveGroupRound(){
     toast(`${HE.playerList.length} round${HE.playerList.length>1?'s':''} saved ✓`);
     localStorage.removeItem('sl_active_group');
     // Clear GPS tracking if it was running for the same date
-    if(GR&&GR.date===HE.date){if(GR.map)GR.map.remove();if(weatherInterval){clearInterval(weatherInterval);weatherInterval=null;}GR=null;}
+    if(GR&&GR.date===HE.date){stopGpsWatch();if(GR.map)GR.map.remove();if(weatherInterval){clearInterval(weatherInterval);weatherInterval=null;}GR=null;}
     groupPlayerIds=[];document.getElementById('roundNotes').value='';
     document.getElementById('logStep2').style.display='none';document.getElementById('logStep1').style.display='block';
     buildPlayerCheckboxes();showView('leaderboard',document.querySelectorAll('.nav-tab')[0]);
@@ -3551,7 +3556,7 @@ async function resetPlayerPin(id){
 }
 function setPlayer(id){
   // Reset GPS tracking if player changes mid-round
-  if(GR&&id!==activeId){if(GR.map)GR.map.remove();if(weatherInterval){clearInterval(weatherInterval);weatherInterval=null;}GR=null;toast('GPS round cleared (player changed)');}
+  if(GR&&id!==activeId){stopGpsWatch();if(GR.map)GR.map.remove();if(weatherInterval){clearInterval(weatherInterval);weatherInterval=null;}GR=null;toast('GPS round cleared (player changed)');}
   const sessionId=parseInt(sessionStorage.getItem('sl_session_player'));
   if(sessionId&&id!==sessionId&&!isAdmin()){toast('You can only view your own profile.');return;}
   activeId=id;const p=players.find(x=>x.id===id);
