@@ -525,9 +525,15 @@ let surveyHole      = 1;
 let surveyFeature   = 'front_green';
 let surveyGpsPos    = null;
 let surveyPoints    = [];
-let surveyGpsWatchId   = null;
+let surveyGpsWatchId      = null;
+let surveyGpsWatchTimeout = null;
+let surveyGpsStopReason   = null; // 'timeout' | 'boundary' | null
+let surveyGpsOobStrikes   = 0;
 let surveyLastRecorded = null;
 let surveySampling  = null; // { type, samples:[], deadline, intervalId }
+const SURVEY_COURSE_BOUNDS = {south:55.6273, north:55.6419, west:12.5533, east:12.5774};
+const SURVEY_GPS_MAX_MS    = 6 * 60 * 60 * 1000; // 6 hours
+const SURVEY_OOB_THRESHOLD = 5;                   // consecutive out-of-bounds before stopping
 const OVERLAY_OPAC  = [0.7, 0.5, 0.3, 0.9];
 let overlayOpacIdx  = 0;
 
@@ -1094,8 +1100,25 @@ function toggleSurveyPanel() {
 function startSurveyGpsWatch() {
   if (!navigator.geolocation || surveyGpsWatchId !== null) return;
   surveyGpsPos = null;
+  surveyGpsStopReason = null;
+  surveyGpsOobStrikes = 0;
   surveyGpsWatchId = navigator.geolocation.watchPosition(
     pos => {
+      // Out-of-bounds check
+      const {latitude: lat, longitude: lng} = pos.coords;
+      const inBounds = lat >= SURVEY_COURSE_BOUNDS.south && lat <= SURVEY_COURSE_BOUNDS.north &&
+                       lng >= SURVEY_COURSE_BOUNDS.west  && lng <= SURVEY_COURSE_BOUNDS.east;
+      if (!inBounds) {
+        surveyGpsOobStrikes++;
+        if (surveyGpsOobStrikes >= SURVEY_OOB_THRESHOLD) {
+          surveyGpsStopReason = 'boundary';
+          stopSurveyGpsWatch();
+          renderSurveyPanel();
+          return;
+        }
+      } else {
+        surveyGpsOobStrikes = 0;
+      }
       surveyGpsPos = pos;
       if (surveySampling) surveySampling.samples.push(pos);
       renderSurveyPanel();
@@ -1103,12 +1126,22 @@ function startSurveyGpsWatch() {
     err => { console.warn('GPS watch error', err); },
     { enableHighAccuracy: true, maximumAge: 0 }
   );
+  // 6-hour hard stop
+  surveyGpsWatchTimeout = setTimeout(() => {
+    surveyGpsStopReason = 'timeout';
+    stopSurveyGpsWatch();
+    renderSurveyPanel();
+  }, SURVEY_GPS_MAX_MS);
 }
 
 function stopSurveyGpsWatch() {
   if (surveyGpsWatchId !== null) {
     navigator.geolocation.clearWatch(surveyGpsWatchId);
     surveyGpsWatchId = null;
+  }
+  if (surveyGpsWatchTimeout !== null) {
+    clearTimeout(surveyGpsWatchTimeout);
+    surveyGpsWatchTimeout = null;
   }
   surveyGpsPos = null;
 }
@@ -1130,6 +1163,9 @@ function renderSurveyPanel() {
     const feat = SURVEY_FEATURES.find(f => f.type === surveySampling.type);
     const accCol = bestAcc != null ? (bestAcc <= 8 ? '#4caf50' : '#ff9800') : '#556';
     gpsHtml = `<div class="sv-gps-row" style="border-color:#f39c12"><span class="sv-gps-coords" style="color:#f39c12">⏱ Sampling ${feat ? feat.label : surveySampling.type}… ${remaining}s (${surveySampling.samples.length} pts)</span><span style="font-size:11px;font-weight:700;color:${accCol}">${bestAcc != null ? '±' + bestAcc.toFixed(0) + 'm' : '—'}</span></div>`;
+  } else if (surveyGpsStopReason) {
+    const msg = surveyGpsStopReason === 'timeout' ? '⏱ GPS stopped — 6h limit' : '⚠ GPS stopped — off course';
+    gpsHtml = `<div class="sv-gps-row" style="border-color:#e74c3c"><span class="sv-gps-coords" style="color:#e74c3c">${msg}</span><button onclick="startSurveyGpsWatch();renderSurveyPanel();" style="font-size:10px;padding:2px 8px;background:#1a3a5e;border:1px solid #4a90d9;color:#7bb8f0;border-radius:4px;cursor:pointer">Restart</button></div>`;
   } else if (!surveyGpsPos) {
     gpsHtml = '<div class="sv-gps-row"><span class="sv-gps-coords" style="color:#556">📍 Fetching GPS…</span><span style="color:#556;font-size:11px">—</span></div>';
   } else {
