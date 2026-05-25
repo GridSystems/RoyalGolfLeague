@@ -761,8 +761,8 @@ let players=[],allRounds=[],activeId=null,selColor=0;
 let GR = null;
 let gpsWatchId = null;
 let gpsWatchTimeout = null;
-// Course bounding box — furthest holes + ~200m buffer in each direction
-const COURSE_BOUNDS = {south:55.6286, north:55.6406, west:12.5556, east:12.5750};
+// Course bounding box — furthest holes + ~350m buffer in each direction
+const COURSE_BOUNDS = {south:55.6273, north:55.6419, west:12.5533, east:12.5774};
 const GPS_WATCH_MAX_MS  = 6 * 60 * 60 * 1000; // 6 hours
 const GPS_OOB_THRESHOLD = 5;                   // consecutive out-of-bounds readings before stopping
 let currentWeather = null;
