@@ -760,6 +760,11 @@ let players=[],allRounds=[],activeId=null,selColor=0;
 // ── GPS Tracker state ─────────────────────────────────────────────────────────
 let GR = null;
 let gpsWatchId = null;
+let gpsWatchTimeout = null;
+// Course bounding box — furthest holes + ~200m buffer in each direction
+const COURSE_BOUNDS = {south:55.6286, north:55.6406, west:12.5556, east:12.5750};
+const GPS_WATCH_MAX_MS  = 6 * 60 * 60 * 1000; // 6 hours
+const GPS_OOB_THRESHOLD = 5;                   // consecutive out-of-bounds readings before stopping
 let currentWeather = null;
 let weatherInterval = null;
 let fineTypes=[],allFines=[];
@@ -1124,9 +1129,22 @@ function startGpsWatch(){
   gpsWatchId=navigator.geolocation.watchPosition(
     pos=>{
       if(!GR){stopGpsWatch();return;}
+      const lat=pos.coords.latitude, lng=pos.coords.longitude;
+      // Out-of-bounds check — requires consecutive strikes to avoid false positives
+      const inBounds=lat>=COURSE_BOUNDS.south&&lat<=COURSE_BOUNDS.north&&lng>=COURSE_BOUNDS.west&&lng<=COURSE_BOUNDS.east;
+      if(!inBounds){
+        GR._oobStrikes=(GR._oobStrikes||0)+1;
+        if(GR._oobStrikes>=GPS_OOB_THRESHOLD){
+          toast('GPS watch stopped — appears to be off course');
+          stopGpsWatch();
+          return;
+        }
+      }else{
+        GR._oobStrikes=0;
+      }
       const firstFix=GR.currentAccuracy==null;
-      GR.currentLat=pos.coords.latitude;
-      GR.currentLng=pos.coords.longitude;
+      GR.currentLat=lat;
+      GR.currentLng=lng;
       GR.currentAccuracy=pos.coords.accuracy;
       // Centre map once on first watch fix
       if(firstFix&&GR.map)GR.map.setView([GR.currentLat,GR.currentLng],18);
@@ -1152,9 +1170,15 @@ function startGpsWatch(){
     err=>{console.warn('GPS watch error:',err);},
     {enableHighAccuracy:true,maximumAge:5000}
   );
+  // 6-hour hard stop
+  gpsWatchTimeout=setTimeout(()=>{
+    if(GR)toast('GPS watch stopped — 6 hour limit reached');
+    stopGpsWatch();
+  },GPS_WATCH_MAX_MS);
 }
 function stopGpsWatch(){
   if(gpsWatchId!==null){navigator.geolocation.clearWatch(gpsWatchId);gpsWatchId=null;}
+  if(gpsWatchTimeout!==null){clearTimeout(gpsWatchTimeout);gpsWatchTimeout=null;}
 }
 // Pause GPS watch when screen locks or app is backgrounded, resume on return
 document.addEventListener('visibilitychange',()=>{
