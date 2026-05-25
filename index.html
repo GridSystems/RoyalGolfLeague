@@ -1174,7 +1174,8 @@ function enterChipAndPutt(){
         shot_num:holeShots.length+1,type:'normal',
         lat:pos.coords.latitude,lng:pos.coords.longitude,
         club:null,shot_weight:null,lie:'green',direction:null,shot_outcome:null,
-        wind_speed:currentWeather?.speed_kmh??null,wind_dir:currentWeather?.dir??null,wind_deg:currentWeather?.deg??null
+        wind_speed:currentWeather?.speed_kmh??null,wind_dir:currentWeather?.dir??null,wind_deg:currentWeather?.deg??null,
+        accuracy_m:pos.coords.accuracy??null
       };
       const [saved]=await sbInsert('gps_shots',payload).catch(()=>[null]);
       if(GR){GR.shots.push(saved||{...payload,id:Date.now()});GR.currentLat=pos.coords.latitude;GR.currentLng=pos.coords.longitude;}
@@ -1635,7 +1636,8 @@ async function recordShot(type){
       player_id:activeId,round_date:GR.date,hole:GR.currentHole,shot_num,type,lat,lng,
       club:GR.selectedClub,shot_weight:GR.selectedWeight,
       lie:GR.selectedLie||null,direction:GR.selectedDirection||null,
-      wind_speed:currentWeather?.speed_kmh??null,wind_dir:currentWeather?.dir??null,wind_deg:currentWeather?.deg??null
+      wind_speed:currentWeather?.speed_kmh??null,wind_dir:currentWeather?.dir??null,wind_deg:currentWeather?.deg??null,
+      accuracy_m:GR.currentAccuracy??null
     };
     const [saved]=await sbInsert('gps_shots',payload);
     GR.shots.push(saved||{...payload,id:Date.now()});
@@ -1656,7 +1658,8 @@ async function savePendingShot(){
       type:GR.pendingShot.type,lat:GR.pendingShot.lat,lng:GR.pendingShot.lng,
       club:GR.selectedClub,shot_weight:GR.selectedWeight,
       lie:GR.selectedLie||null,direction:GR.selectedDirection||null,shot_outcome:GR.selectedOutcome||null,
-      wind_speed:currentWeather?.speed_kmh??null,wind_dir:currentWeather?.dir??null,wind_deg:currentWeather?.deg??null
+      wind_speed:currentWeather?.speed_kmh??null,wind_dir:currentWeather?.dir??null,wind_deg:currentWeather?.deg??null,
+      accuracy_m:GR.currentAccuracy??null
     };
     const [saved]=await sbInsert('gps_shots',payload);
     GR.shots.push(saved||{...payload,id:Date.now()});
