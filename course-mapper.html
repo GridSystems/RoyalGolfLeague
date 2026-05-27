@@ -1144,7 +1144,14 @@ function setDetectTolerance(T) {
 
 function finishDrawGreen() {
   if (drawVerts.length < 3) return;
-  greenPolygons[drawingGreen] = drawVerts.map(v => [...v]);
+  // Sort vertices by angle from centroid so the polygon has no crossing edges
+  // regardless of the order the user placed the points
+  const cx = drawVerts.reduce((s, v) => s + v[0], 0) / drawVerts.length;
+  const cy = drawVerts.reduce((s, v) => s + v[1], 0) / drawVerts.length;
+  const sorted = drawVerts.slice().sort((a, b) =>
+    Math.atan2(a[1] - cy, a[0] - cx) - Math.atan2(b[1] - cy, b[0] - cx)
+  );
+  greenPolygons[drawingGreen] = sorted;
   saveAll();
   _exitDrawMode();
   redrawAllPolygons();
