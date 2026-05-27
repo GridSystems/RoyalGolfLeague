@@ -343,6 +343,41 @@ async function fetchTileCanvas(tileX, tileY) {
   return canvas;
 }
 
+/**
+ * BFS flood-fill on `imageData` from seed pixel (seedPx, seedPy).
+ * Includes neighbours whose RGB distance from seed colour ≤ tolerance.
+ * Returns Uint8Array of length w*h (1=filled, 0=not) or null if > 200×200
+ * pixels were filled (runaway fill).
+ */
+function floodFill(imageData, seedPx, seedPy, w, h, tolerance) {
+  const d = imageData.data;
+  const si = (seedPy * w + seedPx) * 4;
+  const r0 = d[si], g0 = d[si+1], b0 = d[si+2];
+
+  const filled = new Uint8Array(w * h);
+  const queue = [[seedPx, seedPy]];
+  filled[seedPy * w + seedPx] = 1;
+  let count = 0;
+  const CAP = 200 * 200;
+
+  while (queue.length && count < CAP) {
+    const [x, y] = queue.shift();
+    count++;
+    for (const [dx, dy] of [[-1,0],[1,0],[0,-1],[0,1]]) {
+      const nx = x + dx, ny = y + dy;
+      if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
+      if (filled[ny * w + nx]) continue;
+      const ni = (ny * w + nx) * 4;
+      const dr = d[ni]-r0, dg = d[ni+1]-g0, db = d[ni+2]-b0;
+      if (Math.sqrt(dr*dr + dg*dg + db*db) <= tolerance) {
+        filled[ny * w + nx] = 1;
+        queue.push([nx, ny]);
+      }
+    }
+  }
+  return count >= CAP ? null : filled;
+}
+
 // ── Green polygon utilities ──────────────────────────────────────────────
 function haversineM(lat1,lng1,lat2,lng2){
   const R=6371000,rad=Math.PI/180;
