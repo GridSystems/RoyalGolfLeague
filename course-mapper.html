@@ -963,6 +963,9 @@ map.on('dblclick', e => {
   if (drawingGreen !== null && !detectMode) {
     L.DomEvent.stopPropagation(e);
     if (drawVerts.length >= 3) finishDrawGreen();
+  } else if (drawingFairway !== null) {
+    L.DomEvent.stopPropagation(e);
+    if (drawVerts.length >= 3) finishDrawFairway();
   }
 });
 
@@ -995,6 +998,8 @@ function addMarker(stay, i) {
 // ── Add-pin mode ──────────────────────────────────────────────────────────
 function togglePinMode() {
   if (drawingGreen !== null) cancelDrawGreen();
+  if (fairwaySelectHole !== null) _exitFairwaySelectMode();
+  if (drawingFairway !== null) cancelDrawFairway();
   pinMode = !pinMode;
   document.getElementById('addPinBtn').classList.toggle('active', pinMode);
   document.getElementById('map').classList.toggle('pin-mode', pinMode);
@@ -1083,7 +1088,7 @@ function _addVertMarker(lat, lng) {
   });
 
   m.on('dragend', () => {
-    setDrawBarState('vertex-edit');
+    updateDrawBar();
   });
 
   drawVertMarkers.push(m);
@@ -1334,6 +1339,8 @@ function startDrawTee(hole) {
   closePanel();
   if (drawingGreen !== null) return; // don't open tee mode during green draw
   if (teeDrawHole !== null) _exitTeeMode(); // clean up any prior tee session
+  if (fairwaySelectHole !== null) _exitFairwaySelectMode();
+  if (drawingFairway !== null) cancelDrawFairway();
 
   teeDrawHole   = hole;
   teeInProgress = (teeStrips[hole] || []).map(s => ({ back: [...s.back], front: [...s.front] }));
