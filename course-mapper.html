@@ -763,6 +763,7 @@ let detectSeedPx    = null;    // seed pixel x within canvas
 let detectSeedPy    = null;    // seed pixel y within canvas
 let detectTolerance = 30;      // current slider value (10-80)
 let detectBarState  = null;    // 'awaiting-seed'|'detected'|'vertex-edit'|'error'|null
+let detectInFlight  = false;   // guard against concurrent invocations
 // Green overlay state
 let overlayLayer    = null;
 let overlayHole     = null;
@@ -1006,6 +1007,9 @@ function resetDetectMode() {
 }
 
 async function handleDetectClick(lat, lng) {
+  if (detectInFlight) return;
+  detectInFlight = true;
+
   // Show loading state
   document.getElementById('drawBar').innerHTML =
     '<span style="color:#2ecc71;font-weight:600">⏳ Detecting green boundary…</span>';
@@ -1053,6 +1057,8 @@ async function handleDetectClick(lat, lng) {
   } catch (err) {
     console.error('handleDetectClick:', err);
     setDrawBarState('error', 'Could not load imagery — try zooming in and clicking again');
+  } finally {
+    detectInFlight = false;
   }
 }
 
@@ -1114,6 +1120,7 @@ function _exitDrawMode() {
   detectTileX = null; detectTileY = null;
   detectSeedPx = null; detectSeedPy = null;
   detectBarState = null;
+  detectInFlight = false;
   document.getElementById('map').classList.remove('draw-mode');
   document.getElementById('drawBar').style.display = 'none';
 }
