@@ -889,6 +889,10 @@ STAYS.forEach((stay, i) => addMarker(stay, i));
 customPins.forEach((pin, j) => addMarker(pin, STAYS.length + j));
 
 map.on('click', e => {
+  if (teeDrawHole !== null) {
+    handleTeeClick(e.latlng.lat, e.latlng.lng);
+    return;
+  }
   if (drawingGreen !== null) {
     if (detectMode && detectBarState === 'awaiting-seed') {
       handleDetectClick(e.latlng.lat, e.latlng.lng);
@@ -1262,6 +1266,162 @@ function _exitDrawMode() {
   document.getElementById('drawBar').style.display = 'none';
 }
 
+function startDrawTee(hole) {
+  if (pinMode) togglePinMode();
+  closePanel();
+  if (drawingGreen !== null) return; // don't open tee mode during green draw
+
+  teeDrawHole   = hole;
+  teeInProgress = (teeStrips[hole] || []).map(s => ({ back: [...s.back], front: [...s.front] }));
+  teePartialBack = null;
+
+  document.getElementById('map').classList.add('draw-mode');
+  document.getElementById('drawBar').style.display = 'flex';
+  setTeeBarState('back');
+
+  // Fly to existing strips if any, else fall back to HOLE_TEES hardcoded reference
+  if (teeInProgress.length > 0) {
+    const allLats = teeInProgress.flatMap(s => [s.back[0], s.front[0]]);
+    const allLngs = teeInProgress.flatMap(s => [s.back[1], s.front[1]]);
+    map.flyToBounds(
+      [[Math.min(...allLats), Math.min(...allLngs)], [Math.max(...allLats), Math.max(...allLngs)]],
+      { padding: [60, 60], maxZoom: 20, animate: true, duration: 0.6 }
+    );
+  } else {
+    const t = HOLE_TEES[hole - 1];
+    if (t) map.flyTo([t.lat, t.lng], 19, { animate: true, duration: 0.6 });
+  }
+
+  redrawTeeMarkers();
+}
+
+function _exitTeeMode() {
+  teeStripMarkers.forEach(m => m.remove()); teeStripMarkers = [];
+  teeStripLines.forEach(l => l.remove());   teeStripLines   = [];
+  teeDrawHole    = null;
+  teeDrawState   = null;
+  teeInProgress  = [];
+  teePartialBack = null;
+  document.getElementById('map').classList.remove('draw-mode');
+  document.getElementById('drawBar').style.display = 'none';
+}
+
+function cancelDrawTee() {
+  _exitTeeMode();
+}
+
+function handleTeeClick(lat, lng) {
+  if (teeDrawState === 'back') {
+    // Place back edge point and swivel to front
+    teePartialBack = [lat, lng];
+    setTeeBarState('front');
+    redrawTeeMarkers();
+  } else if (teeDrawState === 'front') {
+    // Place front edge point — strip is complete
+    if (!teePartialBack) {
+      // Guard: reset to back state
+      setTeeBarState('back');
+      return;
+    }
+    completeTeeStrip([lat, lng]);
+  }
+}
+
+function completeTeeStrip(frontLatLng) {
+  teeInProgress.push({ back: teePartialBack, front: frontLatLng });
+  teePartialBack = null;
+  setTeeBarState('back'); // ready for next strip
+  redrawTeeMarkers();
+}
+
+function redrawTeeMarkers() {
+  // Clear existing map layers
+  teeStripMarkers.forEach(m => m.remove()); teeStripMarkers = [];
+  teeStripLines.forEach(l => l.remove());   teeStripLines   = [];
+
+  const backIcon  = L.divIcon({
+    className: '',
+    html: '<div style="width:10px;height:10px;background:#e74c3c;border:1.5px solid #fff;border-radius:50%;margin:-5px 0 0 -5px;cursor:grab"></div>',
+    iconSize: [10, 10], iconAnchor: [5, 5]
+  });
+  const frontIcon = L.divIcon({
+    className: '',
+    html: '<div style="width:10px;height:10px;background:#ffd700;border:1.5px solid #fff;border-radius:50%;margin:-5px 0 0 -5px;cursor:grab"></div>',
+    iconSize: [10, 10], iconAnchor: [5, 5]
+  });
+
+  // Draw completed strips
+  teeInProgress.forEach((strip, idx) => {
+    const backM = L.marker(strip.back, { icon: backIcon, draggable: true }).addTo(map);
+    backM.on('click', e => { L.DomEvent.stopPropagation(e); deleteTeeStrip(idx); });
+    backM.on('drag',  e => {
+      teeInProgress[idx].back = [e.latlng.lat, e.latlng.lng];
+      if (teeStripLines[idx]) teeStripLines[idx].setLatLngs([teeInProgress[idx].back, teeInProgress[idx].front]);
+    });
+
+    const frontM = L.marker(strip.front, { icon: frontIcon, draggable: true }).addTo(map);
+    frontM.on('click', e => { L.DomEvent.stopPropagation(e); deleteTeeStrip(idx); });
+    frontM.on('drag',  e => {
+      teeInProgress[idx].front = [e.latlng.lat, e.latlng.lng];
+      if (teeStripLines[idx]) teeStripLines[idx].setLatLngs([teeInProgress[idx].back, teeInProgress[idx].front]);
+    });
+
+    teeStripMarkers.push(backM, frontM);
+
+    const line = L.polyline([strip.back, strip.front], {
+      color: '#2196F3', weight: 3, opacity: 0.85
+    }).addTo(map);
+    line.on('click', e => { L.DomEvent.stopPropagation(e); deleteTeeStrip(idx); });
+    line.bindTooltip('S' + (idx + 1), { permanent: true, direction: 'center' });
+    teeStripLines.push(line);
+  });
+
+  // Draw partial back point if awaiting front
+  if (teePartialBack) {
+    const pm = L.marker(teePartialBack, { icon: backIcon, draggable: true }).addTo(map);
+    pm.on('drag', e => { teePartialBack = [e.latlng.lat, e.latlng.lng]; });
+    teeStripMarkers.push(pm);
+  }
+}
+
+function deleteTeeStrip(idx) {
+  teeInProgress.splice(idx, 1);
+  setTeeBarState(teeDrawState || 'back'); // refresh strip count in bar
+  redrawTeeMarkers();
+}
+
+function clearTeeStrips() {
+  teeInProgress  = [];
+  teePartialBack = null;
+  setTeeBarState('back');
+  redrawTeeMarkers();
+}
+
+async function finishDrawTee() {
+  if (teeInProgress.length === 0) return;
+  const hole = teeDrawHole;
+
+  // Save to localStorage
+  teeStrips[hole] = teeInProgress.map(s => ({ back: [...s.back], front: [...s.front] }));
+  saveAll();
+
+  // Push to Supabase
+  const bar = document.getElementById('drawBar');
+  bar.innerHTML = '<span style="color:#2ecc71;font-weight:600">⏳ Saving…</span>';
+  try {
+    await sbUpsertTeeStrips(hole, teeStrips[hole]);
+  } catch (err) {
+    console.error('finishDrawTee:', err);
+    bar.innerHTML = '<span style="color:#e74c3c">⚠ Save failed — ' + err.message + '</span>' +
+      '<button onclick="finishDrawTee()" style="padding:5px 12px;border-radius:5px;border:none;background:#2ecc71;color:#000;font-size:12px;font-weight:700;cursor:pointer">Retry</button>' +
+      '<button onclick="cancelDrawTee()"  style="padding:5px 12px;border-radius:5px;border:none;background:#e94560;color:#fff;font-size:12px;font-weight:700;cursor:pointer">✕ Cancel</button>';
+    return;
+  }
+
+  _exitTeeMode();
+  renderHoleList();
+}
+
 function redrawAllPolygons() {
   // Remove existing polygon layers
   Object.values(polyLayers).forEach(l => l.remove());
@@ -1514,14 +1674,17 @@ function renderHoleList() {
     if (teeIdx !== null && greenIdx !== null) done++;
     const poly = greenPolygons[h];
     const hasPoly = poly && poly.length >= 3;
+    const teeStripsForHole = teeStrips[h] || [];
+    const hasTeeStrips = teeStripsForHole.length > 0;
     const row = document.createElement('div');
     row.className = 'hole-row';
     row.innerHTML =
       '<div class="hole-num">' + h + '</div>' +
       '<div class="hole-indicators">' +
-        '<span class="indicator ind-tee ' + (teeIdx !== null ? 'set' : 'unset') + '"' +
-          (teeIdx !== null ? ' title="Stay #'+(teeIdx+1)+'" onclick="focusStay('+teeIdx+')"' : '') +
-          '>T' + (teeIdx !== null ? ' '+(teeIdx+1) : '') + '</span>' +
+        '<span class="indicator ind-tee ' + (hasTeeStrips ? 'set' : 'unset') + '"' +
+          ' onclick="startDrawTee(' + h + ')"' +
+          ' title="' + (hasTeeStrips ? teeStripsForHole.length + ' strip' + (teeStripsForHole.length !== 1 ? 's' : '') + ' — click to edit' : 'Record tee strips') + '">' +
+          'T' + (hasTeeStrips ? teeStripsForHole.length : '') + '</span>' +
         '<span class="indicator ind-green ' + (greenIdx !== null ? 'set' : 'unset') + '"' +
           (greenIdx !== null ? ' title="Stay #'+(greenIdx+1)+'" onclick="focusStay('+greenIdx+')"' : '') +
           '>G' + (greenIdx !== null ? ' '+(greenIdx+1) : '') + '</span>' +
