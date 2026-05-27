@@ -754,6 +754,15 @@ let drawVerts       = [];    // [[lat,lng], ...]
 let drawVertMarkers = [];    // L.circleMarker per vertex
 let drawPolyLayer   = null;  // live preview L.polygon
 let polyLayers      = {};    // saved polygon layers: {holeNum: L.polygon}
+// Auto-detect state
+let detectMode      = false;   // true = awaiting seed click or showing result
+let detectCanvas    = null;    // cached 512×512 tile canvas
+let detectTileX     = null;    // top-left tile X of cached canvas (zoom 20)
+let detectTileY     = null;    // top-left tile Y of cached canvas (zoom 20)
+let detectSeedPx    = null;    // seed pixel x within canvas
+let detectSeedPy    = null;    // seed pixel y within canvas
+let detectTolerance = 30;      // current slider value (10-80)
+let detectBarState  = null;    // 'awaiting-seed'|'detected'|'vertex-edit'|'error'|null
 // Green overlay state
 let overlayLayer    = null;
 let overlayHole     = null;
@@ -838,7 +847,12 @@ customPins.forEach((pin, j) => addMarker(pin, STAYS.length + j));
 
 map.on('click', e => {
   if (drawingGreen !== null) {
-    addDrawVertex(e.latlng.lat, e.latlng.lng);
+    if (detectMode && detectBarState === 'awaiting-seed') {
+      handleDetectClick(e.latlng.lat, e.latlng.lng);
+    } else if (!detectMode) {
+      addDrawVertex(e.latlng.lat, e.latlng.lng);
+    }
+    // In 'detected' or 'vertex-edit' or 'error' states: ignore map clicks
   } else if (pinMode) {
     const {lat, lng} = e.latlng;
     customPins.push({ lat, lon: lng, custom: true });
@@ -853,7 +867,7 @@ map.on('click', e => {
 });
 
 map.on('dblclick', e => {
-  if (drawingGreen !== null) {
+  if (drawingGreen !== null && !detectMode) {
     L.DomEvent.stopPropagation(e);
     if (drawVerts.length >= 3) finishDrawGreen();
   }
@@ -863,7 +877,7 @@ document.addEventListener('keydown', e => {
   if (overlayHole !== null && e.key === 'Escape') { removeOverlay(); return; }
   if (drawingGreen === null) return;
   if (e.key === 'Escape') cancelDrawGreen();
-  if (e.key === 'Enter' && drawVerts.length >= 3) finishDrawGreen();
+  if (e.key === 'Enter' && drawVerts.length >= 3 && !detectMode) finishDrawGreen();
   if ((e.key === 'z' || e.key === 'Z') && (e.ctrlKey || e.metaKey)) { e.preventDefault(); undoDrawVertex(); }
 });
 
@@ -888,24 +902,20 @@ function togglePinMode() {
 
 // ── Green polygon drawing ──────────────────────────────────────────────────
 function startDrawGreen(hole) {
-  // Exit other modes first
   if (pinMode) togglePinMode();
   closePanel();
 
   drawingGreen = hole;
-  // Seed with existing polygon if any, so edits don't start from scratch
-  drawVerts = (greenPolygons[hole] || []).map(v => [...v]);
+  drawVerts = [];
   drawVertMarkers = [];
   drawPolyLayer = null;
+  detectMode = true;
+  detectCanvas = null;
+  detectTolerance = 30;
 
   document.getElementById('map').classList.add('draw-mode');
-  const bar = document.getElementById('drawBar');
-  bar.style.display = 'flex';
-
-  // Re-render existing vertices
-  drawVerts.forEach(v => _addVertMarker(v[0], v[1]));
-  updateDrawPreview();
-  updateDrawBar();
+  document.getElementById('drawBar').style.display = 'flex';
+  setDrawBarState('awaiting-seed');
 
   // Fly to the green centre if we know it
   const gIdx = getAssignedIdx('green', hole);
@@ -949,11 +959,49 @@ function updateDrawPreview() {
   }
 }
 
+function setDrawBarState(state, errorMsg) {
+  detectBarState = state;
+  const bar = document.getElementById('drawBar');
+  const btn = s => `style="padding:5px 12px;border-radius:5px;border:none;font-size:12px;font-weight:700;cursor:pointer;${s}"`;
+  if (state === 'awaiting-seed') {
+    bar.innerHTML =
+      `<span style="color:#2ecc71;font-weight:600">🎯 Click on the green to detect its boundary</span>` +
+      `<button onclick="cancelDrawGreen()" ${btn('background:#e94560;color:#fff')}>✕ Cancel</button>`;
+  } else if (state === 'detected') {
+    bar.innerHTML =
+      `<span style="font-size:11px;color:#aaa">Tight</span>` +
+      `<input type="range" id="detectSlider" min="10" max="80" value="${detectTolerance}"` +
+      ` style="width:90px;cursor:pointer;accent-color:#2ecc71" oninput="setDetectTolerance(+this.value)">` +
+      `<span style="font-size:11px;color:#aaa">Loose</span>` +
+      `<button onclick="finishDrawGreen()" ${btn('background:#2ecc71;color:#000')}>✓ Accept</button>` +
+      `<button onclick="resetDetectMode()" ${btn('background:#555;color:#eee')}>↩ Re-click</button>` +
+      `<button onclick="cancelDrawGreen()" ${btn('background:#e94560;color:#fff')}>✕ Cancel</button>`;
+  } else if (state === 'vertex-edit') {
+    const n = drawVerts.length;
+    bar.innerHTML =
+      `<span style="color:#2ecc71;font-weight:600">Hole ${drawingGreen} — ${n} pt${n!==1?'s':''} — drag to adjust</span>` +
+      `<button onclick="finishDrawGreen()" ${n<3?'disabled ':''} ${btn('background:#2ecc71;color:#000' + (n<3?';opacity:0.5':''))}>✓ Finish</button>` +
+      `<button onclick="resetDetectMode()" ${btn('background:#555;color:#eee')}>🗑 Clear</button>` +
+      `<button onclick="cancelDrawGreen()" ${btn('background:#e94560;color:#fff')}>✕ Cancel</button>`;
+  } else if (state === 'error') {
+    bar.innerHTML =
+      `<span style="color:#e74c3c;font-weight:600">⚠ ${errorMsg || 'Detection failed'}</span>` +
+      `<button onclick="resetDetectMode()" ${btn('background:#555;color:#eee')}>↩ Try Again</button>` +
+      `<button onclick="cancelDrawGreen()" ${btn('background:#e94560;color:#fff')}>✕ Cancel</button>`;
+  }
+}
+
 function updateDrawBar() {
-  const n = drawVerts.length;
-  document.getElementById('drawBarText').textContent =
-    `Hole ${drawingGreen} green — ${n} point${n !== 1 ? 's' : ''}${n < 3 ? ' (need 3+)' : ' — double-click or Enter to finish'}`;
-  document.getElementById('drawFinishBtn').disabled = n < 3;
+  setDrawBarState('vertex-edit');
+}
+
+function resetDetectMode() {
+  drawVerts = [];
+  drawVertMarkers.forEach(m => m.remove()); drawVertMarkers = [];
+  if (drawPolyLayer) { drawPolyLayer.remove(); drawPolyLayer = null; }
+  detectCanvas = null;
+  detectSeedPx = null; detectSeedPy = null;
+  setDrawBarState('awaiting-seed');
 }
 
 function finishDrawGreen() {
@@ -991,6 +1039,10 @@ function _exitDrawMode() {
   drawVertMarkers.forEach(m => m.remove()); drawVertMarkers = [];
   if (drawPolyLayer) { drawPolyLayer.remove(); drawPolyLayer = null; }
   drawingGreen = null;
+  detectMode = false;
+  detectCanvas = null;
+  detectSeedPx = null; detectSeedPy = null;
+  detectBarState = null;
   document.getElementById('map').classList.remove('draw-mode');
   document.getElementById('drawBar').style.display = 'none';
 }
