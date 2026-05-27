@@ -770,6 +770,15 @@ let detectSeedPy    = null;    // seed pixel y within canvas
 let detectTolerance = 15;      // current slider value (10-80)
 let detectBarState  = null;    // 'awaiting-seed'|'detected'|'vertex-edit'|'error'|null
 let detectInFlight  = false;   // guard against concurrent invocations
+// Tee strip recording state
+let teeStrips       = JSON.parse(localStorage.getItem('rgcTeeStrips') || '{}');
+// { [hole]: [{back:[lat,lng], front:[lat,lng]}, ...] }  index = strip_num - 1
+let teeDrawHole     = null;   // hole number 1-18 being recorded, or null
+let teeDrawState    = null;   // 'back' | 'front' | null
+let teeInProgress   = [];     // working copy of strips for current hole
+let teePartialBack  = null;   // [lat,lng] of placed back point awaiting front
+let teeStripMarkers = [];     // Leaflet markers currently on map
+let teeStripLines   = [];     // Leaflet polylines currently on map
 // Green overlay state
 let overlayLayer    = null;
 let overlayHole     = null;
@@ -1501,6 +1510,7 @@ function saveAll() {
   localStorage.setItem('rgcCourseMapper', JSON.stringify(assignments));
   localStorage.setItem('rgcCourseMapperPins', JSON.stringify(customPins));
   localStorage.setItem('rgcGreenPolygons', JSON.stringify(greenPolygons));
+  localStorage.setItem('rgcTeeStrips', JSON.stringify(teeStrips));
 }
 function save() { saveAll(); }
 
