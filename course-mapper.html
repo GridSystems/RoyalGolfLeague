@@ -934,20 +934,39 @@ function addDrawVertex(lat, lng) {
 }
 
 function _addVertMarker(lat, lng) {
-  const idx = drawVertMarkers.length;
-  const m = L.circleMarker([lat, lng], {
-    radius: 5, fillColor: '#ffd700', color: '#fff', weight: 1.5, fillOpacity: 1
-  }).addTo(map);
-  // Click a vertex to delete it
+  const icon = L.divIcon({
+    className: '',
+    html: '<div style="width:10px;height:10px;background:#ffd700;border:1.5px solid #fff;border-radius:50%;margin:-5px 0 0 -5px;cursor:grab"></div>',
+    iconSize: [10, 10],
+    iconAnchor: [5, 5],
+  });
+  const m = L.marker([lat, lng], { icon, draggable: true }).addTo(map);
+
+  // Click to delete
   m.on('click', e => {
     L.DomEvent.stopPropagation(e);
-    drawVerts.splice(idx, 1);
+    const i = drawVertMarkers.indexOf(m);
+    if (i === -1) return;
+    drawVerts.splice(i, 1);
     drawVertMarkers.forEach(x => x.remove());
     drawVertMarkers = [];
     drawVerts.forEach(v => _addVertMarker(v[0], v[1]));
     updateDrawPreview();
     updateDrawBar();
   });
+
+  // Drag to nudge
+  m.on('drag', e => {
+    const i = drawVertMarkers.indexOf(m);
+    if (i === -1) return;
+    drawVerts[i] = [e.latlng.lat, e.latlng.lng];
+    updateDrawPreview();
+  });
+
+  m.on('dragend', () => {
+    setDrawBarState('vertex-edit');
+  });
+
   drawVertMarkers.push(m);
 }
 
