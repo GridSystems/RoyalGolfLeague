@@ -14,4 +14,5 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON public.fine_types       TO anon, authent
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.saturday_events  TO anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.saturday_signups TO anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.gps_shots        TO anon, authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.survey_points TO anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.survey_points    TO anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.green_polygons   TO anon, authenticated;
