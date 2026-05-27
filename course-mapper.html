@@ -52,6 +52,10 @@
     .ind-ovl.active { background: #9b59b6; color: #fff; }
     .ind-ovl.inactive { background: #2a2a3e; color: #444; }
     .ind-ovl:hover { opacity: 0.8; }
+    .ind-fairway { font-size: 11px; padding: 2px 6px; border-radius: 3px; font-weight: 700; cursor: pointer; }
+    .ind-fairway.set   { background: #f39c12; color: #000; }
+    .ind-fairway.unset { background: #2a2a3e; color: #555; }
+    .ind-fairway:hover { opacity: 0.8; }
     #overlayBar { position: fixed; z-index: 1002; left: 50%; transform: translateX(-50%); bottom: 60px; background: #16213ef0; border: 1px solid #9b59b6; border-radius: 8px; padding: 8px 14px; display: none; align-items: center; gap: 8px; font-size: 13px; box-shadow: 0 4px 16px rgba(0,0,0,.6); flex-wrap: wrap; }
     #overlayBar .olabel { color: #9b59b6; font-weight: 600; }
     #overlayBar label { font-size: 11px; color: #aaa; }
@@ -523,6 +527,23 @@ async function sbUpsertTeeStrips(hole, strips) {
   });
   if (!ins.ok) throw new Error(await ins.text());
 }
+async function sbUpsertFairwayPolygons(hole, polygons) {
+  if (!polygons.length) {
+    // No polygons left — delete the row
+    const r = await fetch(`${SB_URL}/rest/v1/fairway_polygons?hole=eq.${hole}`, {
+      method: 'DELETE',
+      headers: SB_H
+    });
+    if (!r.ok) throw new Error(await r.text());
+    return;
+  }
+  const r = await fetch(`${SB_URL}/rest/v1/fairway_polygons?on_conflict=hole`, {
+    method: 'POST',
+    headers: { ...SB_H, 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify({ hole, polygons })
+  });
+  if (!r.ok) throw new Error(await r.text());
+}
 
 // ── Survey feature config ──────────────────────────────────────────────────
 const SURVEY_FEATURES = [
@@ -832,6 +853,14 @@ const SURVEY_GPS_MAX_MS    = 6 * 60 * 60 * 1000; // 6 hours
 const SURVEY_OOB_THRESHOLD = 5;                   // consecutive out-of-bounds before stopping
 const OVERLAY_OPAC  = [0.7, 0.5, 0.3, 0.9];
 let overlayOpacIdx  = 0;
+
+// Fairway polygon recording state
+let fairwayPolygons   = JSON.parse(localStorage.getItem('rgcFairwayPolygons') || '{}');
+// { [hole]: [ [[lat,lng],...], [[lat,lng],...] ] }  — array of vertex arrays per hole
+let fairwayPolyLayers = {};    // { [hole]: [L.polygon, ...] }
+let drawingFairway    = null;  // hole number in vertex-edit mode, or null
+let drawingFairwayIdx = null;  // index in fairwayPolygons[hole] being edited; null = new polygon
+let fairwaySelectHole = null;  // hole in select-mode (pick-a-polygon-to-edit), or null
 
 
 // Combined accessor — GPS stays (0..N-1) then custom pins (N..)
@@ -1730,6 +1759,7 @@ function saveAll() {
   localStorage.setItem('rgcCourseMapperPins', JSON.stringify(customPins));
   localStorage.setItem('rgcGreenPolygons', JSON.stringify(greenPolygons));
   localStorage.setItem('rgcTeeStrips', JSON.stringify(teeStrips));
+  localStorage.setItem('rgcFairwayPolygons', JSON.stringify(fairwayPolygons));
 }
 function save() { saveAll(); }
 
