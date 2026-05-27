@@ -1484,14 +1484,13 @@ function redrawAllFairwayPolygons() {
   fairwayPolyLayers = {};
   Object.entries(fairwayPolygons).forEach(([hole, polygonsList]) => {
     if (!polygonsList || !polygonsList.length) return;
-    fairwayPolyLayers[hole] = [];
     polygonsList.forEach(verts => {
       if (!verts || verts.length < 3) return;
       const layer = L.polygon(verts, {
         color: '#f39c12', weight: 2, fillColor: '#f39c12', fillOpacity: 0.15
       }).addTo(map);
       layer.bindTooltip('Hole ' + hole + ' fairway', { permanent: false, direction: 'center' });
-      fairwayPolyLayers[hole].push(layer);
+      (fairwayPolyLayers[hole] ??= []).push(layer);
     });
   });
 }
