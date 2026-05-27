@@ -928,6 +928,17 @@ map.on('click', e => {
     if (!onMarkerOrLine) handleTeeClick(e.latlng.lat, e.latlng.lng);
     return;
   }
+  if (fairwaySelectHole !== null) {
+    // Polygon click handlers have L.DomEvent.stop(e), so reaching here means empty map click
+    const target = e.originalEvent && e.originalEvent.target;
+    const onPoly = target && (target.tagName === 'path' || target.tagName === 'PATH');
+    if (!onPoly) startDrawFairway(fairwaySelectHole, null);
+    return;
+  }
+  if (drawingFairway !== null) {
+    addDrawVertex(e.latlng.lat, e.latlng.lng);
+    return;
+  }
   if (drawingGreen !== null) {
     if (detectMode && detectBarState === 'awaiting-seed') {
       handleDetectClick(e.latlng.lat, e.latlng.lng);
@@ -959,10 +970,15 @@ document.addEventListener('keydown', e => {
   if (overlayHole !== null && e.key === 'Escape') { removeOverlay(); return; }
   if (e.key === 'Escape') {
     if (teeDrawHole !== null) { cancelDrawTee(); return; }
+    if (fairwaySelectHole !== null) { _exitFairwaySelectMode(); return; }
+    if (drawingFairway !== null) { cancelDrawFairway(); return; }
     if (drawingGreen !== null) { cancelDrawGreen(); return; }
   }
-  if (drawingGreen === null) return;
-  if (e.key === 'Enter' && drawVerts.length >= 3 && !detectMode) finishDrawGreen();
+  if (drawingGreen === null && drawingFairway === null) return;
+  if (e.key === 'Enter' && drawVerts.length >= 3 && !detectMode) {
+    if (drawingFairway !== null) finishDrawFairway();
+    else finishDrawGreen();
+  }
   if ((e.key === 'z' || e.key === 'Z') && (e.ctrlKey || e.metaKey)) { e.preventDefault(); if (detectMode && detectBarState === 'awaiting-seed') resetDetectMode(); else undoDrawVertex(); }
 });
 
@@ -990,6 +1006,8 @@ function startDrawGreen(hole) {
   if (pinMode) togglePinMode();
   closePanel();
   if (teeDrawHole !== null) _exitTeeMode(); // exit tee mode before entering green draw
+  if (fairwaySelectHole !== null) _exitFairwaySelectMode();
+  if (drawingFairway !== null) cancelDrawFairway();
 
   drawingGreen = hole;
   drawVerts = [];
@@ -1120,7 +1138,11 @@ function setDrawBarState(state, errorMsg) {
 }
 
 function updateDrawBar() {
-  setDrawBarState('vertex-edit');
+  if (drawingFairway !== null) {
+    setFairwayDrawBar();
+  } else {
+    setDrawBarState('vertex-edit');
+  }
 }
 
 function setTeeBarState(state) {
@@ -1294,7 +1316,9 @@ function _exitDrawMode() {
   drawVerts = [];
   drawVertMarkers.forEach(m => m.remove()); drawVertMarkers = [];
   if (drawPolyLayer) { drawPolyLayer.remove(); drawPolyLayer = null; }
-  drawingGreen = null;
+  drawingGreen     = null;
+  drawingFairway   = null;
+  drawingFairwayIdx = null;
   detectMode = false;
   detectCanvas = null;
   detectTileX = null; detectTileY = null;
@@ -1928,6 +1952,8 @@ function renderHoleList() {
     const hasPoly = poly && poly.length >= 3;
     const teeStripsForHole = teeStrips[h] || [];
     const hasTeeStrips = teeStripsForHole.length > 0;
+    const fairwayPolysForHole = fairwayPolygons[h] || [];
+    const hasFairway = fairwayPolysForHole.length > 0;
     const row = document.createElement('div');
     row.className = 'hole-row';
     row.innerHTML =
@@ -1937,6 +1963,10 @@ function renderHoleList() {
           ' onclick="startDrawTee(' + h + ')"' +
           ' title="' + (hasTeeStrips ? teeStripsForHole.length + ' strip' + (teeStripsForHole.length !== 1 ? 's' : '') + ' — click to edit' : 'Record tee strips') + '">' +
           'T' + (hasTeeStrips ? teeStripsForHole.length : '') + '</span>' +
+        '<span class="indicator ind-fairway ' + (hasFairway ? 'set' : 'unset') + '"' +
+          ' onclick="startFairwayMode(' + h + ')"' +
+          ' title="' + (hasFairway ? fairwayPolysForHole.length + ' polygon' + (fairwayPolysForHole.length !== 1 ? 's' : '') + ' — click to edit' : 'Record fairway') + '">' +
+          'F' + (hasFairway ? fairwayPolysForHole.length : '') + '</span>' +
         '<span class="indicator ind-green ' + (greenIdx !== null ? 'set' : 'unset') + '"' +
           (greenIdx !== null ? ' title="Stay #'+(greenIdx+1)+'" onclick="focusStay('+greenIdx+')"' : '') +
           '>G' + (greenIdx !== null ? ' '+(greenIdx+1) : '') + '</span>' +
@@ -1948,6 +1978,7 @@ function renderHoleList() {
         (teeIdx !== null ? '<button class="clr" onclick="clearHoleType(\'tee\','+h+')">✕T</button>' : '') +
         (greenIdx !== null ? '<button class="clr" onclick="clearHoleType(\'green\','+h+')">✕G</button>' : '') +
         (hasPoly ? '<button class="clr" onclick="clearGreenPolygon('+h+')">✕⬡</button>' : '') +
+        (hasFairway ? '<button class="clr" onclick="clearFairwayPolygonsForHole('+h+')">✕F</button>' : '') +
       '</div>';
     list.appendChild(row);
   }
