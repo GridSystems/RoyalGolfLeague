@@ -1552,6 +1552,141 @@ function setFairwaySelectBar(hole) {
     `<button onclick="_exitFairwaySelectMode()" ${btn('background:#e94560;color:#fff')}>✕ Cancel</button>`;
 }
 
+function setFairwayDrawBar() {
+  const bar = document.getElementById('drawBar');
+  const n = drawVerts.length;
+  const isEdit = drawingFairwayIdx !== null;
+  const btn = s => `style="padding:5px 12px;border-radius:5px;border:none;font-size:12px;font-weight:700;cursor:pointer;${s}"`;
+  if (n === 0) {
+    bar.innerHTML =
+      `<span style="color:#aaa;font-size:12px">Fairway ${drawingFairway} — click map to place points</span>` +
+      (isEdit ? `<button onclick="deleteFairwayPolygon(${drawingFairway},${drawingFairwayIdx})" ${btn('background:#e94560;color:#fff')}>✕ Delete polygon</button>` : '') +
+      `<button onclick="cancelDrawFairway()" ${btn('background:#e94560;color:#fff')}>✕ Cancel</button>`;
+  } else {
+    bar.innerHTML =
+      `<span style="color:#f39c12;font-weight:600">Fairway ${drawingFairway} — ${n} pt${n!==1?'s':''}</span>` +
+      `<button onclick="finishDrawFairway()" ${n<3?'disabled ':''} ${btn('background:#2ecc71;color:#000' + (n<3?';opacity:0.5':''))}>✓ Finish</button>` +
+      `<button onclick="clearDrawVerts()" ${btn('background:#555;color:#eee')}>🗑 Clear</button>` +
+      (isEdit ? `<button onclick="deleteFairwayPolygon(${drawingFairway},${drawingFairwayIdx})" ${btn('background:#e94560;color:#fff')}>✕ Delete polygon</button>` : '') +
+      `<button onclick="cancelDrawFairway()" ${btn('background:#e94560;color:#fff')}>✕ Cancel</button>`;
+  }
+}
+
+function startDrawFairway(hole, idx) {
+  // Exit any active mode first
+  if (fairwaySelectHole !== null) _exitFairwaySelectMode();
+  if (teeDrawHole !== null) _exitTeeMode();
+  if (drawingGreen !== null) cancelDrawGreen();
+  if (drawingFairway !== null) _exitDrawMode(); // clear prior fairway vertex session
+
+  // Hide existing fairway polygons for this hole while editing
+  (fairwayPolyLayers[hole] || []).forEach(l => l.remove());
+  delete fairwayPolyLayers[hole];
+
+  drawingFairway    = hole;
+  drawingFairwayIdx = idx;
+  drawVerts         = [];
+  drawVertMarkers   = [];
+  drawPolyLayer     = null;
+
+  // Load existing vertices if editing
+  if (idx !== null && fairwayPolygons[hole] && fairwayPolygons[hole][idx]) {
+    drawVerts = fairwayPolygons[hole][idx].map(v => [...v]);
+    drawVerts.forEach(v => _addVertMarker(v[0], v[1]));
+  }
+
+  document.getElementById('map').classList.add('draw-mode');
+  document.getElementById('drawBar').style.display = 'flex';
+  setFairwayDrawBar();
+
+  // Fly to existing vertices, other fairway polygons for context, or HOLE_TEES fallback
+  if (drawVerts.length >= 3) {
+    const lats = drawVerts.map(v => v[0]), lngs = drawVerts.map(v => v[1]);
+    map.flyToBounds([[Math.min(...lats), Math.min(...lngs)], [Math.max(...lats), Math.max(...lngs)]],
+      { padding: [60, 60], maxZoom: 20, animate: true, duration: 0.6 });
+  } else if (fairwayPolygons[hole] && fairwayPolygons[hole].length > 0) {
+    const allVerts = fairwayPolygons[hole].flat();
+    const lats = allVerts.map(v => v[0]), lngs = allVerts.map(v => v[1]);
+    map.flyToBounds([[Math.min(...lats), Math.min(...lngs)], [Math.max(...lats), Math.max(...lngs)]],
+      { padding: [60, 60], maxZoom: 20, animate: true, duration: 0.6 });
+  } else {
+    const t = HOLE_TEES[hole - 1];
+    if (t) map.flyTo([t.lat, t.lng], 18, { animate: true, duration: 0.6 });
+  }
+}
+
+async function finishDrawFairway() {
+  if (drawVerts.length < 3) return;
+  const hole = drawingFairway;
+  const idx  = drawingFairwayIdx;
+
+  // Sort vertices by centroid angle (prevents crossing edges)
+  const cx = drawVerts.reduce((s, v) => s + v[0], 0) / drawVerts.length;
+  const cy = drawVerts.reduce((s, v) => s + v[1], 0) / drawVerts.length;
+  const sorted = drawVerts.slice().sort((a, b) =>
+    Math.atan2(a[1] - cy, a[0] - cx) - Math.atan2(b[1] - cy, b[0] - cx)
+  );
+
+  if (!fairwayPolygons[hole]) fairwayPolygons[hole] = [];
+  if (idx !== null) {
+    fairwayPolygons[hole][idx] = sorted;
+  } else {
+    fairwayPolygons[hole].push(sorted);
+  }
+  saveAll();
+
+  // Save to Supabase
+  const bar = document.getElementById('drawBar');
+  bar.innerHTML = '<span style="color:#f39c12;font-weight:600">⏳ Saving…</span>';
+  try {
+    await sbUpsertFairwayPolygons(hole, fairwayPolygons[hole]);
+  } catch (err) {
+    console.error('finishDrawFairway:', err);
+    bar.innerHTML =
+      '<span style="color:#e74c3c">⚠ Save failed — ' + err.message + '</span>' +
+      '<button onclick="finishDrawFairway()" style="padding:5px 12px;border-radius:5px;border:none;background:#2ecc71;color:#000;font-size:12px;font-weight:700;cursor:pointer">Retry</button>' +
+      '<button onclick="cancelDrawFairway()" style="padding:5px 12px;border-radius:5px;border:none;background:#e94560;color:#fff;font-size:12px;font-weight:700;cursor:pointer">✕ Cancel</button>';
+    return;
+  }
+
+  _exitDrawMode();
+  redrawAllFairwayPolygons();
+  renderHoleList();
+}
+
+function cancelDrawFairway() {
+  _exitDrawMode();
+  redrawAllFairwayPolygons(); // restore saved polygons
+}
+
+async function deleteFairwayPolygon(hole, idx) {
+  if (!fairwayPolygons[hole]) return;
+  fairwayPolygons[hole].splice(idx, 1);
+  if (fairwayPolygons[hole].length === 0) delete fairwayPolygons[hole];
+  saveAll();
+  _exitDrawMode();
+  try {
+    await sbUpsertFairwayPolygons(hole, fairwayPolygons[hole] || []);
+  } catch (err) {
+    console.error('deleteFairwayPolygon Supabase error (local save succeeded):', err);
+  }
+  redrawAllFairwayPolygons();
+  renderHoleList();
+}
+
+async function clearFairwayPolygonsForHole(hole) {
+  delete fairwayPolygons[hole];
+  saveAll();
+  (fairwayPolyLayers[hole] || []).forEach(l => l.remove());
+  delete fairwayPolyLayers[hole];
+  try {
+    await sbUpsertFairwayPolygons(hole, []);
+  } catch (err) {
+    console.error('clearFairwayPolygonsForHole Supabase error (local save succeeded):', err);
+  }
+  renderHoleList();
+}
+
 function markerOpts(i) {
   const a = assignments[i] || {};
   const stay = getStay(i);
