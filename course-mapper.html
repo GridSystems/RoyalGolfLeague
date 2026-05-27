@@ -1000,6 +1000,7 @@ function resetDetectMode() {
   drawVertMarkers.forEach(m => m.remove()); drawVertMarkers = [];
   if (drawPolyLayer) { drawPolyLayer.remove(); drawPolyLayer = null; }
   detectCanvas = null;
+  detectTileX = null; detectTileY = null;
   detectSeedPx = null; detectSeedPy = null;
   setDrawBarState('awaiting-seed');
 }
@@ -1041,6 +1042,7 @@ function _exitDrawMode() {
   drawingGreen = null;
   detectMode = false;
   detectCanvas = null;
+  detectTileX = null; detectTileY = null;
   detectSeedPx = null; detectSeedPy = null;
   detectBarState = null;
   document.getElementById('map').classList.remove('draw-mode');
