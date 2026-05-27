@@ -1495,6 +1495,63 @@ function redrawAllFairwayPolygons() {
   });
 }
 
+function startFairwayMode(hole) {
+  if (pinMode) togglePinMode();
+  closePanel();
+  if (drawingGreen !== null) cancelDrawGreen();
+  if (teeDrawHole !== null) _exitTeeMode();
+  if (drawingFairway !== null) cancelDrawFairway();
+  if (fairwaySelectHole !== null) _exitFairwaySelectMode();
+
+  const existing = fairwayPolygons[hole] || [];
+  if (existing.length === 0) {
+    startDrawFairway(hole, null);
+  } else {
+    enterFairwaySelectMode(hole);
+  }
+}
+
+function enterFairwaySelectMode(hole) {
+  fairwaySelectHole = hole;
+
+  // Highlight existing polygons for this hole and make them clickable
+  const layers = fairwayPolyLayers[hole] || [];
+  layers.forEach((layer, idx) => {
+    layer.setStyle({ fillOpacity: 0.4, weight: 3 });
+    layer._fwSelectHandler = e => {
+      L.DomEvent.stop(e);
+      startDrawFairway(hole, idx);
+    };
+    layer.on('click', layer._fwSelectHandler);
+  });
+
+  document.getElementById('map').classList.add('draw-mode');
+  setFairwaySelectBar(hole);
+}
+
+function _exitFairwaySelectMode() {
+  const layers = fairwayPolyLayers[fairwaySelectHole] || [];
+  layers.forEach(layer => {
+    if (layer._fwSelectHandler) {
+      layer.off('click', layer._fwSelectHandler);
+      delete layer._fwSelectHandler;
+    }
+    layer.setStyle({ fillOpacity: 0.15, weight: 2 }); // restore normal style
+  });
+  fairwaySelectHole = null;
+  document.getElementById('map').classList.remove('draw-mode');
+  document.getElementById('drawBar').style.display = 'none';
+}
+
+function setFairwaySelectBar(hole) {
+  const bar = document.getElementById('drawBar');
+  bar.style.display = 'flex';
+  const btn = s => `style="padding:5px 12px;border-radius:5px;border:none;font-size:12px;font-weight:700;cursor:pointer;${s}"`;
+  bar.innerHTML =
+    `<span style="color:#f39c12;font-weight:600">Hole ${hole} — click a polygon to edit, or click map to add new</span>` +
+    `<button onclick="_exitFairwaySelectMode()" ${btn('background:#e94560;color:#fff')}>✕ Cancel</button>`;
+}
+
 function markerOpts(i) {
   const a = assignments[i] || {};
   const stay = getStay(i);
