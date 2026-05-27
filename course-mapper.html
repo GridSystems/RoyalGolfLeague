@@ -497,6 +497,33 @@ async function sbUpsertGreenPolygon(hole,vertices){
   if(!r.ok)throw new Error(await r.text());
 }
 
+async function sbUpsertTeeStrips(hole, strips) {
+  // Delete all existing strips for this hole (handles renumbering cleanly)
+  const del = await fetch(`${SB_URL}/rest/v1/tee_strips?hole=eq.${hole}`, {
+    method: 'DELETE',
+    headers: SB_H
+  });
+  if (!del.ok) throw new Error(await del.text());
+
+  if (!strips.length) return; // nothing to insert
+
+  // Insert all strips with their new strip_nums (1-based)
+  const rows = strips.map((s, i) => ({
+    hole,
+    strip_num: i + 1,
+    back_lat:  s.back[0],
+    back_lng:  s.back[1],
+    front_lat: s.front[0],
+    front_lng: s.front[1]
+  }));
+  const ins = await fetch(`${SB_URL}/rest/v1/tee_strips`, {
+    method: 'POST',
+    headers: { ...SB_H, 'Prefer': 'return=minimal' },
+    body: JSON.stringify(rows)
+  });
+  if (!ins.ok) throw new Error(await ins.text());
+}
+
 // ── Survey feature config ──────────────────────────────────────────────────
 const SURVEY_FEATURES = [
   { type:'tee',          label:'Tee',          icon:'🏌️', multi:true  },
