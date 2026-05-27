@@ -83,13 +83,22 @@
       background: #16213e; border: 1px solid #e94560; border-radius: 10px;
       box-shadow: 0 8px 32px rgba(0,0,0,.7);
     }
-    #surveyPanel .sv-header {
+    #surveyPanel .sv-header, #reviewPanel .sv-header {
       display: flex; align-items: center; gap: 8px; padding: 10px 14px;
       border-bottom: 1px solid #0f3460; position: sticky; top: 0; background: #16213e; z-index: 1;
     }
-    #surveyPanel .sv-title { font-size: 14px; font-weight: 700; color: #e94560; flex: 1; }
-    #surveyPanel .sv-close { background: none; border: none; color: #666; font-size: 18px; cursor: pointer; padding: 2px 6px; }
-    #surveyPanel .sv-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 12px; }
+    #surveyPanel .sv-title, #reviewPanel .sv-title { font-size: 14px; font-weight: 700; color: #e94560; flex: 1; }
+    #surveyPanel .sv-close, #reviewPanel .sv-close { background: none; border: none; color: #666; font-size: 18px; cursor: pointer; padding: 2px 6px; }
+    #surveyPanel .sv-body, #reviewPanel .sv-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 12px; }
+    /* ── Review panel ──────────────────────────────────────────────────────── */
+    #reviewBtn { padding: 7px 14px; border-radius: 6px; border: 1px solid #555; background: none; color: #aaa; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+    #reviewBtn.active { background: #27ae60; color: #fff; border-color: #27ae60; }
+    #reviewPanel {
+      position: fixed; z-index: 1003; top: 56px; left: 50%; transform: translateX(-50%);
+      width: 92vw; max-width: 460px; max-height: calc(100vh - 70px); overflow-y: auto;
+      background: #16213e; border: 1px solid #27ae60; border-radius: 10px;
+      box-shadow: 0 8px 32px rgba(0,0,0,.7);
+    }
     .sv-section-label { font-size: 10px; text-transform: uppercase; letter-spacing: 1.2px; color: #556; font-weight: 700; margin-bottom: 4px; }
     .sv-hole-row { display: flex; flex-wrap: wrap; gap: 5px; }
     .sv-hole-btn { width: 36px; height: 36px; border-radius: 7px; border: 1px solid #2a2a4e; background: #1a1a3e; color: #888; font-size: 12px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; position: relative; }
@@ -150,6 +159,7 @@
   <button id="exportBtn" onclick="exportJson()">Export JSON</button>
   <button id="copyOverlayBtn" onclick="copyOverlaySettings()" title="Copy saved overlay settings to clipboard">📋 Copy Overlays</button>
   <button id="surveyBtn" onclick="toggleSurveyPanel()">📍 Survey</button>
+  <button id="reviewBtn" onclick="toggleReviewPanel()">🟢 Review</button>
 </div>
 <div id="main">
   <div id="sidebar">
@@ -202,6 +212,16 @@
   <button onclick="removeOverlay()" style="background:#e94560;color:#fff">✕ Remove</button>
 </div>
 
+<div id="reviewPanel" style="display:none">
+  <div class="sv-header">
+    <span class="sv-title" style="color:#27ae60">🟢 Review &amp; Push Greens</span>
+    <button class="sv-close" onclick="toggleReviewPanel()">✕</button>
+  </div>
+  <div class="sv-body" id="reviewPanelBody">
+    <!-- rendered by renderReviewPanel() -->
+  </div>
+</div>
+
 <div id="surveyPanel" style="display:none">
   <div class="sv-header">
     <span class="sv-title">📍 Survey Mode</span>
@@ -247,6 +267,30 @@ async function sbSurveyInsert(b){
 }
 async function sbSurveyDelete(id){
   const r=await fetch(`${SB_URL}/rest/v1/survey_points?id=eq.${id}`,{method:'DELETE',headers:SB_H});
+  if(!r.ok)throw new Error(await r.text());
+}
+
+// ── Green polygon utilities ──────────────────────────────────────────────
+function haversineM(lat1,lng1,lat2,lng2){
+  const R=6371000,rad=Math.PI/180;
+  const dLat=(lat2-lat1)*rad,dLng=(lng2-lng1)*rad;
+  const a=Math.sin(dLat/2)**2+Math.cos(lat1*rad)*Math.cos(lat2*rad)*Math.sin(dLng/2)**2;
+  return Math.round(R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a)));
+}
+const HOLE_TEES=[
+  {lat:55.637862,lng:12.570713},{lat:55.634847,lng:12.568994},{lat:55.637352,lng:12.572616},
+  {lat:55.633469,lng:12.570590},{lat:55.633084,lng:12.569760},{lat:55.631495,lng:12.566455},
+  {lat:55.632920,lng:12.562059},{lat:55.632275,lng:12.564736},{lat:55.636408,lng:12.566115},
+  {lat:55.638637,lng:12.569938},{lat:55.635984,lng:12.565173},{lat:55.633464,lng:12.562049},
+  {lat:55.637022,lng:12.564473},{lat:55.637122,lng:12.561879},{lat:55.633755,lng:12.559955},
+  {lat:55.636370,lng:12.559528},{lat:55.635574,lng:12.556691},{lat:55.638948,lng:12.565195},
+];
+async function sbUpsertGreenPolygon(hole,vertices){
+  const r=await fetch(`${SB_URL}/rest/v1/green_polygons?on_conflict=hole`,{
+    method:'POST',
+    headers:{...SB_H,'Prefer':'resolution=merge-duplicates,return=minimal'},
+    body:JSON.stringify({hole,vertices})
+  });
   if(!r.ok)throw new Error(await r.text());
 }
 
@@ -525,6 +569,9 @@ let surveyHole      = 1;
 let surveyFeature   = 'front_green';
 let surveyGpsPos    = null;
 let surveyPoints    = [];
+let reviewPanelOpen = false;
+let reviewHole      = 1;
+let reviewDotLayers = [];
 let surveyGpsWatchId      = null;
 let surveyGpsWatchTimeout = null;
 let surveyGpsStopReason   = null; // 'timeout' | 'boundary' | null
@@ -1081,6 +1128,111 @@ function exportJson() {
   a.href = URL.createObjectURL(blob);
   a.download = 'royal_gc_holes.json';
   a.click();
+}
+
+// ── Review panel ───────────────────────────────────────────────────────────
+function toggleReviewPanel(){
+  reviewPanelOpen=!reviewPanelOpen;
+  const panel=document.getElementById('reviewPanel');
+  const btn=document.getElementById('reviewBtn');
+  panel.style.display=reviewPanelOpen?'':'none';
+  btn.classList.toggle('active',reviewPanelOpen);
+  if(reviewPanelOpen){renderReviewPanel();selectReviewHole(reviewHole);}
+  else{clearReviewDots();}
+}
+function renderReviewPanel(){
+  const body=document.getElementById('reviewPanelBody');
+  if(!body)return;
+  const traced=Object.keys(greenPolygons).filter(h=>greenPolygons[h]&&greenPolygons[h].length>=3);
+  let barHtml='<div class="sv-section-label">Holes — click to inspect</div><div class="sv-hole-row">';
+  for(let h=1;h<=18;h++){
+    const has=greenPolygons[h]&&greenPolygons[h].length>=3;
+    const active=h===reviewHole;
+    barHtml+=`<button class="sv-hole-btn${active?' sv-hole-sel':''}"
+      style="${has?'border-color:#27ae60;color:#27ae60':''}"
+      onclick="selectReviewHole(${h})"
+      title="Hole ${h}${has?' — ✓ traced':' — not traced'}">${h}${has?'✓':''}</button>`;
+  }
+  barHtml+='</div>';
+  const has=greenPolygons[reviewHole]&&greenPolygons[reviewHole].length>=3;
+  const pts=has?greenPolygons[reviewHole].length:0;
+  const navHtml=`<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <button class="sv-close" onclick="reviewPrevHole()" style="font-size:16px;padding:4px 10px;border:1px solid #555;border-radius:6px;color:#ccc;background:none;cursor:pointer">←</button>
+    <span style="font-weight:700;color:#e0e0e0;font-size:14px;">Hole ${reviewHole}</span>
+    <button class="sv-close" onclick="reviewNextHole()" style="font-size:16px;padding:4px 10px;border:1px solid #555;border-radius:6px;color:#ccc;background:none;cursor:pointer">→</button>
+    <span style="font-size:12px;color:${has?'#27ae60':'#666'}">${has?`✓ ${pts} pts`:'— not traced'}</span>
+    <span style="flex:1"></span>
+    <span style="font-size:11px;color:#556">${traced.length}/18 traced</span>
+  </div>`;
+  const pushHtml=`<div>
+    <button onclick="pushAllPolygons()" style="background:#27ae60;color:#fff;border:none;padding:8px 18px;border-radius:6px;font-weight:700;cursor:pointer;font-size:13px;width:100%">
+      ⬆ Push All to Supabase (${traced.length} / 18 traced)
+    </button>
+    <div id="pushLog" style="margin-top:8px;font-size:11px;color:#aaa;max-height:80px;overflow-y:auto;line-height:1.8;word-break:break-all;"></div>
+  </div>`;
+  body.innerHTML=barHtml+navHtml+pushHtml;
+}
+function selectReviewHole(h){
+  reviewHole=h;
+  renderReviewPanel();
+  updateReviewDots();
+  if(polyLayers[h]){
+    map.fitBounds(polyLayers[h].getBounds(),{padding:[30,30]});
+  } else {
+    const t=HOLE_TEES[h-1];
+    if(t)map.flyTo([t.lat,t.lng],18,{animate:true,duration:0.6});
+  }
+}
+function reviewPrevHole(){ selectReviewHole(reviewHole>1?reviewHole-1:18); }
+function reviewNextHole(){ selectReviewHole(reviewHole<18?reviewHole+1:1); }
+function clearReviewDots(){
+  reviewDotLayers.forEach(l=>map.removeLayer(l));
+  reviewDotLayers=[];
+}
+function updateReviewDots(){
+  clearReviewDots();
+  const verts=greenPolygons[reviewHole];
+  if(!verts||verts.length<3)return;
+  const tee=HOLE_TEES[reviewHole-1];
+  if(!tee)return;
+  let minD=Infinity,maxD=-Infinity,frontV=null,backV=null;
+  verts.forEach(([vlat,vlng])=>{
+    const d=haversineM(tee.lat,tee.lng,vlat,vlng);
+    if(d<minD){minD=d;frontV=[vlat,vlng];}
+    if(d>maxD){maxD=d;backV=[vlat,vlng];}
+  });
+  const midLat=(frontV[0]+backV[0])/2, midLng=(frontV[1]+backV[1])/2;
+  const addDot=(latlng,color,label)=>{
+    const dot=L.circleMarker(latlng,{radius:6,color:'#fff',weight:1.5,fillColor:color,fillOpacity:1,interactive:false}).addTo(map);
+    const lbl=L.marker(latlng,{
+      icon:L.divIcon({className:'',
+        html:`<div style="background:rgba(0,0,0,0.75);color:${color};font-size:10px;font-weight:700;padding:2px 6px;border-radius:3px;white-space:nowrap;border:1px solid ${color};margin-top:9px">${label}</div>`,
+        iconSize:[60,16],iconAnchor:[30,-2]}),
+      interactive:false
+    }).addTo(map);
+    reviewDotLayers.push(dot,lbl);
+  };
+  addDot(frontV,'#3498db','↑ Front');
+  addDot([midLat,midLng],'#ecf0f1','Mid');
+  addDot(backV,'#e74c3c','Back ↓');
+}
+async function pushAllPolygons(){
+  const logEl=document.getElementById('pushLog');
+  if(!logEl)return;
+  logEl.innerHTML='⏳ Pushing…';
+  const lines=[];
+  for(let h=1;h<=18;h++){
+    const verts=greenPolygons[h];
+    if(!verts||verts.length<3){lines.push(`H${h}:—`);continue;}
+    try{
+      await sbUpsertGreenPolygon(h,verts);
+      lines.push(`<span style="color:#27ae60">H${h}:✓</span>`);
+    }catch(e){
+      lines.push(`<span style="color:#e74c3c">H${h}:✗</span>`);
+      console.error('pushAllPolygons hole',h,e);
+    }
+    logEl.innerHTML=lines.join(' ');
+  }
 }
 
 // ── Survey panel toggle + GPS ───────────────────────────────────────────────

@@ -761,6 +761,7 @@ let players=[],allRounds=[],activeId=null,selColor=0;
 let GR = null;
 let gpsWatchId = null;
 let gpsWatchTimeout = null;
+let greenPolygons = {};  // {hole: [[lat,lng],...]} loaded from Supabase
 // Course bounding box — furthest holes + ~350m buffer in each direction
 const COURSE_BOUNDS = {south:55.6273, north:55.6419, west:12.5533, east:12.5774};
 const GPS_WATCH_MAX_MS  = 6 * 60 * 60 * 1000; // 6 hours
@@ -801,6 +802,21 @@ function distToGreen(hole1based,lat,lng){
   if(!h||!h.green||lat==null||lng==null)return null;
   return haversineM(lat,lng,h.green.lat,h.green.lng);
 }
+function getGreenDistances(vertices,playerLat,playerLng){
+  if(!vertices||vertices.length<3)return null;
+  let minD=Infinity,maxD=-Infinity,frontV=null,backV=null;
+  vertices.forEach(([vlat,vlng])=>{
+    const d=haversineM(playerLat,playerLng,vlat,vlng);
+    if(d<minD){minD=d;frontV=[vlat,vlng];}
+    if(d>maxD){maxD=d;backV=[vlat,vlng];}
+  });
+  const midLat=(frontV[0]+backV[0])/2,midLng=(frontV[1]+backV[1])/2;
+  return{
+    front:{lat:frontV[0],lng:frontV[1],dist:minD},
+    mid:  {lat:midLat,   lng:midLng,   dist:haversineM(playerLat,playerLng,midLat,midLng)},
+    back: {lat:backV[0], lng:backV[1], dist:maxD}
+  };
+}
 // ── Units preference ──────────────────────────────────────────────────────────
 function getUnits(){return localStorage.getItem('sl_units_'+(activeId||0))||'m';}
 function setUnits(u){localStorage.setItem('sl_units_'+(activeId||0),u);}
@@ -838,7 +854,7 @@ function calcHolePoints(round,player){const tee=getTee(round.tee_id||'platinum')
 
 // ── Storage ───────────────────────────────────────────────────────────────────
 let pendingPlayers=[];
-async function loadData(){const all=await sbGet('players','order=created_at.asc');pendingPlayers=all.filter(p=>p.approved===false);players=all.filter(p=>p.approved!==false);allRounds=await sbGet('rounds','order=date.desc');fineTypes=await sbGet('fine_types','order=name.asc');allFines=await sbGet('fines','order=created_at.desc');try{saturdayEvents=await sbGet('saturday_events','order=date.asc');}catch(e){saturdayEvents=[];}try{saturdaySignups=await sbGet('saturday_signups','order=created_at.asc');}catch(e){saturdaySignups=[];}}
+async function loadData(){const all=await sbGet('players','order=created_at.asc');pendingPlayers=all.filter(p=>p.approved===false);players=all.filter(p=>p.approved!==false);allRounds=await sbGet('rounds','order=date.desc');fineTypes=await sbGet('fine_types','order=name.asc');allFines=await sbGet('fines','order=created_at.desc');try{saturdayEvents=await sbGet('saturday_events','order=date.asc');}catch(e){saturdayEvents=[];}try{saturdaySignups=await sbGet('saturday_signups','order=created_at.asc');}catch(e){saturdaySignups=[];}try{const pg=await sbGet('green_polygons','');greenPolygons={};pg.forEach(r=>{greenPolygons[r.hole]=r.vertices;});}catch(e){console.warn('green_polygons load failed:',e);}}
 
 // ── Admin ─────────────────────────────────────────────────────────────────────
 function adminPlayer(){return players.find(p=>p.is_admin)||players[0];}
@@ -1416,11 +1432,24 @@ function toggleGreenZoom(){
     return;
   }
   if(!GR.currentLat||!GR.currentLng){toast('GPS position not acquired yet');return;}
-  const surveyPts=(GR.surveyPoints||[]).filter(p=>p.hole===GR.currentHole&&['front_green','mid_green','back_green'].includes(p.type));
-  // Fall back to HOLE_DATA estimated centre if no survey points yet
+  // Prefer polygon-derived front/mid/back if a green polygon has been traced for this hole.
+  let holePts=null;
+  const poly=greenPolygons[GR.currentHole];
+  if(poly&&poly.length>=3){
+    const g=getGreenDistances(poly,GR.currentLat,GR.currentLng);
+    if(g)holePts=[
+      {type:'front_green',lat:g.front.lat,lng:g.front.lng},
+      {type:'mid_green',  lat:g.mid.lat,  lng:g.mid.lng  },
+      {type:'back_green', lat:g.back.lat, lng:g.back.lng }
+    ];
+  }
+  // Fall back to survey points, then to HOLE_DATA estimated centre
   const hd=HOLE_DATA[GR.currentHole-1];
-  const usingSurvey=surveyPts.length>0;
-  const holePts=usingSurvey?surveyPts:(hd&&hd.green?[{type:'est',lat:hd.green.lat,lng:hd.green.lng}]:[]);
+  if(!holePts){
+    const surveyPts=(GR.surveyPoints||[]).filter(p=>p.hole===GR.currentHole&&['front_green','mid_green','back_green'].includes(p.type));
+    const usingSurvey=surveyPts.length>0;
+    holePts=usingSurvey?surveyPts:(hd&&hd.green?[{type:'est',lat:hd.green.lat,lng:hd.green.lng}]:[]);
+  }
   if(!holePts.length){toast('No green data for hole '+GR.currentHole);return;}
   GR.greenZoom=true;
   GR.greenLayers=[];GR.greenLabelMarkers=[];
