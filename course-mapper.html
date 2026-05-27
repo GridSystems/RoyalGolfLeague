@@ -459,8 +459,14 @@ function runDetectionPipeline(canvas, seedPx, seedPy, tileX, tileY, tolerance) {
   const boundary = traceBoundary(filled, 512, 512);
   if (!boundary.length) return null;
 
-  // Step 5 — simplify
-  const simplified = rdpSimplify(boundary, 3);
+  // Step 5 — simplify with adaptive epsilon to target ≤60 vertices
+  // epsilon=3 is too tight for zoom-20 pixel noise; start at 8 and increase
+  let epsilon = 8;
+  let simplified = rdpSimplify(boundary, epsilon);
+  while (simplified.length > 60 && epsilon < 40) {
+    epsilon += 4;
+    simplified = rdpSimplify(boundary, epsilon);
+  }
   if (simplified.length < 6) return null; // degenerate
 
   // Step 6 — pixel → lat/lng
