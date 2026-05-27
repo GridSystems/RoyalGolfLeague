@@ -923,13 +923,24 @@ function startDrawGreen(hole) {
   // Hide the saved polygon for this hole while editing so it doesn't obscure the imagery
   if (polyLayers[hole]) polyLayers[hole].remove();
 
+  // If a polygon already exists for this hole, load its vertices as draggable dots
+  if (greenPolygons[hole] && greenPolygons[hole].length >= 3) {
+    drawVerts = greenPolygons[hole].map(v => [...v]);
+    drawVerts.forEach(v => _addVertMarker(v[0], v[1]));
+  }
+
   document.getElementById('map').classList.add('draw-mode');
   document.getElementById('drawBar').style.display = 'flex';
   updateDrawBar();
 
   // Fly to the green centre if we know it
   const gIdx = getAssignedIdx('green', hole);
-  if (gIdx !== null) {
+  // Fly to the existing polygon bounds if editing, otherwise the green centre pin
+  if (drawVerts.length >= 3) {
+    const lats = drawVerts.map(v => v[0]), lngs = drawVerts.map(v => v[1]);
+    map.flyToBounds([[Math.min(...lats), Math.min(...lngs)], [Math.max(...lats), Math.max(...lngs)]],
+      { padding: [60, 60], maxZoom: 20, animate: true, duration: 0.6 });
+  } else if (gIdx !== null) {
     const s = getStay(gIdx);
     map.flyTo([s.lat, s.lon], 19, { animate: true, duration: 0.6 });
   }
