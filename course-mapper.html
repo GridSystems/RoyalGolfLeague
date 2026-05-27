@@ -890,7 +890,13 @@ customPins.forEach((pin, j) => addMarker(pin, STAYS.length + j));
 
 map.on('click', e => {
   if (teeDrawHole !== null) {
-    handleTeeClick(e.latlng.lat, e.latlng.lng);
+    const target = e.originalEvent && e.originalEvent.target;
+    const onMarkerOrLine = target && (
+      target.closest('.leaflet-marker-icon') ||
+      target.tagName === 'path' ||
+      target.tagName === 'PATH'
+    );
+    if (!onMarkerOrLine) handleTeeClick(e.latlng.lat, e.latlng.lng);
     return;
   }
   if (drawingGreen !== null) {
@@ -922,8 +928,11 @@ map.on('dblclick', e => {
 
 document.addEventListener('keydown', e => {
   if (overlayHole !== null && e.key === 'Escape') { removeOverlay(); return; }
+  if (e.key === 'Escape') {
+    if (teeDrawHole !== null) { cancelDrawTee(); return; }
+    if (drawingGreen !== null) { cancelDrawGreen(); return; }
+  }
   if (drawingGreen === null) return;
-  if (e.key === 'Escape') cancelDrawGreen();
   if (e.key === 'Enter' && drawVerts.length >= 3 && !detectMode) finishDrawGreen();
   if ((e.key === 'z' || e.key === 'Z') && (e.ctrlKey || e.metaKey)) { e.preventDefault(); if (detectMode && detectBarState === 'awaiting-seed') resetDetectMode(); else undoDrawVertex(); }
 });
@@ -951,6 +960,7 @@ function togglePinMode() {
 function startDrawGreen(hole) {
   if (pinMode) togglePinMode();
   closePanel();
+  if (teeDrawHole !== null) _exitTeeMode(); // exit tee mode before entering green draw
 
   drawingGreen = hole;
   drawVerts = [];
@@ -1095,7 +1105,7 @@ function setTeeBarState(state) {
     `<button onclick="setTeeBarState('back')"  ${btn('background:' + (backActive  ? '#2196F3;color:#fff' : '#2a2a3e;color:#aaa'))}>● Back</button>` +
     `<button onclick="setTeeBarState('front')" ${btn('background:' + (frontActive ? '#ffd700;color:#000' : '#2a2a3e;color:#aaa'))}>● Front</button>` +
     (n > 0 ? `<span style="color:#2ecc71;font-size:11px;font-weight:600">${n} strip${n!==1?'s':''}</span>` : '') +
-    `<button onclick="finishDrawTee()"  ${n===0?'disabled ':''} ${btn('background:#2ecc71;color:#000' + (n===0?';opacity:0.4':''))}>✓ Finish</button>` +
+    (() => { const had = (teeStrips[teeDrawHole] || []).length > 0; const dis = n === 0 && !had; return `<button onclick="finishDrawTee()" ${dis?'disabled ':''} ${btn('background:#2ecc71;color:#000' + (dis?';opacity:0.4':''))}>✓ Finish</button>`; })() +
     `<button onclick="clearTeeStrips()" ${btn('background:#555;color:#eee')}>🗑 Clear</button>` +
     `<button onclick="cancelDrawTee()"  ${btn('background:#e94560;color:#fff')}>✕ Cancel</button>`;
 }
@@ -1270,6 +1280,7 @@ function startDrawTee(hole) {
   if (pinMode) togglePinMode();
   closePanel();
   if (drawingGreen !== null) return; // don't open tee mode during green draw
+  if (teeDrawHole !== null) _exitTeeMode(); // clean up any prior tee session
 
   teeDrawHole   = hole;
   teeInProgress = (teeStrips[hole] || []).map(s => ({ back: [...s.back], front: [...s.front] }));
@@ -1398,8 +1409,10 @@ function clearTeeStrips() {
 }
 
 async function finishDrawTee() {
-  if (teeInProgress.length === 0) return;
   const hole = teeDrawHole;
+  // Allow saving empty array only if hole previously had strips (deleting all)
+  const hadStrips = (teeStrips[hole] || []).length > 0;
+  if (teeInProgress.length === 0 && !hadStrips) return;
 
   // Save to localStorage
   teeStrips[hole] = teeInProgress.map(s => ({ back: [...s.back], front: [...s.front] }));
