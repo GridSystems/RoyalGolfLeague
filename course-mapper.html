@@ -1559,6 +1559,70 @@ function redrawAllFairwayPolygons() {
   });
 }
 
+// ── Fairway spine helpers ──────────────────────────────────────────────────
+
+function greenCentroid(hole) {
+  const verts = greenPolygons[hole];
+  if (!verts || verts.length === 0) return null;
+  const lat = verts.reduce((s, v) => s + v[0], 0) / verts.length;
+  const lng = verts.reduce((s, v) => s + v[1], 0) / verts.length;
+  return { lat, lng };
+}
+
+function greenFront(hole) {
+  const verts = greenPolygons[hole];
+  if (!verts || verts.length === 0) return null;
+  const tee = HOLE_TEES[hole - 1];
+  if (!tee) return null;
+  let minD = Infinity, best = null;
+  verts.forEach(v => {
+    const d = haversineM(tee.lat, tee.lng, v[0], v[1]);
+    if (d < minD) { minD = d; best = { lat: v[0], lng: v[1] }; }
+  });
+  return best;
+}
+
+function spineProjection(pt, tee, green) {
+  // Returns scalar t (0 = tee, 1 = green) for projection of pt onto tee→green vector
+  const dx = green.lat - tee.lat, dy = green.lng - tee.lng;
+  const px = pt[0]   - tee.lat,  py = pt[1]   - tee.lng;
+  const denom = dx * dx + dy * dy;
+  if (denom === 0) return 0;
+  return (px * dx + py * dy) / denom;
+}
+
+function sortSpineWaypoints() {
+  const tee   = HOLE_TEES[drawingSpine - 1];
+  const green = greenCentroid(drawingSpine);
+  if (!tee || !green) return;
+  spineWaypoints.sort((a, b) => spineProjection(a, tee, green) - spineProjection(b, tee, green));
+}
+
+function maxViewportDist(anchor) {
+  const b = map.getBounds();
+  const corners = [b.getNorthWest(), b.getNorthEast(), b.getSouthWest(), b.getSouthEast()];
+  return Math.max(...corners.map(c => haversineM(anchor.lat, anchor.lng, c.lat, c.lng)));
+}
+
+function redrawAllSpines() {
+  // Remove existing spine layers
+  Object.values(spinePolyLayers).forEach(l => l.remove());
+  spinePolyLayers = {};
+
+  Object.entries(fairwaySpines).forEach(([holeStr, wpts]) => {
+    const hole = parseInt(holeStr, 10);
+    if (drawingSpine === hole) return; // skip hole being edited — edit polyline handles it
+    const tee   = HOLE_TEES[hole - 1];
+    const green = greenCentroid(hole);
+    if (!tee || !green) return;
+    const points = [[tee.lat, tee.lng], ...(wpts || []), [green.lat, green.lng]];
+    if (points.length < 2) return;
+    const layer = L.polyline(points, { color: '#17a2b8', weight: 2, opacity: 0.7 }).addTo(map);
+    layer.bindTooltip('Hole ' + hole + ' spine', { permanent: false, direction: 'center' });
+    spinePolyLayers[hole] = layer;
+  });
+}
+
 function startFairwayMode(hole) {
   if (pinMode) togglePinMode();
   closePanel();
@@ -2442,6 +2506,7 @@ async function loadSurveyPoints() {
 // ── Init ───────────────────────────────────────────────────────────────────
 redrawAllPolygons();
 redrawAllFairwayPolygons();
+redrawAllSpines();
 renderHoleList();
 loadSurveyPoints();
 </script>
