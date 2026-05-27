@@ -1005,6 +1005,75 @@ function resetDetectMode() {
   setDrawBarState('awaiting-seed');
 }
 
+async function handleDetectClick(lat, lng) {
+  // Show loading state
+  document.getElementById('drawBar').innerHTML =
+    '<span style="color:#2ecc71;font-weight:600">⏳ Detecting green boundary…</span>';
+
+  try {
+    // Step 1 — tile coordinates
+    const { tileX, tileY } = latLngToTile(lat, lng, 20);
+
+    // Step 2 — fetch tile canvas (cache it)
+    const canvas = await fetchTileCanvas(tileX, tileY);
+
+    // Seed pixel
+    const { px, py } = latLngToCanvasPixel(lat, lng, tileX, tileY, 20);
+    if (px < 0 || px >= 512 || py < 0 || py >= 512) {
+      setDrawBarState('error', 'Click outside tile bounds — try again');
+      return;
+    }
+
+    // Cache for slider re-runs
+    detectCanvas  = canvas;
+    detectTileX   = tileX;
+    detectTileY   = tileY;
+    detectSeedPx  = px;
+    detectSeedPy  = py;
+    detectTolerance = 30;
+
+    // Steps 3-6
+    const verts = runDetectionPipeline(canvas, px, py, tileX, tileY, detectTolerance);
+    if (!verts) {
+      setDrawBarState('error', 'Detected region too large — click closer to the centre of the green');
+      return;
+    }
+    if (verts.length < 6) {
+      setDrawBarState('error', 'Detection unclear — try a different spot or adjust the slider');
+      return;
+    }
+
+    // Populate drawVerts and render
+    drawVerts = verts;
+    drawVertMarkers.forEach(m => m.remove()); drawVertMarkers = [];
+    drawVerts.forEach(([vlat, vlng]) => _addVertMarker(vlat, vlng));
+    updateDrawPreview();
+    setDrawBarState('detected');
+
+  } catch (err) {
+    console.error('handleDetectClick:', err);
+    setDrawBarState('error', 'Could not load imagery — try zooming in and clicking again');
+  }
+}
+
+function setDetectTolerance(T) {
+  detectTolerance = T;
+  if (!detectCanvas) return;
+
+  const verts = runDetectionPipeline(detectCanvas, detectSeedPx, detectSeedPy,
+                                      detectTileX, detectTileY, T);
+  if (!verts || verts.length < 6) {
+    setDrawBarState('error', 'Detection unclear at this tolerance — adjust the slider');
+    return;
+  }
+
+  drawVerts = verts;
+  drawVertMarkers.forEach(m => m.remove()); drawVertMarkers = [];
+  drawVerts.forEach(([vlat, vlng]) => _addVertMarker(vlat, vlng));
+  updateDrawPreview();
+  setDrawBarState('detected');
+}
+
 function finishDrawGreen() {
   if (drawVerts.length < 3) return;
   greenPolygons[drawingGreen] = drawVerts.map(v => [...v]);
