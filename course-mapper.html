@@ -56,6 +56,10 @@
     .ind-fairway.set   { background: #f39c12; color: #000; }
     .ind-fairway.unset { background: #2a2a3e; color: #555; }
     .ind-fairway:hover { opacity: 0.8; }
+    .ind-spine { font-size: 11px; padding: 2px 6px; border-radius: 3px; font-weight: 700; cursor: pointer; }
+    .ind-spine.set   { background: #17a2b8; color: #000; }
+    .ind-spine.unset { background: #2a2a3e; color: #555; }
+    .ind-spine:hover { opacity: 0.8; }
     #overlayBar { position: fixed; z-index: 1002; left: 50%; transform: translateX(-50%); bottom: 60px; background: #16213ef0; border: 1px solid #9b59b6; border-radius: 8px; padding: 8px 14px; display: none; align-items: center; gap: 8px; font-size: 13px; box-shadow: 0 4px 16px rgba(0,0,0,.6); flex-wrap: wrap; }
     #overlayBar .olabel { color: #9b59b6; font-weight: 600; }
     #overlayBar label { font-size: 11px; color: #aaa; }
@@ -544,6 +548,23 @@ async function sbUpsertFairwayPolygons(hole, polygons) {
   });
   if (!r.ok) throw new Error(await r.text());
 }
+async function sbUpsertFairwaySpines(hole, waypoints) {
+  if (!Array.isArray(waypoints) || waypoints.length === 0) {
+    // Empty waypoints means straight line — delete the row entirely
+    const r = await fetch(`${SB_URL}/rest/v1/fairway_spines?hole=eq.${hole}`, {
+      method: 'DELETE',
+      headers: SB_H
+    });
+    if (!r.ok) throw new Error(await r.text());
+    return;
+  }
+  const r = await fetch(`${SB_URL}/rest/v1/fairway_spines?on_conflict=hole`, {
+    method: 'POST',
+    headers: { ...SB_H, 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify({ hole, waypoints })
+  });
+  if (!r.ok) throw new Error(await r.text());
+}
 
 // ── Survey feature config ──────────────────────────────────────────────────
 const SURVEY_FEATURES = [
@@ -862,6 +883,18 @@ let drawingFairway    = null;  // hole number in vertex-edit mode, or null
 let drawingFairwayIdx = null;  // index in fairwayPolygons[hole] being edited; null = new polygon
 let fairwaySelectHole = null;  // hole in select-mode (pick-a-polygon-to-edit), or null
 
+// Fairway spine recording state
+let fairwaySpines      = JSON.parse(localStorage.getItem('rgcFairwaySpines') || '{}');
+// { [hole]: [[lat,lng], ...] } — inflection waypoints only (not tee or green endpoint)
+let spinePolyLayers    = {};    // { [hole]: L.polyline } — saved spine renderings
+let drawingSpine       = null;  // hole number currently in spine-edit mode, or null
+let spineWaypoints     = [];    // working copy of waypoints during edit session
+let spineWptMarkers    = [];    // L.marker[] — draggable waypoint dots during edit
+let spineEditPolyLayer = null;  // L.polyline — working teal polyline during edit
+let spineAnchorMarkers = [];    // L.marker[2] — fixed tee + green centroid anchors during edit
+let measureMarker      = null;  // L.marker — draggable measurement marker
+let distRingLayers     = [];    // L.circle[] — static 10m rings from tee + green front
+let liveRingLayers     = [];    // L.circle[] — live rings from measurement marker
 
 // Combined accessor — GPS stays (0..N-1) then custom pins (N..)
 function getStay(i) {
@@ -2008,6 +2041,7 @@ function saveAll() {
   localStorage.setItem('rgcGreenPolygons', JSON.stringify(greenPolygons));
   localStorage.setItem('rgcTeeStrips', JSON.stringify(teeStrips));
   localStorage.setItem('rgcFairwayPolygons', JSON.stringify(fairwayPolygons));
+  localStorage.setItem('rgcFairwaySpines', JSON.stringify(fairwaySpines));
 }
 function save() { saveAll(); }
 
