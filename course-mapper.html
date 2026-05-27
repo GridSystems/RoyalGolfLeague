@@ -1632,6 +1632,7 @@ async function finishDrawFairway() {
     fairwayPolygons[hole][idx] = sorted;
   } else {
     fairwayPolygons[hole].push(sorted);
+    drawingFairwayIdx = fairwayPolygons[hole].length - 1; // capture index so retries are idempotent
   }
   saveAll();
 
