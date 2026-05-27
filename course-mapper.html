@@ -761,7 +761,7 @@ let detectTileX     = null;    // top-left tile X of cached canvas (zoom 20)
 let detectTileY     = null;    // top-left tile Y of cached canvas (zoom 20)
 let detectSeedPx    = null;    // seed pixel x within canvas
 let detectSeedPy    = null;    // seed pixel y within canvas
-let detectTolerance = 30;      // current slider value (10-80)
+let detectTolerance = 15;      // current slider value (10-80)
 let detectBarState  = null;    // 'awaiting-seed'|'detected'|'vertex-edit'|'error'|null
 let detectInFlight  = false;   // guard against concurrent invocations
 // Green overlay state
@@ -912,7 +912,7 @@ function startDrawGreen(hole) {
   drawPolyLayer = null;
   detectMode = true;
   detectCanvas = null;
-  detectTolerance = 30;
+  detectTolerance = 15;
 
   document.getElementById('map').classList.add('draw-mode');
   document.getElementById('drawBar').style.display = 'flex';
@@ -1053,12 +1053,23 @@ async function handleDetectClick(lat, lng) {
     detectTileY   = tileY;
     detectSeedPx  = px;
     detectSeedPy  = py;
-    detectTolerance = 30;
+    detectTolerance = 15;
 
     // Steps 3-6
     const verts = runDetectionPipeline(canvas, px, py, tileX, tileY, detectTolerance);
     if (!verts) {
-      setDrawBarState('error', 'Detected region too large — click closer to the centre of the green');
+      // Canvas is cached — show slider so user can tighten without re-clicking
+      detectBarState = 'error';
+      const _bar = document.getElementById('drawBar');
+      const _btn = s => `style="padding:5px 12px;border-radius:5px;border:none;font-size:12px;font-weight:700;cursor:pointer;${s}"`;
+      _bar.innerHTML =
+        `<span style="color:#e74c3c;font-size:11px">⚠ Too large — drag tighter:</span>` +
+        `<span style="font-size:11px;color:#aaa">Tight</span>` +
+        `<input type="range" id="detectSlider" min="10" max="80" value="${detectTolerance}"` +
+        ` style="width:90px;cursor:pointer;accent-color:#2ecc71" oninput="setDetectTolerance(+this.value)">` +
+        `<span style="font-size:11px;color:#aaa">Loose</span>` +
+        `<button onclick="resetDetectMode()" ${_btn('background:#555;color:#eee')}>↩ Re-click</button>` +
+        `<button onclick="cancelDrawGreen()" ${_btn('background:#e94560;color:#fff')}>✕ Cancel</button>`;
       return;
     }
     if (verts.length < 6) {
