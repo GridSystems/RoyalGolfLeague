@@ -436,6 +436,37 @@ function rdpSimplify(points, epsilon) {
   return [...left.slice(0, -1), ...right];
 }
 
+/**
+ * Run the detection pipeline on a cached canvas.
+ *
+ * @param {HTMLCanvasElement} canvas  512×512 stitched tile canvas
+ * @param {number} seedPx             seed pixel x (0-511)
+ * @param {number} seedPy             seed pixel y (0-511)
+ * @param {number} tileX              top-left tile X at zoom 20
+ * @param {number} tileY              top-left tile Y at zoom 20
+ * @param {number} tolerance          flood-fill tolerance (10-80)
+ * @returns {[number,number][]|null}  array of [lat,lng] vertices, or null on failure
+ */
+function runDetectionPipeline(canvas, seedPx, seedPy, tileX, tileY, tolerance) {
+  const ctx = canvas.getContext('2d');
+  const imageData = ctx.getImageData(0, 0, 512, 512);
+
+  // Step 3 — flood fill
+  const filled = floodFill(imageData, seedPx, seedPy, 512, 512, tolerance);
+  if (!filled) return null; // hit cap
+
+  // Step 4 — boundary trace
+  const boundary = traceBoundary(filled, 512, 512);
+  if (!boundary.length) return null;
+
+  // Step 5 — simplify
+  const simplified = rdpSimplify(boundary, 3);
+  if (simplified.length < 6) return null; // degenerate
+
+  // Step 6 — pixel → lat/lng
+  return simplified.map(([px, py]) => canvasPixelToLatLng(px, py, tileX, tileY, 20));
+}
+
 // ── Green polygon utilities ──────────────────────────────────────────────
 function haversineM(lat1,lng1,lat2,lng2){
   const R=6371000,rad=Math.PI/180;
