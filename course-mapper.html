@@ -879,7 +879,7 @@ document.addEventListener('keydown', e => {
   if (drawingGreen === null) return;
   if (e.key === 'Escape') cancelDrawGreen();
   if (e.key === 'Enter' && drawVerts.length >= 3 && !detectMode) finishDrawGreen();
-  if ((e.key === 'z' || e.key === 'Z') && (e.ctrlKey || e.metaKey)) { e.preventDefault(); undoDrawVertex(); }
+  if ((e.key === 'z' || e.key === 'Z') && (e.ctrlKey || e.metaKey)) { e.preventDefault(); if (detectMode) resetDetectMode(); else undoDrawVertex(); }
 });
 
 function addMarker(stay, i) {
