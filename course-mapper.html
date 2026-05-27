@@ -378,6 +378,64 @@ function floodFill(imageData, seedPx, seedPy, w, h, tolerance) {
   return count >= CAP ? null : filled;
 }
 
+/**
+ * Extract an ordered boundary from a flood-fill result.
+ * Collects all filled pixels that have at least one unfilled 4-neighbour,
+ * then sorts them by angle from the centroid of the filled region.
+ * Returns [[px,py], ...] (ordered, but not closed).
+ */
+function traceBoundary(filled, w, h) {
+  let cx = 0, cy = 0, count = 0;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (filled[y * w + x]) { cx += x; cy += y; count++; }
+    }
+  }
+  if (!count) return [];
+  cx /= count; cy /= count;
+
+  const boundary = [];
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (!filled[y * w + x]) continue;
+      const onEdge =
+        x === 0 || x === w-1 || y === 0 || y === h-1 ||
+        !filled[y*w + x-1] || !filled[y*w + x+1] ||
+        !filled[(y-1)*w + x] || !filled[(y+1)*w + x];
+      if (onEdge) boundary.push([x, y]);
+    }
+  }
+  boundary.sort((a, b) =>
+    Math.atan2(a[1]-cy, a[0]-cx) - Math.atan2(b[1]-cy, b[0]-cx)
+  );
+  return boundary;
+}
+
+/**
+ * Ramer-Douglas-Peucker polygon simplification.
+ * `points` is [[x,y], ...], `epsilon` is max pixel deviation.
+ * Returns a simplified subset of the input points.
+ */
+function rdpSimplify(points, epsilon) {
+  if (points.length <= 2) return points;
+  const [x1, y1] = points[0];
+  const [x2, y2] = points[points.length - 1];
+  const dx = x2 - x1, dy = y2 - y1;
+  const len = Math.sqrt(dx*dx + dy*dy);
+  let maxDist = 0, maxIdx = 0;
+  for (let i = 1; i < points.length - 1; i++) {
+    const [px, py] = points[i];
+    const dist = len === 0
+      ? Math.sqrt((px-x1)**2 + (py-y1)**2)
+      : Math.abs(dy*px - dx*py + x2*y1 - y2*x1) / len;
+    if (dist > maxDist) { maxDist = dist; maxIdx = i; }
+  }
+  if (maxDist <= epsilon) return [points[0], points[points.length - 1]];
+  const left  = rdpSimplify(points.slice(0, maxIdx + 1), epsilon);
+  const right = rdpSimplify(points.slice(maxIdx), epsilon);
+  return [...left.slice(0, -1), ...right];
+}
+
 // ── Green polygon utilities ──────────────────────────────────────────────
 function haversineM(lat1,lng1,lat2,lng2){
   const R=6371000,rad=Math.PI/180;
