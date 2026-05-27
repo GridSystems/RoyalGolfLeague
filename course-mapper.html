@@ -1478,6 +1478,24 @@ function redrawAllPolygons() {
   });
 }
 
+function redrawAllFairwayPolygons() {
+  // Remove existing fairway polygon layers
+  Object.values(fairwayPolyLayers).forEach(arr => arr.forEach(l => l.remove()));
+  fairwayPolyLayers = {};
+  Object.entries(fairwayPolygons).forEach(([hole, polygonsList]) => {
+    if (!polygonsList || !polygonsList.length) return;
+    fairwayPolyLayers[hole] = [];
+    polygonsList.forEach(verts => {
+      if (!verts || verts.length < 3) return;
+      const layer = L.polygon(verts, {
+        color: '#f39c12', weight: 2, fillColor: '#f39c12', fillOpacity: 0.15
+      }).addTo(map);
+      layer.bindTooltip('Hole ' + hole + ' fairway', { permanent: false, direction: 'center' });
+      fairwayPolyLayers[hole].push(layer);
+    });
+  });
+}
+
 function markerOpts(i) {
   const a = assignments[i] || {};
   const stay = getStay(i);
@@ -2159,6 +2177,7 @@ async function loadSurveyPoints() {
 
 // ── Init ───────────────────────────────────────────────────────────────────
 redrawAllPolygons();
+redrawAllFairwayPolygons();
 renderHoleList();
 loadSurveyPoints();
 </script>
