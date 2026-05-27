@@ -41,7 +41,7 @@
     .hole-indicators { display: flex; gap: 5px; flex: 1; }
     .indicator { font-size: 11px; padding: 2px 7px; border-radius: 3px; font-weight: 700; cursor: default; }
     .ind-tee.set { background: #2196F3; color: #fff; cursor: pointer; }
-    .ind-tee.unset { background: #2a2a3e; color: #555; }
+    .ind-tee.unset { background: #2a2a3e; color: #555; cursor: pointer; }
     .ind-green.set { background: #e94560; color: #fff; cursor: pointer; }
     .ind-green.unset { background: #2a2a3e; color: #555; }
     .hole-clears { display: flex; gap: 3px; }
@@ -1078,6 +1078,22 @@ function setDrawBarState(state, errorMsg) {
 
 function updateDrawBar() {
   setDrawBarState('vertex-edit');
+}
+
+function setTeeBarState(state) {
+  teeDrawState = state;
+  const bar = document.getElementById('drawBar');
+  const backActive  = state === 'back';
+  const frontActive = state === 'front';
+  const n = teeInProgress.length;
+  const btn = s => `style="padding:5px 12px;border-radius:5px;border:none;font-size:12px;font-weight:700;cursor:pointer;${s}"`;
+  bar.innerHTML =
+    `<button onclick="setTeeBarState('back')"  ${btn('background:' + (backActive  ? '#2196F3;color:#fff' : '#2a2a3e;color:#aaa'))}>● Back</button>` +
+    `<button onclick="setTeeBarState('front')" ${btn('background:' + (frontActive ? '#ffd700;color:#000' : '#2a2a3e;color:#aaa'))}>● Front</button>` +
+    (n > 0 ? `<span style="color:#2ecc71;font-size:11px;font-weight:600">${n} strip${n!==1?'s':''}</span>` : '') +
+    `<button onclick="finishDrawTee()"  ${n===0?'disabled ':''} ${btn('background:#2ecc71;color:#000' + (n===0?';opacity:0.4':''))}>✓ Finish</button>` +
+    `<button onclick="clearTeeStrips()" ${btn('background:#555;color:#eee')}>🗑 Clear</button>` +
+    `<button onclick="cancelDrawTee()"  ${btn('background:#e94560;color:#fff')}>✕ Cancel</button>`;
 }
 
 // Switch from manual mode into auto-detect mode
