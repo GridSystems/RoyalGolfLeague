@@ -920,6 +920,9 @@ function startDrawGreen(hole) {
   detectCanvas = null;
   detectTolerance = 15;
 
+  // Hide the saved polygon for this hole while editing so it doesn't obscure the imagery
+  if (polyLayers[hole]) polyLayers[hole].remove();
+
   document.getElementById('map').classList.add('draw-mode');
   document.getElementById('drawBar').style.display = 'flex';
   updateDrawBar();
@@ -935,7 +938,8 @@ function startDrawGreen(hole) {
 function addDrawVertex(lat, lng) {
   drawVerts.push([lat, lng]);
   _addVertMarker(lat, lng);
-  updateDrawPreview();
+  // No polygon preview during dot placement — only the dots are shown.
+  // The preview appears when you drag a vertex (adjustment mode).
   updateDrawBar();
 }
 
@@ -957,7 +961,8 @@ function _addVertMarker(lat, lng) {
     drawVertMarkers.forEach(x => x.remove());
     drawVertMarkers = [];
     drawVerts.forEach(v => _addVertMarker(v[0], v[1]));
-    updateDrawPreview();
+    // Clear any existing preview when a dot is deleted
+    if (drawPolyLayer) { drawPolyLayer.remove(); drawPolyLayer = null; }
     updateDrawBar();
   });
 
