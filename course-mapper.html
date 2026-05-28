@@ -1663,6 +1663,7 @@ function updateDistanceRings() {
 }
 
 function showDistanceRings() {
+  map.off('moveend zoomend', updateDistanceRings);  // idempotent guard
   updateDistanceRings();
   map.on('moveend zoomend', updateDistanceRings);
 }
@@ -1701,7 +1702,11 @@ function initMeasurementMarker(hole) {
   measureMarker.on('dragend', () => {
     const pos   = measureMarker.getLatLng();
     const front = greenFront(hole);
-    if (!front) return;
+    if (!front) {
+      liveRingLayers.forEach(l => l.remove());
+      liveRingLayers = [];
+      return;
+    }
 
     const distToTee   = haversineM(tee.lat, tee.lng, pos.lat, pos.lng);
     const distToGreen = haversineM(front.lat, front.lng, pos.lat, pos.lng);
