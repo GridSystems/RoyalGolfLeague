@@ -1682,21 +1682,6 @@ function setFairwaySelectBar(hole) {
     `<button onclick="_exitFairwaySelectMode()" ${btn('background:#e94560;color:#fff')}>✕ Cancel</button>`;
 }
 
-function setSpineDrawBar() {
-  const bar = document.getElementById('drawBar');
-  const hole = drawingSpine;
-  const n    = spineWaypoints.length;
-  const btn  = s => `style="padding:5px 12px;border-radius:5px;border:none;font-size:12px;font-weight:700;cursor:pointer;${s}"`;
-  const label = n === 0
-    ? `<span style="color:#17a2b8;font-weight:600">Spine ${hole} — straight</span>`
-    : `<span style="color:#17a2b8;font-weight:600">Spine ${hole} — ${n} waypoint${n !== 1 ? 's' : ''}</span>`;
-  bar.innerHTML =
-    label +
-    `<button onclick="finishSpine()" ${btn('background:#2ecc71;color:#000')}>✓ Finish</button>` +
-    `<button onclick="clearSpineWaypoints()" ${btn('background:#555;color:#eee')}>🗑 Clear</button>` +
-    `<button onclick="cancelSpine()" ${btn('background:#e94560;color:#fff')}>✕ Cancel</button>`;
-}
-
 function setFairwayDrawBar() {
   const bar = document.getElementById('drawBar');
   const n = drawVerts.length;
@@ -1715,6 +1700,21 @@ function setFairwayDrawBar() {
       (isEdit ? `<button onclick="deleteFairwayPolygon(${drawingFairway},${drawingFairwayIdx})" ${btn('background:#e94560;color:#fff')}>✕ Delete polygon</button>` : '') +
       `<button onclick="cancelDrawFairway()" ${btn('background:#e94560;color:#fff')}>✕ Cancel</button>`;
   }
+}
+
+function setSpineDrawBar() {
+  const bar = document.getElementById('drawBar');
+  const hole = drawingSpine;
+  const n    = spineWaypoints.length;
+  const btn  = s => `style="padding:5px 12px;border-radius:5px;border:none;font-size:12px;font-weight:700;cursor:pointer;${s}"`;
+  const label = n === 0
+    ? `<span style="color:#17a2b8;font-weight:600">Spine ${hole} — straight</span>`
+    : `<span style="color:#17a2b8;font-weight:600">Spine ${hole} — ${n} waypoint${n !== 1 ? 's' : ''}</span>`;
+  bar.innerHTML =
+    label +
+    `<button onclick="finishSpine()" ${btn('background:#2ecc71;color:#000')}>✓ Finish</button>` +
+    `<button onclick="clearSpineWaypoints()" ${btn('background:#555;color:#eee')}>🗑 Clear</button>` +
+    `<button onclick="cancelSpine()" ${btn('background:#e94560;color:#fff')}>✕ Cancel</button>`;
 }
 
 function startDrawFairway(hole, idx) {
