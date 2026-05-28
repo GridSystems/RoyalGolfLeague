@@ -951,6 +951,12 @@ STAYS.forEach((stay, i) => addMarker(stay, i));
 customPins.forEach((pin, j) => addMarker(pin, STAYS.length + j));
 
 map.on('click', e => {
+  if (drawingSpine !== null) {
+    const target = e.originalEvent && e.originalEvent.target;
+    const onMarker = target && target.closest('.leaflet-marker-icon');
+    if (!onMarker) addSpineWaypoint(e.latlng);
+    return;
+  }
   if (teeDrawHole !== null) {
     const target = e.originalEvent && e.originalEvent.target;
     const onMarkerOrLine = target && (
@@ -1005,6 +1011,7 @@ map.on('dblclick', e => {
 document.addEventListener('keydown', e => {
   if (overlayHole !== null && e.key === 'Escape') { removeOverlay(); return; }
   if (e.key === 'Escape') {
+    if (drawingSpine !== null) { cancelSpine(); return; }
     if (teeDrawHole !== null) { cancelDrawTee(); return; }
     if (fairwaySelectHole !== null) { _exitFairwaySelectMode(); return; }
     if (drawingFairway !== null) { cancelDrawFairway(); return; }
@@ -1041,6 +1048,7 @@ function togglePinMode() {
 
 // ── Green polygon drawing ──────────────────────────────────────────────────
 function startDrawGreen(hole) {
+  if (drawingSpine !== null) { _exitSpineMode(); redrawAllSpines(); }
   if (pinMode) togglePinMode();
   closePanel();
   if (teeDrawHole !== null) _exitTeeMode(); // exit tee mode before entering green draw
@@ -1356,9 +1364,19 @@ function _exitDrawMode() {
   drawVerts = [];
   drawVertMarkers.forEach(m => m.remove()); drawVertMarkers = [];
   if (drawPolyLayer) { drawPolyLayer.remove(); drawPolyLayer = null; }
-  drawingGreen     = null;
-  drawingFairway   = null;
+  drawingGreen      = null;
+  drawingFairway    = null;
   drawingFairwayIdx = null;
+  // Spine state — reset if active (spine has its own _exitSpineMode but guard here too)
+  if (drawingSpine !== null) {
+    if (spineEditPolyLayer) { spineEditPolyLayer.remove(); spineEditPolyLayer = null; }
+    spineAnchorMarkers.forEach(m => m.remove()); spineAnchorMarkers = [];
+    spineWptMarkers.forEach(m => m.remove());    spineWptMarkers    = [];
+    distRingLayers.forEach(l => l.remove());     distRingLayers     = [];
+    liveRingLayers.forEach(l => l.remove());     liveRingLayers     = [];
+    if (measureMarker) { measureMarker.remove(); measureMarker = null; }
+    drawingSpine = null; spineWaypoints = [];
+  }
   detectMode = false;
   detectCanvas = null;
   detectTileX = null; detectTileY = null;
@@ -1376,6 +1394,7 @@ function startDrawTee(hole) {
   if (teeDrawHole !== null) _exitTeeMode(); // clean up any prior tee session
   if (fairwaySelectHole !== null) _exitFairwaySelectMode();
   if (drawingFairway !== null) cancelDrawFairway();
+  if (drawingSpine !== null) { cancelSpine(); }
 
   teeDrawHole   = hole;
   teeInProgress = (teeStrips[hole] || []).map(s => ({ back: [...s.back], front: [...s.front] }));
@@ -1744,6 +1763,7 @@ function startFairwayMode(hole) {
   if (teeDrawHole !== null) _exitTeeMode();
   if (drawingFairway !== null) cancelDrawFairway();
   if (fairwaySelectHole !== null) _exitFairwaySelectMode();
+  if (drawingSpine !== null) cancelSpine();
 
   const existing = fairwayPolygons[hole] || [];
   if (existing.length === 0) {
@@ -2391,6 +2411,18 @@ function renderHoleList() {
           ' onclick="startFairwayMode(' + h + ')"' +
           ' title="' + (hasFairway ? fairwayPolysForHole.length + ' polygon' + (fairwayPolysForHole.length !== 1 ? 's' : '') + ' — click to edit' : 'Record fairway') + '">' +
           'F' + (hasFairway ? fairwayPolysForHole.length : '') + '</span>' +
+        (() => {
+          const spineWpts = fairwaySpines[h];
+          const hasSpine  = spineWpts !== undefined;
+          const wptCount  = hasSpine ? spineWpts.length : 0;
+          const label     = hasSpine ? ('S' + (wptCount > 0 ? wptCount : '')) : 'S';
+          const title     = hasSpine
+            ? (wptCount > 0 ? wptCount + ' waypoint' + (wptCount !== 1 ? 's' : '') + ' — click to edit' : 'Straight line — click to edit')
+            : 'Record fairway spine';
+          return '<span class="indicator ind-spine ' + (hasSpine ? 'set' : 'unset') + '"' +
+            ' onclick="startSpineMode(' + h + ')"' +
+            ' title="' + title + '">' + label + '</span>';
+        })() +
         '<span class="indicator ind-green ' + (greenIdx !== null ? 'set' : 'unset') + '"' +
           (greenIdx !== null ? ' title="Stay #'+(greenIdx+1)+'" onclick="focusStay('+greenIdx+')"' : '') +
           '>G' + (greenIdx !== null ? ' '+(greenIdx+1) : '') + '</span>' +
@@ -2403,6 +2435,7 @@ function renderHoleList() {
         (greenIdx !== null ? '<button class="clr" onclick="clearHoleType(\'green\','+h+')">✕G</button>' : '') +
         (hasPoly ? '<button class="clr" onclick="clearGreenPolygon('+h+')">✕⬡</button>' : '') +
         (hasFairway ? '<button class="clr" onclick="clearFairwayPolygonsForHole('+h+')">✕F</button>' : '') +
+        (fairwaySpines[h] !== undefined ? '<button class="clr" onclick="deleteSpine('+h+')">✕S</button>' : '') +
       '</div>';
     list.appendChild(row);
   }
