@@ -1625,6 +1625,113 @@ function redrawAllSpines() {
   });
 }
 
+function updateDistanceRings() {
+  // Clear existing static rings
+  distRingLayers.forEach(l => l.remove());
+  distRingLayers = [];
+  if (drawingSpine === null) return;
+
+  const hole     = drawingSpine;
+  const tee      = HOLE_TEES[hole - 1];
+  const front    = greenFront(hole);
+  if (!tee || !front) return;
+
+  const teePt    = { lat: tee.lat,   lng: tee.lng   };
+  const frontPt  = { lat: front.lat, lng: front.lng };
+  const maxTee   = maxViewportDist(teePt);
+  const maxFront = maxViewportDist(frontPt);
+
+  // Tee rings — grey dashed
+  for (let r = 10; r <= Math.ceil(maxTee / 10) * 10; r += 10) {
+    const c = L.circle([teePt.lat, teePt.lng], {
+      radius: r, color: '#888888', weight: 1,
+      dashArray: '4 6', fillOpacity: 0, interactive: false
+    }).addTo(map);
+    c.bindTooltip(r + 'm', { permanent: false, direction: 'center', className: '' });
+    distRingLayers.push(c);
+  }
+
+  // Green-front rings — amber dashed
+  for (let r = 10; r <= Math.ceil(maxFront / 10) * 10; r += 10) {
+    const c = L.circle([frontPt.lat, frontPt.lng], {
+      radius: r, color: '#f39c12', weight: 1,
+      dashArray: '4 6', fillOpacity: 0, interactive: false
+    }).addTo(map);
+    c.bindTooltip(r + 'm', { permanent: false, direction: 'center', className: '' });
+    distRingLayers.push(c);
+  }
+}
+
+function showDistanceRings() {
+  updateDistanceRings();
+  map.on('moveend zoomend', updateDistanceRings);
+}
+
+function hideDistanceRings() {
+  map.off('moveend zoomend', updateDistanceRings);
+  distRingLayers.forEach(l => l.remove());
+  distRingLayers = [];
+}
+
+function removeMeasurementMarker() {
+  if (measureMarker) { measureMarker.remove(); measureMarker = null; }
+  liveRingLayers.forEach(l => l.remove());
+  liveRingLayers = [];
+}
+
+function initMeasurementMarker(hole) {
+  removeMeasurementMarker();
+  const tee   = HOLE_TEES[hole - 1];
+  const green = greenCentroid(hole);
+  if (!tee || !green) return;
+
+  // Start at midpoint of tee → green
+  const midLat = (tee.lat + green.lat) / 2;
+  const midLng = (tee.lng + green.lng) / 2;
+
+  const icon = L.divIcon({
+    className: '',
+    html: '<div style="width:16px;height:16px;background:rgba(255,255,255,0.85);border:2px solid #fff;border-radius:50%;margin:-8px 0 0 -8px;cursor:move;box-shadow:0 0 4px rgba(0,0,0,0.5)"></div>',
+    iconSize: [16, 16],
+    iconAnchor: [8, 8]
+  });
+
+  measureMarker = L.marker([midLat, midLng], { icon, draggable: true, zIndexOffset: 500 }).addTo(map);
+
+  measureMarker.on('dragend', () => {
+    const pos   = measureMarker.getLatLng();
+    const front = greenFront(hole);
+    if (!front) return;
+
+    const distToTee   = haversineM(tee.lat, tee.lng, pos.lat, pos.lng);
+    const distToGreen = haversineM(front.lat, front.lng, pos.lat, pos.lng);
+
+    // Remove old live rings
+    liveRingLayers.forEach(l => l.remove());
+    liveRingLayers = [];
+
+    // Ring from tee
+    liveRingLayers.push(
+      L.circle([tee.lat, tee.lng], {
+        radius: distToTee, color: '#888888', weight: 2, fillOpacity: 0, interactive: false
+      }).addTo(map)
+    );
+
+    // Ring from green front
+    liveRingLayers.push(
+      L.circle([front.lat, front.lng], {
+        radius: distToGreen, color: '#f39c12', weight: 2, fillOpacity: 0, interactive: false
+      }).addTo(map)
+    );
+
+    // Label on the marker
+    measureMarker.bindTooltip(
+      Math.round(distToTee) + 'm from tee &nbsp;|&nbsp; ' + Math.round(distToGreen) + 'm to green',
+      { permanent: true, direction: 'top', offset: [0, -10] }
+    ).openTooltip();
+  });
+}
+
 function startFairwayMode(hole) {
   if (pinMode) togglePinMode();
   closePanel();
