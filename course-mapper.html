@@ -1829,10 +1829,6 @@ function setSpineDrawBar() {
     `<button onclick="cancelSpine()" ${btn('background:#e94560;color:#fff')}>✕ Cancel</button>`;
 }
 
-// Spine handler stubs — full implementations added in Task 6
-function finishSpine() { console.warn('finishSpine: stub'); }
-function clearSpineWaypoints() { console.warn('clearSpineWaypoints: stub'); }
-function cancelSpine() { console.warn('cancelSpine: stub'); }
 
 function startDrawFairway(hole, idx) {
   // Exit any active mode first
@@ -1948,6 +1944,196 @@ async function clearFairwayPolygonsForHole(hole) {
     console.error('clearFairwayPolygonsForHole Supabase error (local save succeeded):', err);
   }
   renderHoleList();
+}
+
+// ── Fairway spine mode ─────────────────────────────────────────────────────
+
+function startSpineMode(hole) {
+  if (!greenPolygons[hole] || greenPolygons[hole].length < 3) {
+    alert('Record the green polygon for hole ' + hole + ' before adding its spine.');
+    return;
+  }
+  // Exit any active mode first
+  if (teeDrawHole !== null)       _exitTeeMode();
+  if (drawingGreen !== null)      cancelDrawGreen();
+  if (fairwaySelectHole !== null) _exitFairwaySelectMode();
+  if (drawingFairway !== null)    cancelDrawFairway();
+  if (drawingSpine !== null)      _exitSpineMode();
+
+  drawingSpine   = hole;
+  spineWaypoints = (fairwaySpines[hole] || []).map(v => [...v]); // working copy
+
+  // Hide saved spine for this hole while editing (edit polyline replaces it)
+  if (spinePolyLayers[hole]) { spinePolyLayers[hole].remove(); delete spinePolyLayers[hole]; }
+
+  document.getElementById('map').classList.add('draw-mode');
+  document.getElementById('drawBar').style.display = 'flex';
+  setSpineDrawBar();
+
+  redrawEditSpine();
+  showDistanceRings();
+  initMeasurementMarker(hole);
+
+  // Fly to hole bounds (tee → green centroid, with padding)
+  const tee   = HOLE_TEES[hole - 1];
+  const green = greenCentroid(hole);
+  if (tee && green) {
+    map.flyToBounds(
+      [[Math.min(tee.lat, green.lat), Math.min(tee.lng, green.lng)],
+       [Math.max(tee.lat, green.lat), Math.max(tee.lng, green.lng)]],
+      { padding: [80, 80], maxZoom: 18, animate: true, duration: 0.6 }
+    );
+  } else if (tee) {
+    map.flyTo([tee.lat, tee.lng], 18, { animate: true, duration: 0.6 });
+  }
+}
+
+function _exitSpineMode() {
+  // Remove edit polyline
+  if (spineEditPolyLayer) { spineEditPolyLayer.remove(); spineEditPolyLayer = null; }
+  // Remove anchor markers
+  spineAnchorMarkers.forEach(m => m.remove()); spineAnchorMarkers = [];
+  // Remove waypoint dots
+  spineWptMarkers.forEach(m => m.remove()); spineWptMarkers = [];
+  // Remove distance overlay
+  hideDistanceRings();
+  removeMeasurementMarker();
+
+  drawingSpine   = null;
+  spineWaypoints = [];
+  spineWptMarkers = [];
+
+  document.getElementById('map').classList.remove('draw-mode');
+  document.getElementById('drawBar').style.display = 'none';
+}
+
+function cancelSpine() {
+  _exitSpineMode();
+  // Redraw any saved spine that was hidden during edit
+  redrawAllSpines();
+}
+
+async function finishSpine() {
+  sortSpineWaypoints();
+  const hole = drawingSpine;
+  const wpts = spineWaypoints.map(v => [...v]); // capture before _exitSpineMode resets
+
+  fairwaySpines[hole] = wpts;
+  saveAll();
+
+  const bar = document.getElementById('drawBar');
+  bar.innerHTML = '<span style="color:#17a2b8;font-weight:600">⏳ Saving…</span>';
+
+  try {
+    await sbUpsertFairwaySpines(hole, wpts);
+  } catch (err) {
+    console.error('finishSpine:', err);
+    bar.innerHTML =
+      '<span style="color:#e74c3c">⚠ Save failed — ' + err.message + '</span>' +
+      '<button onclick="finishSpine()" style="padding:5px 12px;border-radius:5px;border:none;background:#2ecc71;color:#000;font-size:12px;font-weight:700;cursor:pointer">Retry</button>' +
+      '<button onclick="cancelSpine()" style="padding:5px 12px;border-radius:5px;border:none;background:#e94560;color:#fff;font-size:12px;font-weight:700;cursor:pointer">✕ Cancel</button>';
+    return;
+  }
+
+  _exitSpineMode();
+  redrawAllSpines();
+  renderHoleList();
+}
+
+function clearSpineWaypoints() {
+  spineWaypoints = [];
+  redrawEditSpine();
+  setSpineDrawBar();
+}
+
+async function deleteSpine(hole) {
+  delete fairwaySpines[hole];
+  saveAll();
+  if (spinePolyLayers[hole]) { spinePolyLayers[hole].remove(); delete spinePolyLayers[hole]; }
+  try {
+    await sbUpsertFairwaySpines(hole, []);
+  } catch (err) {
+    console.error('deleteSpine Supabase error (local save succeeded):', err);
+  }
+  renderHoleList();
+}
+
+function addSpineWaypoint(latlng) {
+  spineWaypoints.push([latlng.lat, latlng.lng]);
+  sortSpineWaypoints();
+  redrawEditSpine();
+  setSpineDrawBar();
+}
+
+function deleteSpineWaypoint(idx) {
+  spineWaypoints.splice(idx, 1);
+  redrawEditSpine();
+  setSpineDrawBar();
+}
+
+function redrawEditSpine() {
+  // Remove existing edit polyline, anchor markers, waypoint dots
+  if (spineEditPolyLayer) { spineEditPolyLayer.remove(); spineEditPolyLayer = null; }
+  spineAnchorMarkers.forEach(m => m.remove()); spineAnchorMarkers = [];
+  spineWptMarkers.forEach(m => m.remove());    spineWptMarkers    = [];
+
+  const hole  = drawingSpine;
+  const tee   = HOLE_TEES[hole - 1];
+  const green = greenCentroid(hole);
+  if (!tee || !green) return;
+
+  const points = [[tee.lat, tee.lng], ...spineWaypoints, [green.lat, green.lng]];
+
+  // Teal edit polyline
+  spineEditPolyLayer = L.polyline(points, {
+    color: '#17a2b8', weight: 2, opacity: 0.9
+  }).addTo(map);
+
+  // Fixed anchor markers (non-draggable)
+  const anchorIcon = L.divIcon({
+    className: '',
+    html: '<div style="width:12px;height:12px;background:#17a2b8;border:2px solid #fff;border-radius:50%;margin:-6px 0 0 -6px"></div>',
+    iconSize: [12, 12], iconAnchor: [6, 6]
+  });
+  spineAnchorMarkers.push(
+    L.marker([tee.lat, tee.lng],     { icon: anchorIcon, interactive: false }).addTo(map)
+  );
+  spineAnchorMarkers.push(
+    L.marker([green.lat, green.lng], { icon: anchorIcon, interactive: false }).addTo(map)
+  );
+
+  // Draggable waypoint dot markers
+  const wptIcon = L.divIcon({
+    className: '',
+    html: '<div style="width:10px;height:10px;background:#17a2b8;border:1.5px solid #fff;border-radius:50%;margin:-5px 0 0 -5px;cursor:grab"></div>',
+    iconSize: [10, 10], iconAnchor: [5, 5]
+  });
+
+  spineWaypoints.forEach((wpt, i) => {
+    const m = L.marker([wpt[0], wpt[1]], { icon: wptIcon, draggable: true }).addTo(map);
+
+    m.on('click', e => {
+      L.DomEvent.stopPropagation(e);
+      deleteSpineWaypoint(i);
+    });
+
+    m.on('drag', e => {
+      spineWaypoints[i] = [e.latlng.lat, e.latlng.lng];
+      // Live update the polyline while dragging
+      if (spineEditPolyLayer) {
+        const pts = [[tee.lat, tee.lng], ...spineWaypoints, [green.lat, green.lng]];
+        spineEditPolyLayer.setLatLngs(pts);
+      }
+    });
+
+    m.on('dragend', () => {
+      sortSpineWaypoints();
+      redrawEditSpine();
+      setSpineDrawBar();
+    });
+
+    spineWptMarkers.push(m);
+  });
 }
 
 function markerOpts(i) {
