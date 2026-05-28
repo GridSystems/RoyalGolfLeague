@@ -1616,6 +1616,89 @@ function maxViewportDist(anchor) {
   return Math.max(...corners.map(c => haversineM(anchor.lat, anchor.lng, c.lat, c.lng)));
 }
 
+// ── Arc-midpoint helpers ────────────────────────────────────────────────────
+
+// Circle (centred at origin, radius r) vs line segment (x1,y1)→(x2,y2) in local metres.
+// Returns intersection points {x,y} where the parameter t ∈ [0,1].
+function circleSegIntersect(r, x1, y1, x2, y2) {
+  const dx = x2 - x1, dy = y2 - y1;
+  const a  = dx*dx + dy*dy;
+  if (a < 1e-14) return [];
+  const b    = 2*(x1*dx + y1*dy);
+  const c    = x1*x1 + y1*y1 - r*r;
+  const disc = b*b - 4*a*c;
+  if (disc < 0) return [];
+  const sq = Math.sqrt(Math.max(0, disc));
+  const pts = [];
+  for (const s of [-1, 1]) {
+    const t = (-b + s*sq) / (2*a);
+    if (t >= 0 && t <= 1) pts.push({ x: x1+t*dx, y: y1+t*dy });
+  }
+  return pts;
+}
+
+// Ray-casting point-in-polygon for local XY coordinates.
+function ptInPolyXY(px, py, polyXY) {
+  let inside = false;
+  for (let i = 0, j = polyXY.length-1; i < polyXY.length; j = i++) {
+    const xi = polyXY[i].x, yi = polyXY[i].y;
+    const xj = polyXY[j].x, yj = polyXY[j].y;
+    if (((yi > py) !== (yj > py)) && px < (xj-xi)*(py-yi)/(yj-yi)+xi) inside = !inside;
+  }
+  return inside;
+}
+
+// Find the midpoint of the arc where a circle (centred at centerLL, radius radiusM metres)
+// intersects the fairway polygons for a hole. Returns {lat,lng} or null if no intersection.
+// Picks the arc with the largest angular span that falls inside the fairway.
+function fairwayArcMidpoint(centerLL, radiusM, polygons) {
+  if (!polygons || polygons.length === 0) return null;
+  const refLat = centerLL.lat, refLng = centerLL.lng;
+  const LAT_M  = 111320;
+  const LNG_M  = 111320 * Math.cos(refLat * Math.PI / 180);
+  function toXY(v) { return { x: (v[1]-refLng)*LNG_M, y: (v[0]-refLat)*LAT_M }; }
+
+  let best = null; // { midX, midY, span }
+
+  for (const poly of polygons) {
+    const polyXY = poly.map(toXY);
+    const n = polyXY.length;
+    let angles = [];
+
+    for (let i = 0; i < n; i++) {
+      const j = (i+1) % n;
+      const pts = circleSegIntersect(radiusM,
+        polyXY[i].x, polyXY[i].y, polyXY[j].x, polyXY[j].y);
+      for (const p of pts) angles.push(Math.atan2(p.y, p.x));
+    }
+
+    if (angles.length < 2) continue;
+
+    // Normalise to [0, 2π], sort, deduplicate
+    angles = angles
+      .map(a => ((a % (2*Math.PI)) + 2*Math.PI) % (2*Math.PI))
+      .sort((a, b) => a - b)
+      .filter((a, i, arr) => i === 0 || Math.abs(a - arr[i-1]) > 1e-9);
+
+    const m = angles.length;
+    for (let i = 0; i < m; i++) {
+      const a1   = angles[i];
+      const a2   = (i < m-1) ? angles[i+1] : angles[0] + 2*Math.PI;
+      const midA = (a1 + a2) / 2;
+      const midX = radiusM * Math.cos(midA);
+      const midY = radiusM * Math.sin(midA);
+      const span = a2 - a1;
+
+      if (ptInPolyXY(midX, midY, polyXY) && (!best || span > best.span)) {
+        best = { midX, midY, span };
+      }
+    }
+  }
+
+  if (!best) return null;
+  return { lat: refLat + best.midY/LAT_M, lng: refLng + best.midX/LNG_M };
+}
+
 function redrawAllSpines() {
   // Remove existing spine layers
   Object.values(spinePolyLayers).forEach(l => l.remove());
@@ -1744,6 +1827,26 @@ function initMeasurementMarker(hole) {
       Math.round(distToTee) + 'm from tee &nbsp;|&nbsp; ' + Math.round(distToGreen) + 'm to green',
       { permanent: true, direction: 'top', offset: [0, -10] }
     ).openTooltip();
+
+    // Arc midpoints: where each ring crosses the centre of the fairway width
+    const holePolys = fairwayPolygons[hole];
+    if (holePolys && holePolys.length > 0) {
+      const teeMid  = fairwayArcMidpoint({ lat: tee.lat,   lng: tee.lng   }, distToTee,   holePolys);
+      const greenMid = fairwayArcMidpoint({ lat: front.lat, lng: front.lng }, distToGreen, holePolys);
+      const dot = (color) => ({
+        radius: 6, color: '#fff', fillColor: color, fillOpacity: 1, weight: 2, interactive: false
+      });
+      if (teeMid) {
+        liveRingLayers.push(
+          L.circleMarker([teeMid.lat, teeMid.lng], dot('#888888')).addTo(map)
+        );
+      }
+      if (greenMid) {
+        liveRingLayers.push(
+          L.circleMarker([greenMid.lat, greenMid.lng], dot('#f39c12')).addTo(map)
+        );
+      }
+    }
   });
 }
 
