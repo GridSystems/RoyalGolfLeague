@@ -1717,6 +1717,11 @@ function setSpineDrawBar() {
     `<button onclick="cancelSpine()" ${btn('background:#e94560;color:#fff')}>✕ Cancel</button>`;
 }
 
+// Spine handler stubs — full implementations added in Task 6
+function finishSpine() { console.warn('finishSpine: stub'); }
+function clearSpineWaypoints() { console.warn('clearSpineWaypoints: stub'); }
+function cancelSpine() { console.warn('cancelSpine: stub'); }
+
 function startDrawFairway(hole, idx) {
   // Exit any active mode first
   if (fairwaySelectHole !== null) _exitFairwaySelectMode();
