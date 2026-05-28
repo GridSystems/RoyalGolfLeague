@@ -1648,17 +1648,17 @@ function ptInPolyXY(px, py, polyXY) {
   return inside;
 }
 
-// Find the midpoint of the arc where a circle (centred at centerLL, radius radiusM metres)
-// intersects the fairway polygons for a hole. Returns {lat,lng} or null if no intersection.
-// Picks the arc with the largest angular span that falls inside the fairway.
-function fairwayArcMidpoint(centerLL, radiusM, polygons) {
+// Find the arc where a circle (centred at centerLL, radius radiusM metres) crosses the fairway.
+// Returns { a1, a2, midX, midY, refLat, refLng, LAT_M, LNG_M, radiusM } for the widest
+// inside-fairway arc segment, or null if no intersection found.
+function fairwayArcInfo(centerLL, radiusM, polygons) {
   if (!polygons || polygons.length === 0) return null;
   const refLat = centerLL.lat, refLng = centerLL.lng;
   const LAT_M  = 111320;
   const LNG_M  = 111320 * Math.cos(refLat * Math.PI / 180);
   function toXY(v) { return { x: (v[1]-refLng)*LNG_M, y: (v[0]-refLat)*LAT_M }; }
 
-  let best = null; // { midX, midY, span }
+  let best = null; // { a1, a2, midX, midY, span }
 
   for (const poly of polygons) {
     const polyXY = poly.map(toXY);
@@ -1690,13 +1690,26 @@ function fairwayArcMidpoint(centerLL, radiusM, polygons) {
       const span = a2 - a1;
 
       if (ptInPolyXY(midX, midY, polyXY) && (!best || span > best.span)) {
-        best = { midX, midY, span };
+        best = { a1, a2, midX, midY, span };
       }
     }
   }
 
   if (!best) return null;
-  return { lat: refLat + best.midY/LAT_M, lng: refLng + best.midX/LNG_M };
+  return { a1: best.a1, a2: best.a2, midX: best.midX, midY: best.midY,
+           refLat, refLng, LAT_M, LNG_M, radiusM };
+}
+
+// Convert arc info into an array of [lat, lng] points for L.polyline.
+function arcToLatLngs(info, numPts = 32) {
+  const { a1, a2, refLat, refLng, LAT_M, LNG_M, radiusM } = info;
+  const pts = [];
+  for (let i = 0; i <= numPts; i++) {
+    const a = a1 + (a2 - a1) * i / numPts;
+    pts.push([refLat + radiusM * Math.sin(a) / LAT_M,
+              refLng + radiusM * Math.cos(a) / LNG_M]);
+  }
+  return pts;
 }
 
 function redrawAllSpines() {
@@ -1808,45 +1821,62 @@ function initMeasurementMarker(hole) {
     liveRingLayers.forEach(l => l.remove());
     liveRingLayers = [];
 
-    // Ring from tee
-    liveRingLayers.push(
-      L.circle([tee.lat, tee.lng], {
-        radius: distToTee, color: '#888888', weight: 2, fillOpacity: 0, interactive: false
-      }).addTo(map)
-    );
+    const holePolys = fairwayPolygons[hole];
+    const dot = (color) => ({
+      radius: 6, color: '#fff', fillColor: color, fillOpacity: 1, weight: 2, interactive: false
+    });
 
-    // Ring from green front
-    liveRingLayers.push(
-      L.circle([front.lat, front.lng], {
-        radius: distToGreen, color: '#f39c12', weight: 2, fillOpacity: 0, interactive: false
-      }).addTo(map)
-    );
+    // Tee arc — clipped to fairway width if polygon exists, full circle fallback
+    const teeArcInfo = (holePolys && holePolys.length > 0)
+      ? fairwayArcInfo({ lat: tee.lat, lng: tee.lng }, distToTee, holePolys)
+      : null;
+    if (teeArcInfo) {
+      liveRingLayers.push(
+        L.polyline(arcToLatLngs(teeArcInfo), { color: '#888888', weight: 2, interactive: false }).addTo(map)
+      );
+      liveRingLayers.push(
+        L.circleMarker(
+          [teeArcInfo.refLat + teeArcInfo.midY / teeArcInfo.LAT_M,
+           teeArcInfo.refLng + teeArcInfo.midX / teeArcInfo.LNG_M],
+          dot('#888888')
+        ).addTo(map)
+      );
+    } else {
+      liveRingLayers.push(
+        L.circle([tee.lat, tee.lng], {
+          radius: distToTee, color: '#888888', weight: 2, fillOpacity: 0, interactive: false
+        }).addTo(map)
+      );
+    }
+
+    // Green arc — clipped to fairway width if polygon exists, full circle fallback
+    const greenArcInfo = (holePolys && holePolys.length > 0)
+      ? fairwayArcInfo({ lat: front.lat, lng: front.lng }, distToGreen, holePolys)
+      : null;
+    if (greenArcInfo) {
+      liveRingLayers.push(
+        L.polyline(arcToLatLngs(greenArcInfo), { color: '#f39c12', weight: 2, interactive: false }).addTo(map)
+      );
+      liveRingLayers.push(
+        L.circleMarker(
+          [greenArcInfo.refLat + greenArcInfo.midY / greenArcInfo.LAT_M,
+           greenArcInfo.refLng + greenArcInfo.midX / greenArcInfo.LNG_M],
+          dot('#f39c12')
+        ).addTo(map)
+      );
+    } else {
+      liveRingLayers.push(
+        L.circle([front.lat, front.lng], {
+          radius: distToGreen, color: '#f39c12', weight: 2, fillOpacity: 0, interactive: false
+        }).addTo(map)
+      );
+    }
 
     // Label on the marker
     measureMarker.bindTooltip(
       Math.round(distToTee) + 'm from tee &nbsp;|&nbsp; ' + Math.round(distToGreen) + 'm to green',
       { permanent: true, direction: 'top', offset: [0, -10] }
     ).openTooltip();
-
-    // Arc midpoints: where each ring crosses the centre of the fairway width
-    const holePolys = fairwayPolygons[hole];
-    if (holePolys && holePolys.length > 0) {
-      const teeMid  = fairwayArcMidpoint({ lat: tee.lat,   lng: tee.lng   }, distToTee,   holePolys);
-      const greenMid = fairwayArcMidpoint({ lat: front.lat, lng: front.lng }, distToGreen, holePolys);
-      const dot = (color) => ({
-        radius: 6, color: '#fff', fillColor: color, fillOpacity: 1, weight: 2, interactive: false
-      });
-      if (teeMid) {
-        liveRingLayers.push(
-          L.circleMarker([teeMid.lat, teeMid.lng], dot('#888888')).addTo(map)
-        );
-      }
-      if (greenMid) {
-        liveRingLayers.push(
-          L.circleMarker([greenMid.lat, greenMid.lng], dot('#f39c12')).addTo(map)
-        );
-      }
-    }
   });
 }
 
