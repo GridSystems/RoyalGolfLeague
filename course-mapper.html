@@ -2001,7 +2001,6 @@ function _exitSpineMode() {
 
   drawingSpine   = null;
   spineWaypoints = [];
-  spineWptMarkers = [];
 
   document.getElementById('map').classList.remove('draw-mode');
   document.getElementById('drawBar').style.display = 'none';
@@ -2047,6 +2046,7 @@ function clearSpineWaypoints() {
 }
 
 async function deleteSpine(hole) {
+  if (drawingSpine === hole) _exitSpineMode();
   delete fairwaySpines[hole];
   saveAll();
   if (spinePolyLayers[hole]) { spinePolyLayers[hole].remove(); delete spinePolyLayers[hole]; }
