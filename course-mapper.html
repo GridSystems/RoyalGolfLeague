@@ -1048,7 +1048,7 @@ function togglePinMode() {
 
 // ── Green polygon drawing ──────────────────────────────────────────────────
 function startDrawGreen(hole) {
-  if (drawingSpine !== null) { _exitSpineMode(); redrawAllSpines(); }
+  if (drawingSpine !== null) cancelSpine();
   if (pinMode) togglePinMode();
   closePanel();
   if (teeDrawHole !== null) _exitTeeMode(); // exit tee mode before entering green draw
@@ -1367,16 +1367,7 @@ function _exitDrawMode() {
   drawingGreen      = null;
   drawingFairway    = null;
   drawingFairwayIdx = null;
-  // Spine state — reset if active (spine has its own _exitSpineMode but guard here too)
-  if (drawingSpine !== null) {
-    if (spineEditPolyLayer) { spineEditPolyLayer.remove(); spineEditPolyLayer = null; }
-    spineAnchorMarkers.forEach(m => m.remove()); spineAnchorMarkers = [];
-    spineWptMarkers.forEach(m => m.remove());    spineWptMarkers    = [];
-    distRingLayers.forEach(l => l.remove());     distRingLayers     = [];
-    liveRingLayers.forEach(l => l.remove());     liveRingLayers     = [];
-    if (measureMarker) { measureMarker.remove(); measureMarker = null; }
-    drawingSpine = null; spineWaypoints = [];
-  }
+  if (drawingSpine !== null) { _exitSpineMode(); }
   detectMode = false;
   detectCanvas = null;
   detectTileX = null; detectTileY = null;
