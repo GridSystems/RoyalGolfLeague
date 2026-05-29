@@ -2049,6 +2049,7 @@ function setSpineDrawBar() {
   const bar = document.getElementById('drawBar');
   const hole = drawingSpine;
   const n    = spineWaypoints.length;
+  const hasPolygon = (fairwayPolygons[hole] || []).length > 0;
   const btn  = s => `style="padding:5px 12px;border-radius:5px;border:none;font-size:12px;font-weight:700;cursor:pointer;${s}"`;
   const label = n === 0
     ? `<span style="color:#17a2b8;font-weight:600">Spine ${hole} — straight</span>`
@@ -2057,6 +2058,7 @@ function setSpineDrawBar() {
     label +
     `<button onclick="finishSpine()" ${btn('background:#2ecc71;color:#000')}>✓ Finish</button>` +
     `<button onclick="clearSpineWaypoints()" ${btn('background:#555;color:#eee')}>🗑 Clear</button>` +
+    (hasPolygon ? `<button onclick="resetSpineToAuto()" ${btn('background:#17a2b8;color:#000')}>↺ Auto</button>` : '') +
     `<button onclick="cancelSpine()" ${btn('background:#e94560;color:#fff')}>✕ Cancel</button>`;
 }
 
