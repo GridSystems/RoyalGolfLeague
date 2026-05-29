@@ -2193,6 +2193,10 @@ function startSpineMode(hole) {
 
   drawingSpine   = hole;
   spineWaypoints = (fairwaySpines[hole] || []).map(v => [...v]); // working copy
+  // Auto-compute spine from fairway polygon when no saved spine exists
+  if (spineWaypoints.length === 0 && (fairwayPolygons[hole] || []).length > 0) {
+    spineWaypoints = autoComputeSpine(hole);
+  }
 
   // Hide saved spine for this hole while editing (edit polyline replaces it)
   if (spinePolyLayers[hole]) { spinePolyLayers[hole].remove(); delete spinePolyLayers[hole]; }
@@ -2272,6 +2276,12 @@ async function finishSpine() {
 
 function clearSpineWaypoints() {
   spineWaypoints = [];
+  redrawEditSpine();
+  setSpineDrawBar();
+}
+
+function resetSpineToAuto() {
+  spineWaypoints = autoComputeSpine(drawingSpine);
   redrawEditSpine();
   setSpineDrawBar();
 }
