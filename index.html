@@ -1611,7 +1611,7 @@ function ringFairwayIntersections(playerLat, playerLng, radiusM, polys, greenBrg
 function toggleDistRings(){
   if(!GR||!GR.map)return;
   if(GR.distRings){
-    if(GR._distRingMoveHandler){GR.map.off('moveend',GR._distRingMoveHandler);GR._distRingMoveHandler=null;}
+    if(GR._distRingMoveHandler){GR.map.off('move',GR._distRingMoveHandler);GR._distRingMoveHandler=null;}
     GR.distRingLayers.forEach(l=>l.remove());
     GR.distRingLayers=[];GR.distRingLabelMarkers=[];
     GR.distRings=false;
@@ -1648,7 +1648,7 @@ function bestLabelPos(lat,lng,radiusM,brg,bounds,offsetM){
   return pointAtBearingDist(lat,lng,brg,radiusM+offsetM); // fallback: aim bearing
 }
 function drawDistRings(refit=true){
-  if(GR._distRingMoveHandler){GR.map&&GR.map.off('moveend',GR._distRingMoveHandler);GR._distRingMoveHandler=null;}
+  if(GR._distRingMoveHandler){GR.map&&GR.map.off('move',GR._distRingMoveHandler);GR._distRingMoveHandler=null;}
   (GR.distRingLayers||[]).forEach(l=>l.remove());
   GR.distRingLayers=[];GR.distRingLabelMarkers=[];
   if(!GR.distRings||!GR.currentLat||!GR.currentLng||!GR.map)return;
@@ -1660,11 +1660,18 @@ function drawDistRings(refit=true){
   const pLL=[GR.currentLat,GR.currentLng];
   const startU=Math.max(interval,centre-50);
   const endU=centre+50;
-  // Aim bearing towards green
-  const _hd=HOLE_DATA[GR.currentHole-1];
-  const _sp=(GR.surveyPoints||[]).filter(p=>p.hole===GR.currentHole&&['mid_green','front_green','back_green'].includes(p.type));
-  const _target=(_sp.find(p=>p.type==='mid_green')||_sp[0])||(_hd&&_hd.green?_hd.green:null);
-  const brg=_target?bearingDeg(GR.currentLat,GR.currentLng,_target.lat,_target.lng):0;
+  // Aim bearing: player → map centre; fall back to green bearing if player is at map centre (<1m)
+  const mc=GR.map.getCenter();
+  const distToMc=haversineM(GR.currentLat,GR.currentLng,mc.lat,mc.lng);
+  let brg;
+  if(distToMc<1){
+    const _hd=HOLE_DATA[GR.currentHole-1];
+    const _sp=(GR.surveyPoints||[]).filter(p=>p.hole===GR.currentHole&&['mid_green','front_green','back_green'].includes(p.type));
+    const _target=(_sp.find(p=>p.type==='mid_green')||_sp[0])||(_hd&&_hd.green?_hd.green:null);
+    brg=_target?bearingDeg(GR.currentLat,GR.currentLng,_target.lat,_target.lng):0;
+  }else{
+    brg=bearingDeg(GR.currentLat,GR.currentLng,mc.lat,mc.lng);
+  }
   // Fairway polygon patches for current hole
   const fwPolys=fairwayPolygons[GR.currentHole]||[];
   let outerLeft=null,outerRight=null;
@@ -1728,15 +1735,9 @@ function drawDistRings(refit=true){
     const deg=maxRadM/111320;
     GR.map.fitBounds([[GR.currentLat-deg,GR.currentLng-deg],[GR.currentLat+deg,GR.currentLng+deg]],{padding:[20,20]});
   }
-  // Reposition labels on pan
-  GR._distRingMoveHandler=()=>{
-    if(!GR||!GR.map||!GR.distRings)return;
-    const bounds=GR.map.getBounds();
-    GR.distRingLabelMarkers.forEach(({marker,radiusM})=>{
-      marker.setLatLng(bestLabelPos(GR.currentLat,GR.currentLng,radiusM,brg,bounds,offsetM));
-    });
-  };
-  GR.map.on('moveend',GR._distRingMoveHandler);
+  // Redraw rings (including cone direction) on any pan
+  GR._distRingMoveHandler=()=>{ if(GR&&GR.distRings)drawDistRings(false); };
+  GR.map.on('move',GR._distRingMoveHandler);
 }
 function shiftDistRings(delta){
   if(!GR)return;
