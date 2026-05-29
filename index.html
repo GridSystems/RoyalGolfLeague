@@ -762,6 +762,7 @@ let GR = null;
 let gpsWatchId = null;
 let gpsWatchTimeout = null;
 let greenPolygons = {};  // {hole: [[lat,lng],...]} loaded from Supabase
+let fairwayPolygons = {}; // {hole: [[[lat,lng],...], ...]} — array of polygon patches per hole
 // Course bounding box — furthest holes + ~350m buffer in each direction
 const COURSE_BOUNDS = {south:55.6273, north:55.6419, west:12.5533, east:12.5774};
 const GPS_WATCH_MAX_MS  = 6 * 60 * 60 * 1000; // 6 hours
@@ -854,7 +855,7 @@ function calcHolePoints(round,player){const tee=getTee(round.tee_id||'platinum')
 
 // ── Storage ───────────────────────────────────────────────────────────────────
 let pendingPlayers=[];
-async function loadData(){const all=await sbGet('players','order=created_at.asc');pendingPlayers=all.filter(p=>p.approved===false);players=all.filter(p=>p.approved!==false);allRounds=await sbGet('rounds','order=date.desc');fineTypes=await sbGet('fine_types','order=name.asc');allFines=await sbGet('fines','order=created_at.desc');try{saturdayEvents=await sbGet('saturday_events','order=date.asc');}catch(e){saturdayEvents=[];}try{saturdaySignups=await sbGet('saturday_signups','order=created_at.asc');}catch(e){saturdaySignups=[];}try{const pg=await sbGet('green_polygons','');greenPolygons={};pg.forEach(r=>{greenPolygons[r.hole]=r.vertices;});}catch(e){console.warn('green_polygons load failed:',e);}}
+async function loadData(){const all=await sbGet('players','order=created_at.asc');pendingPlayers=all.filter(p=>p.approved===false);players=all.filter(p=>p.approved!==false);allRounds=await sbGet('rounds','order=date.desc');fineTypes=await sbGet('fine_types','order=name.asc');allFines=await sbGet('fines','order=created_at.desc');try{saturdayEvents=await sbGet('saturday_events','order=date.asc');}catch(e){saturdayEvents=[];}try{saturdaySignups=await sbGet('saturday_signups','order=created_at.asc');}catch(e){saturdaySignups=[];}try{const pg=await sbGet('green_polygons','');greenPolygons={};pg.forEach(r=>{greenPolygons[r.hole]=r.vertices;});}catch(e){console.warn('green_polygons load failed:',e);}try{const fp=await sbGet('fairway_polygons','');fairwayPolygons={};fp.forEach(r=>{fairwayPolygons[r.hole]=r.polygons;});}catch(e){console.warn('fairway_polygons load failed:',e);}}
 
 // ── Admin ─────────────────────────────────────────────────────────────────────
 function adminPlayer(){return players.find(p=>p.is_admin)||players[0];}
