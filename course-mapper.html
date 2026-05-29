@@ -2281,6 +2281,7 @@ function clearSpineWaypoints() {
 }
 
 function resetSpineToAuto() {
+  if (drawingSpine === null) return;
   spineWaypoints = autoComputeSpine(drawingSpine);
   redrawEditSpine();
   setSpineDrawBar();
