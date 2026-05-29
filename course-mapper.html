@@ -1712,6 +1712,93 @@ function arcToLatLngs(info, numPts = 32) {
   return pts;
 }
 
+// ── Auto-compute spine constants ─────────────────────────────────────────
+const SPINE_STEP_M     = 15;   // cross-section sample interval (metres)
+const SPINE_DP_EPS_M   = 4;    // Douglas-Peucker simplification threshold (metres)
+const SPINE_MAX_HALF_W = 120;  // max perpendicular search distance (metres)
+
+// Douglas-Peucker simplification for 2D points in local metres [[x,y], ...].
+function dpSimplify2D(pts, eps) {
+  if (pts.length < 3) return pts.slice();
+  let maxD = 0, idx = 0;
+  const [x1, y1] = pts[0], [x2, y2] = pts[pts.length - 1];
+  const dx = x2 - x1, dy = y2 - y1, len = Math.sqrt(dx * dx + dy * dy);
+  for (let i = 1; i < pts.length - 1; i++) {
+    const d = len < 1e-9
+      ? Math.hypot(pts[i][0] - x1, pts[i][1] - y1)
+      : Math.abs(dy * pts[i][0] - dx * pts[i][1] + x2 * y1 - y2 * x1) / len;
+    if (d > maxD) { maxD = d; idx = i; }
+  }
+  if (maxD <= eps) return [pts[0], pts[pts.length - 1]];
+  return [
+    ...dpSimplify2D(pts.slice(0, idx + 1), eps).slice(0, -1),
+    ...dpSimplify2D(pts.slice(idx), eps)
+  ];
+}
+
+// Auto-compute fairway spine waypoints from the fairway polygon(s) for a hole.
+// Samples perpendicular cross-sections every SPINE_STEP_M metres along the
+// tee→green axis, finds the left+right fairway boundary intersections,
+// takes their midpoint, then Douglas-Peucker simplifies the result.
+// Returns [[lat,lng], ...] waypoints (empty array = straight-line spine).
+function autoComputeSpine(hole) {
+  const tee   = HOLE_TEES[hole - 1];
+  const green = greenCentroid(hole);
+  const polys = fairwayPolygons[hole];
+  if (!tee || !green || !polys || polys.length === 0) return [];
+
+  const refLat = tee.lat, refLng = tee.lng;
+  const LAT_M  = 111320;
+  const LNG_M  = 111320 * Math.cos(refLat * Math.PI / 180);
+
+  function toXY(lat, lng) { return [(lng - refLng) * LNG_M, (lat - refLat) * LAT_M]; }
+  function toLL(x, y)     { return [refLat + y / LAT_M, refLng + x / LNG_M]; }
+
+  const [tx, ty] = toXY(tee.lat, tee.lng);       // [0, 0] — origin is tee
+  const [gx, gy] = toXY(green.lat, green.lng);
+  const totalLen = Math.hypot(gx - tx, gy - ty);
+  if (totalLen < 1) return [];
+
+  const ux = (gx - tx) / totalLen, uy = (gy - ty) / totalLen; // unit along axis
+  const px = -uy, py = ux;                                     // unit perpendicular (left)
+
+  // Pre-convert all polygon vertices to local XY
+  const allPolyVerts = polys.map(poly => poly.map(v => toXY(v[0], v[1])));
+
+  const raw = []; // [[x, y], ...]
+
+  for (let d = SPINE_STEP_M; d < totalLen - SPINE_STEP_M; d += SPINE_STEP_M) {
+    const ax = tx + ux * d;
+    const ay = ty + uy * d;
+    const tHits = [];
+
+    for (const polyVerts of allPolyVerts) {
+      const n = polyVerts.length;
+      for (let i = 0; i < n; i++) {
+        const [e1x, e1y] = polyVerts[i];
+        const [e2x, e2y] = polyVerts[(i + 1) % n];
+        const edx = e2x - e1x, edy = e2y - e1y;
+        const rx1 = e1x - ax,  ry1 = e1y - ay;
+        const det = edx * py - edy * px;
+        if (Math.abs(det) < 1e-10) continue; // edge parallel to perpendicular
+        const t = (edx * ry1 - edy * rx1) / det;
+        const s = (px  * ry1 - py  * rx1) / det;
+        if (s >= 0 && s <= 1) tHits.push(t);
+      }
+    }
+
+    if (tHits.length < 2) continue; // perpendicular misses the fairway here
+    const tMin = Math.min(...tHits), tMax = Math.max(...tHits);
+    if (tMax - tMin > SPINE_MAX_HALF_W * 2) continue; // unreasonably wide — skip
+    const tMid = (tMin + tMax) / 2;
+    raw.push([ax + tMid * px, ay + tMid * py]);
+  }
+
+  if (raw.length < 2) return [];
+  const simplified = dpSimplify2D(raw, SPINE_DP_EPS_M);
+  return simplified.map(([x, y]) => toLL(x, y));
+}
+
 function redrawAllSpines() {
   // Remove existing spine layers
   Object.values(spinePolyLayers).forEach(l => l.remove());
