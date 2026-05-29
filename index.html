@@ -1126,7 +1126,7 @@ async function startGpsRound(){
       pendingShot:null,chipAndPutt:false,scoringForIds:[..._gpsScoreForIds],_pendingFinish:false,
       holeScores:{},provisionalShotId:null,
       map:null,markers:[],polylines:[],shots:[],surveyPoints:[],greenZoom:false,greenLayers:[],greenLabelMarkers:[],_greenMoveHandler:null,
-      distRings:false,distRingLayers:[],distRingLabelMarkers:[],distRingCentre:150,distRingInterval:10,_distRingMoveHandler:null,
+      distRings:false,distRingLayers:[],distRingLabelMarkers:[],distRingCentre:150,distRingInterval:10,_distRingMoveHandler:null,_distRingMoveTimer:null,
       playerDot:null
     };
     try{
@@ -1612,6 +1612,7 @@ function toggleDistRings(){
   if(!GR||!GR.map)return;
   if(GR.distRings){
     if(GR._distRingMoveHandler){GR.map.off('move',GR._distRingMoveHandler);GR._distRingMoveHandler=null;}
+    clearTimeout(GR._distRingMoveTimer);GR._distRingMoveTimer=null;
     GR.distRingLayers.forEach(l=>l.remove());
     GR.distRingLayers=[];GR.distRingLabelMarkers=[];
     GR.distRings=false;
@@ -1736,7 +1737,7 @@ function drawDistRings(refit=true){
     GR.map.fitBounds([[GR.currentLat-deg,GR.currentLng-deg],[GR.currentLat+deg,GR.currentLng+deg]],{padding:[20,20]});
   }
   // Redraw rings (including cone direction) on any pan
-  GR._distRingMoveHandler=()=>{ if(GR&&GR.distRings)drawDistRings(false); };
+  GR._distRingMoveHandler=()=>{ if(!GR||!GR.distRings)return; clearTimeout(GR._distRingMoveTimer); GR._distRingMoveTimer=setTimeout(()=>{ if(GR&&GR.distRings)drawDistRings(false); },100); };
   GR.map.on('move',GR._distRingMoveHandler);
 }
 function shiftDistRings(delta){
