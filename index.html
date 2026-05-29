@@ -1169,7 +1169,7 @@ function startGpsWatch(){
       // Persistent player dot — create on first fix, update position on subsequent fixes
       if(GR.map){
         if(!GR.playerDot){
-          GR.playerDot=L.circleMarker([lat,lng],{radius:7,color:'#fff',weight:2,fillColor:'#4A90E2',fillOpacity:0.9,interactive:false,zIndexOffset:500}).addTo(GR.map);
+          GR.playerDot=L.circleMarker([lat,lng],{radius:7,color:'#fff',weight:2,fillColor:'#4A90E2',fillOpacity:0.9,interactive:false}).addTo(GR.map);
         }else{
           GR.playerDot.setLatLng([lat,lng]);
         }
@@ -1385,6 +1385,10 @@ function initGpsMap(holeShots){
   // GPS position is maintained by the continuous watchPosition (startGpsWatch).
   // Centre map on current known position if already acquired.
   if(GR.currentLat&&GR.map)GR.map.setView([GR.currentLat,GR.currentLng],18);
+  // Recreate persistent player dot immediately if position is already known
+  if(GR.currentLat!=null&&GR.map&&!GR.playerDot){
+    GR.playerDot=L.circleMarker([GR.currentLat,GR.currentLng],{radius:7,color:'#fff',weight:2,fillColor:'#4A90E2',fillOpacity:0.9,interactive:false}).addTo(GR.map);
+  }
   drawShotMap(holeShots);
   if(GR.distRings)drawDistRings();
 }
@@ -1741,6 +1745,8 @@ function drawDistRings(refit=true){
   // Redraw rings (including cone direction) on any pan
   GR._distRingMoveHandler=()=>{ if(!GR||!GR.distRings)return; clearTimeout(GR._distRingMoveTimer); GR._distRingMoveTimer=setTimeout(()=>{ if(GR&&GR.distRings)drawDistRings(false); },100); };
   GR.map.on('move',GR._distRingMoveHandler);
+  // Ensure player dot stays on top of ring layers
+  if(GR.playerDot)GR.playerDot.bringToFront();
 }
 function shiftDistRings(delta){
   if(!GR)return;
