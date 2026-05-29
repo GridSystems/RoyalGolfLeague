@@ -1126,7 +1126,8 @@ async function startGpsRound(){
       pendingShot:null,chipAndPutt:false,scoringForIds:[..._gpsScoreForIds],_pendingFinish:false,
       holeScores:{},provisionalShotId:null,
       map:null,markers:[],polylines:[],shots:[],surveyPoints:[],greenZoom:false,greenLayers:[],greenLabelMarkers:[],_greenMoveHandler:null,
-      distRings:false,distRingLayers:[],distRingLabelMarkers:[],distRingCentre:150,distRingInterval:10,_distRingMoveHandler:null
+      distRings:false,distRingLayers:[],distRingLabelMarkers:[],distRingCentre:150,distRingInterval:10,_distRingMoveHandler:null,
+      playerDot:null
     };
     try{
       GR.shots=await sbGet('gps_shots',`player_id=eq.${activeId}&round_date=eq.${date}&order=hole.asc,shot_num.asc`);
@@ -1165,6 +1166,14 @@ function startGpsWatch(){
       GR.currentAccuracy=pos.coords.accuracy;
       // Centre map once on first watch fix
       if(firstFix&&GR.map)GR.map.setView([GR.currentLat,GR.currentLng],18);
+      // Persistent player dot — create on first fix, update position on subsequent fixes
+      if(GR.map){
+        if(!GR.playerDot){
+          GR.playerDot=L.circleMarker([lat,lng],{radius:7,color:'#fff',weight:2,fillColor:'#4A90E2',fillOpacity:0.9,interactive:false,zIndexOffset:500}).addTo(GR.map);
+        }else{
+          GR.playerDot.setLatLng([lat,lng]);
+        }
+      }
       // Update distance-to-green badge
       const distBadge=document.getElementById('gpsDist');
       if(distBadge){const d=distToGreen(GR.currentHole,GR.currentLat,GR.currentLng);if(d!=null)distBadge.textContent=dispDist(d)+' ⛳';}
@@ -1196,6 +1205,7 @@ function startGpsWatch(){
 function stopGpsWatch(){
   if(gpsWatchId!==null){navigator.geolocation.clearWatch(gpsWatchId);gpsWatchId=null;}
   if(gpsWatchTimeout!==null){clearTimeout(gpsWatchTimeout);gpsWatchTimeout=null;}
+  if(GR&&GR.playerDot){GR.playerDot.remove();GR.playerDot=null;}
 }
 // Pause GPS watch when screen locks or app is backgrounded, resume on return
 document.addEventListener('visibilitychange',()=>{
@@ -1702,8 +1712,6 @@ function drawDistRings(refit=true){
     GR.distRingLayers.push(L.polyline([pLL,pointAtBearingDist(GR.currentLat,GR.currentLng,(brg-15+360)%360,coneDistM)],{color:'rgba(255,255,255,0.18)',weight:1,dashArray:'4,8',interactive:false}).addTo(GR.map));
     GR.distRingLayers.push(L.polyline([pLL,pointAtBearingDist(GR.currentLat,GR.currentLng,(brg+15)%360,coneDistM)],{color:'rgba(255,255,255,0.18)',weight:1,dashArray:'4,8',interactive:false}).addTo(GR.map));
   }
-  // Player dot
-  GR.distRingLayers.push(L.circleMarker(pLL,{radius:6,color:'#fff',weight:2,fillColor:'#fff',fillOpacity:0.9,interactive:false}).addTo(GR.map));
   // Green distance pin at green polygon centroid
   const greenCent=gpsGreenCentroid(GR.currentHole);
   if(greenCent){
