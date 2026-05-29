@@ -1655,17 +1655,35 @@ function drawDistRings(refit=true){
   const _sp=(GR.surveyPoints||[]).filter(p=>p.hole===GR.currentHole&&['mid_green','front_green','back_green'].includes(p.type));
   const _target=(_sp.find(p=>p.type==='mid_green')||_sp[0])||(_hd&&_hd.green?_hd.green:null);
   const brg=_target?bearingDeg(GR.currentLat,GR.currentLng,_target.lat,_target.lng):0;
+  // Fairway polygon patches for current hole
+  const fwPolys=fairwayPolygons[GR.currentHole]||[];
+  let outerLeft=null,outerRight=null;
   let ri=0;
   for(let u=Math.ceil(startU/interval)*interval;u<=endU;u+=interval){
     const radiusM=isYd?u*YD:u;
     const isCentre=u===centre;
-    // Dim full ring in ring's colour
+    // Dim full ring
     GR.distRingLayers.push(L.circle(pLL,{radius:radiusM,color:ringCol(ri,isCentre?0.35:0.18),weight:1,fill:false,dashArray:'3,10',interactive:false}).addTo(GR.map));
-    // Bright cone arc on this ring
-    GR.distRingLayers.push(L.polyline(arcPoints(GR.currentLat,GR.currentLng,radiusM,brg-15,brg+15),{
-      color:ringCol(ri,isCentre?1:0.7),weight:isCentre?3:2,fill:false,interactive:false
-    }).addTo(GR.map));
-    // Label — starts at best visible position, repositioned on scroll
+    // Try fairway-width arc; fall back to fixed ±15°
+    const fw=fwPolys.length>0?ringFairwayIntersections(GR.currentLat,GR.currentLng,radiusM,fwPolys,brg):null;
+    if(fw){
+      const brgL=bearingDeg(GR.currentLat,GR.currentLng,fw.left[0],fw.left[1]);
+      const brgR=bearingDeg(GR.currentLat,GR.currentLng,fw.right[0],fw.right[1]);
+      // Ensure arc goes clockwise from left to right (handle 0°/360° wrap)
+      const arcTo=brgR<brgL?brgR+360:brgR;
+      GR.distRingLayers.push(L.polyline(arcPoints(GR.currentLat,GR.currentLng,radiusM,brgL,arcTo),{
+        color:ringCol(ri,isCentre?1:0.7),weight:isCentre?3:2,fill:false,interactive:false
+      }).addTo(GR.map));
+      // Edge dots on the ring
+      GR.distRingLayers.push(L.circleMarker(fw.left,{radius:4,color:ringCol(ri,1),weight:2,fillColor:ringCol(ri,1),fillOpacity:1,interactive:false}).addTo(GR.map));
+      GR.distRingLayers.push(L.circleMarker(fw.right,{radius:4,color:ringCol(ri,1),weight:2,fillColor:ringCol(ri,1),fillOpacity:1,interactive:false}).addTo(GR.map));
+      outerLeft=fw.left;outerRight=fw.right;
+    }else{
+      GR.distRingLayers.push(L.polyline(arcPoints(GR.currentLat,GR.currentLng,radiusM,brg-15,brg+15),{
+        color:ringCol(ri,isCentre?1:0.7),weight:isCentre?3:2,fill:false,interactive:false
+      }).addTo(GR.map));
+    }
+    // Distance label
     const lblPt=bestLabelPos(GR.currentLat,GR.currentLng,radiusM,brg,GR.map.getBounds(),offsetM);
     const lbl=L.marker(lblPt,{
       icon:L.divIcon({className:'',html:`<div style="font-size:9px;color:${ringCol(ri,1)};font-weight:700;white-space:nowrap;text-shadow:0 1px 3px #000;background:rgba(0,0,0,0.65);padding:1px 4px;border-radius:3px;border:1px solid ${ringCol(ri,0.5)}">${u}${isYd?'y':'m'}</div>`,iconSize:[32,14],iconAnchor:[16,7]}),
@@ -1675,19 +1693,34 @@ function drawDistRings(refit=true){
     GR.distRingLabelMarkers.push({marker:lbl,radiusM});
     ri++;
   }
-  // Cone edge lines
+  // Cone edge lines — to fairway edges if found, else fixed ±15°
   const coneDistM=isYd?(endU+15)*YD:(endU+15);
-  GR.distRingLayers.push(L.polyline([pLL,pointAtBearingDist(GR.currentLat,GR.currentLng,(brg-15+360)%360,coneDistM)],{color:'rgba(255,255,255,0.18)',weight:1,dashArray:'4,8',interactive:false}).addTo(GR.map));
-  GR.distRingLayers.push(L.polyline([pLL,pointAtBearingDist(GR.currentLat,GR.currentLng,(brg+15)%360,coneDistM)],{color:'rgba(255,255,255,0.18)',weight:1,dashArray:'4,8',interactive:false}).addTo(GR.map));
+  if(outerLeft&&outerRight){
+    GR.distRingLayers.push(L.polyline([pLL,outerLeft],{color:'rgba(255,255,255,0.18)',weight:1,dashArray:'4,8',interactive:false}).addTo(GR.map));
+    GR.distRingLayers.push(L.polyline([pLL,outerRight],{color:'rgba(255,255,255,0.18)',weight:1,dashArray:'4,8',interactive:false}).addTo(GR.map));
+  }else{
+    GR.distRingLayers.push(L.polyline([pLL,pointAtBearingDist(GR.currentLat,GR.currentLng,(brg-15+360)%360,coneDistM)],{color:'rgba(255,255,255,0.18)',weight:1,dashArray:'4,8',interactive:false}).addTo(GR.map));
+    GR.distRingLayers.push(L.polyline([pLL,pointAtBearingDist(GR.currentLat,GR.currentLng,(brg+15)%360,coneDistM)],{color:'rgba(255,255,255,0.18)',weight:1,dashArray:'4,8',interactive:false}).addTo(GR.map));
+  }
   // Player dot
   GR.distRingLayers.push(L.circleMarker(pLL,{radius:6,color:'#fff',weight:2,fillColor:'#fff',fillOpacity:0.9,interactive:false}).addTo(GR.map));
-  // Fit map only on initial activation, not on shift/interval changes
+  // Green distance pin at green polygon centroid
+  const greenCent=gpsGreenCentroid(GR.currentHole);
+  if(greenCent){
+    const distM=haversineM(GR.currentLat,GR.currentLng,greenCent.lat,greenCent.lng);
+    const distDisplay=isYd?Math.round(distM/YD)+'y':Math.round(distM)+'m';
+    GR.distRingLayers.push(L.marker([greenCent.lat,greenCent.lng],{
+      icon:L.divIcon({className:'',html:`<div style="font-size:10px;color:rgba(255,208,55,1);font-weight:700;white-space:nowrap;text-shadow:0 1px 3px #000;background:rgba(0,0,0,0.75);padding:2px 5px;border-radius:4px;border:1px solid rgba(255,208,55,0.5)">${distDisplay} ⛳</div>`,iconSize:[52,16],iconAnchor:[26,8]}),
+      interactive:false,zIndexOffset:400
+    }).addTo(GR.map));
+  }
+  // Fit map on initial activation only
   if(refit){
     const maxRadM=isYd?(endU+15)*YD:(endU+15);
     const deg=maxRadM/111320;
     GR.map.fitBounds([[GR.currentLat-deg,GR.currentLng-deg],[GR.currentLat+deg,GR.currentLng+deg]],{padding:[20,20]});
   }
-  // Reposition labels whenever map is panned
+  // Reposition labels on pan
   GR._distRingMoveHandler=()=>{
     if(!GR||!GR.map||!GR.distRings)return;
     const bounds=GR.map.getBounds();
