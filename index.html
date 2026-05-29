@@ -1541,6 +1541,63 @@ function arcPoints(lat,lng,radiusM,fromBrg,toBrg,steps=20){
   }
   return pts;
 }
+// Returns the centroid of the green polygon for a hole, or HOLE_DATA fallback.
+function gpsGreenCentroid(hole) {
+  const poly = greenPolygons[hole];
+  if (poly && poly.length >= 3) {
+    const lat = poly.reduce((s, v) => s + v[0], 0) / poly.length;
+    const lng = poly.reduce((s, v) => s + v[1], 0) / poly.length;
+    return { lat, lng };
+  }
+  return HOLE_DATA[hole - 1]?.green || null;
+}
+
+// Finds where a ring circle (radius radiusM, centred on player) intersects the
+// fairway polygon boundary in the forward direction (within ±90° of greenBrg).
+// Returns { left: [lat,lng], right: [lat,lng] } or null if < 2 intersections found.
+function ringFairwayIntersections(playerLat, playerLng, radiusM, polys, greenBrg) {
+  const LAT_M = 111320;
+  const LNG_M = 111320 * Math.cos(playerLat * Math.PI / 180);
+  function toXY(lat, lng) { return [(lng - playerLng) * LNG_M, (lat - playerLat) * LAT_M]; }
+  function toLL(x, y)     { return [playerLat + y / LAT_M, playerLng + x / LNG_M]; }
+
+  const hits = [];
+  for (const poly of polys) {
+    const verts = poly.map(v => toXY(v[0], v[1]));
+    for (let i = 0; i < verts.length; i++) {
+      const [p1x, p1y] = verts[i];
+      const [p2x, p2y] = verts[(i + 1) % verts.length];
+      const dx = p2x - p1x, dy = p2y - p1y;
+      const a = dx * dx + dy * dy;
+      if (a < 1e-10) continue;
+      const b = 2 * (p1x * dx + p1y * dy);
+      const c = p1x * p1x + p1y * p1y - radiusM * radiusM;
+      const disc = b * b - 4 * a * c;
+      if (disc < 0) continue;
+      const sq = Math.sqrt(disc);
+      for (const s of [(-b - sq) / (2 * a), (-b + sq) / (2 * a)]) {
+        if (s < -1e-9 || s > 1 + 1e-9) continue;
+        hits.push(toLL(p1x + s * dx, p1y + s * dy));
+      }
+    }
+  }
+
+  // Keep only forward-facing hits (within ±90° of greenBrg)
+  const forward = hits.filter(([lat, lng]) => {
+    const diff = ((bearingDeg(playerLat, playerLng, lat, lng) - greenBrg + 540) % 360) - 180;
+    return Math.abs(diff) <= 90;
+  });
+  if (forward.length < 2) return null;
+
+  // Sort by signed bearing offset from greenBrg (negative = left, positive = right)
+  forward.sort((a, b) => {
+    const oa = ((bearingDeg(playerLat, playerLng, a[0], a[1]) - greenBrg + 540) % 360) - 180;
+    const ob = ((bearingDeg(playerLat, playerLng, b[0], b[1]) - greenBrg + 540) % 360) - 180;
+    return oa - ob;
+  });
+  return { left: forward[0], right: forward[forward.length - 1] };
+}
+
 function toggleDistRings(){
   if(!GR||!GR.map)return;
   if(GR.distRings){
