@@ -1277,7 +1277,7 @@ function enterChipAndPutt(){
 }
 function renderGpsHole(){
   // Green zoom layers are tied to the map instance — reset on every re-render
-  if(GR){GR.greenZoom=false;GR.greenLayers=[];GR.greenLabelMarkers=[];GR._greenMoveHandler=null;GR.distRingLayers=[];GR.distRingLabelMarkers=[];GR._distRingMoveHandler=null;}
+  if(GR){GR.greenZoom=false;GR.greenLayers=[];GR.greenLabelMarkers=[];GR._greenMoveHandler=null;GR.distRingLayers=[];GR.distRingLabelMarkers=[];GR._distRingMoveHandler=null;if(GR.playerDot){GR.playerDot.remove();GR.playerDot=null;}}
   const el=document.getElementById('trackContent');
   const p=players.find(x=>x.id===activeId);
   const holeShots=GR.shots.filter(s=>s.hole===GR.currentHole);
