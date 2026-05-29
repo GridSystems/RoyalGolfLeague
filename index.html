@@ -1358,6 +1358,8 @@ function renderGpsHole(){
         <button id="distRingIntervalBtn" class="btn btn-ghost btn-sm" onclick="cycleDistInterval()" style="min-width:48px">±${GR.distRingInterval}</button>
         <span style="font-size:0.7rem;color:rgba(255,255,255,0.3)">interval</span>
         <div style="width:1px;height:18px;background:rgba(255,255,255,0.12);margin:0 2px"></div>
+        <button class="btn btn-ghost btn-sm" onclick="if(GR&&GR.currentLat&&GR.map)GR.map.setView([GR.currentLat,GR.currentLng])" style="min-width:44px" title="Re-centre on me">📍 Me</button>
+        <div style="width:1px;height:18px;background:rgba(255,255,255,0.12);margin:0 2px"></div>
         <span id="gpsAccBadge" style="font-size:0.75rem;font-weight:600;color:${GR.currentAccuracy!=null?(GR.currentAccuracy<=5?'rgba(127,204,158,0.9)':'rgba(240,180,60,0.9)'):'rgba(255,255,255,0.3)'}">${GR.currentAccuracy!=null?`📍 ±${Math.round(GR.currentAccuracy)}m`:'📍 …'}</span>
       </div>`:GR.greenZoom?`<div style="display:flex;gap:8px;align-items:center;padding:6px 12px;background:rgba(46,204,113,0.06);border-top:1px solid rgba(46,204,113,0.18)">
         <span id="gpsAccBadge" style="font-size:0.75rem;font-weight:600;color:${GR.currentAccuracy!=null?(GR.currentAccuracy<=5?'rgba(127,204,158,0.9)':'rgba(240,180,60,0.9)'):'rgba(255,255,255,0.3)'}">${GR.currentAccuracy!=null?`📍 ±${Math.round(GR.currentAccuracy)}m`:'📍 …'}</span>
