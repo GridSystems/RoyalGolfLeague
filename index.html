@@ -1892,7 +1892,7 @@ function saveHoleScore(finishAfter=false){
     renderMarkerScoring(0);
   }else if(!finishAfter&&GR.currentHole<18){
     GR.currentHole++;
-    GR.provisionalShotId=null;
+    GR.provisionalShotId=null;GR.chipAndPutt=false;
     renderGpsHole();
   }else{
     finishGpsRound();
