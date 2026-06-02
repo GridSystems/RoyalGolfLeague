@@ -818,6 +818,17 @@ function getGreenDistances(vertices,playerLat,playerLng){
     back: {lat:backV[0], lng:backV[1], dist:maxD}
   };
 }
+// ── GPS detail mode preference ────────────────────────────────────────────────
+function getGpsDetailMode(playerId){return localStorage.getItem('sl_gps_detail_'+playerId)||'full';}
+function setGpsDetailMode(playerId,mode){localStorage.setItem('sl_gps_detail_'+playerId,mode);}
+function toggleGpsMap(){if(!GR)return;GR.mapOpen=!GR.mapOpen;renderGpsHole();}
+function selectShotKind(kind,el){
+  if(!GR||!GR.pendingShot)return;
+  GR.pendingShot.type=kind;
+  document.querySelectorAll('.shot-kind-btn').forEach(b=>b.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
 // ── Units preference ──────────────────────────────────────────────────────────
 function getUnits(){return localStorage.getItem('sl_units_'+(activeId||0))||'m';}
 function setUnits(u){localStorage.setItem('sl_units_'+(activeId||0),u);}
@@ -1119,8 +1130,10 @@ async function startGpsRound(){
       navigator.geolocation.getCurrentPosition(res,rej,{enableHighAccuracy:true,timeout:10000})
     );
     const {latitude:lat,longitude:lng}=pos.coords;
+    const _dm=document.getElementById('gpsTrackMode')?.value||getGpsDetailMode(activeId);
     GR={
       date,teeId:gpsTeeId,currentHole:startHole,
+      detailMode:_dm,mapOpen:_dm==='gps',
       currentLat:lat,currentLng:lng,currentAccuracy:null,
       selectedClub:null,selectedWeight:'full',selectedLie:'fairway',selectedDirection:null,selectedOutcome:null,
       pendingShot:null,chipAndPutt:false,scoringForIds:[..._gpsScoreForIds],_pendingFinish:false,
