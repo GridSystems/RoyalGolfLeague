@@ -1204,9 +1204,14 @@ function startGpsWatch(){
           GR.playerDot.setLatLng([lat,lng]);
         }
       }
-      // Update distance-to-green badge
+      // Update distance-to-green badge (front · mid · back, or single fallback)
       const distBadge=document.getElementById('gpsDist');
-      if(distBadge){const d=distToGreen(GR.currentHole,GR.currentLat,GR.currentLng);if(d!=null)distBadge.textContent=dispDist(d)+' ⛳';}
+      if(distBadge){
+        const _poly=greenPolygons[GR.currentHole];
+        const _gd=_poly?getGreenDistances(_poly,GR.currentLat,GR.currentLng):null;
+        if(_gd){distBadge.textContent=`${dispDist(Math.round(_gd.front.dist))} · ${dispDist(Math.round(_gd.mid.dist))} · ${dispDist(Math.round(_gd.back.dist))} ⛳`;}
+        else{const _d=distToGreen(GR.currentHole,GR.currentLat,GR.currentLng);if(_d!=null)distBadge.textContent=dispDist(_d)+' ⛳';}
+      }
       // Update accuracy badge
       const accBadge=document.getElementById('gpsAccBadge');
       if(accBadge){
