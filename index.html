@@ -374,6 +374,7 @@ select option { background: #1a3a2a; }
         <div id="myDreamCardBody"></div>
       </div>
     </div>
+    <div id="myGpsPrefWrap" data-open="0"></div>
     <div class="lb-view" id="hsub-gpsstats">
       <div id="gpsStatsContent"></div>
     </div>
@@ -3719,7 +3720,50 @@ function renderMyRounds(){
   document.getElementById('myStats').innerHTML=`<div class="sc"><div class="sl">Rounds</div><div class="sv">${mr.length}</div><div class="ss">total</div></div><div class="sc"><div class="sl">Best Pts</div><div class="sv" style="color:#82aaf0">${bPts!=null?bPts:'—'}</div><div class="ss">stableford</div></div><div class="sc"><div class="sl">Avg Pts</div><div class="sv" style="color:#82aaf0">${aPts!=null?aPts:'—'}</div><div class="ss">per round</div></div><div class="sc"><div class="sl">Best Stroke</div><div class="sv">${ds(best)}</div><div class="ss">vs par</div></div><div class="sc"><div class="sl">Trend</div><div class="tbar">${rd.map((d,i)=>`<div class="tbi" style="height:${Math.round(8+((d-mn)/rng)*28)}px;background:#82aaf0;opacity:0.65" title="${fd(rec[i].date)}: ${d} pts"></div>`).join('')}</div>`;
   const sort=document.getElementById('sortSel').value;const sorted=[...mr].sort((a,b)=>{if(sort==='date-desc')return b.date.localeCompare(a.date);if(sort==='date-asc')return a.date.localeCompare(b.date);if(sort==='pts-desc')return(calcRoundPoints(b,p)||0)-(calcRoundPoints(a,p)||0);return(tS(a.holes)-tP(a.holes))-(tS(b.holes)-tP(b.holes));});
   document.getElementById('myTable').innerHTML=`<div class="rt-wrap"><table class="rt"><thead><tr><th>Date</th><th>Tee Time</th><th>Tee</th><th>Index</th><th>Playing HCP</th><th>Points</th><th>Out</th><th>In</th><th>Total</th><th>vs Par</th></tr></thead><tbody>${sorted.map(r=>{const f=r.holes.slice(0,9),b=r.holes.slice(9);const tot=tS(r.holes),diff=tot-tP(r.holes);const rpts=calcRoundPoints(r,p);return`<tr><td style="color:rgba(255,255,255,0.45);font-size:0.78rem">${fd(r.date)}</td><td style="font-family:'DM Mono',monospace;font-size:0.78rem;color:rgba(255,255,255,0.45)">${r.tee_time||'—'}</td><td><span style="display:inline-flex;align-items:center;gap:4px;font-size:0.76rem"><span class="tee-dot" style="background:${r.tee_color||'#888'}"></span>${r.tee_name||'—'}</span></td><td style="font-family:'DM Mono',monospace;font-size:0.79rem;color:rgba(255,255,255,0.45)">${r.hcp_index!=null?r.hcp_index:'—'}</td><td style="font-family:'DM Mono',monospace;font-size:0.79rem;color:rgba(255,255,255,0.45)">${r.playing_hcp!=null?r.playing_hcp:'—'}</td><td style="font-family:'DM Mono',monospace;font-weight:600;font-size:1rem;color:#82aaf0">${rpts!=null?rpts:'—'}</td><td style="font-family:'DM Mono',monospace;font-size:0.84rem">${f.some(h=>h.score)?tS(f):'—'}<span style="font-size:0.67rem;color:rgba(255,255,255,0.27)">/p${tP(f)}</span></td><td style="font-family:'DM Mono',monospace;font-size:0.84rem">${b.some(h=>h.score)?tS(b):'—'}<span style="font-size:0.67rem;color:rgba(255,255,255,0.27)">/p${tP(b)}</span></td><td style="font-family:'DM Mono',monospace;font-weight:500">${tot}</td><td><span class="sp ${scC(diff)}">${ds(diff)}</span></td></tr>`;}).join('')}</tbody></table></div>`;
-  renderMyDreamCard();}
+  renderMyDreamCard();
+  renderGpsPreferencePanel();
+}
+
+function renderGpsPreferencePanel(){
+  if(!activeId)return;
+  const wrap=document.getElementById('myGpsPrefWrap');
+  if(!wrap)return;
+  const cur=getGpsDetailMode(activeId);
+  const labels={gps:'GPS only',shots:'Shots only',clubs:'Shots + clubs',full:'Full detail'};
+  const descs={
+    gps:'Map, distances and rings. No shots recorded — use this when you just want live yardages.',
+    shots:"Records each shot's GPS position and count. One confirm tap per shot, nothing else.",
+    clubs:"Adds club selection to each shot. Good for tracking what you're hitting without the full detail.",
+    full:'Records lie, club, shot weight and result. Full shot analysis after the round.'
+  };
+  const open=wrap.dataset.open==='1';
+  wrap.innerHTML=`<div class="panel" style="margin-top:1.25rem">
+    <div class="ph" style="cursor:pointer" onclick="toggleGpsPrefPanel()">
+      <span class="pt">GPS Tracking</span>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:0.78rem;padding:3px 10px;border-radius:20px;background:rgba(201,168,76,0.12);border:1px solid rgba(201,168,76,0.3);color:var(--gold-l)">${labels[cur]}</span>
+        <span style="color:rgba(255,255,255,0.4);font-size:0.75rem">${open?'▲':'▼'}</span>
+      </div>
+    </div>
+    ${open?`<div style="padding:0.75rem 1rem;display:flex;flex-direction:column;gap:8px">
+      ${['gps','shots','clubs','full'].map(m=>{const sel=cur===m;return `<div onclick="chooseGpsDetailMode('${m}')" style="padding:10px 12px;border-radius:9px;cursor:pointer;border:1px solid ${sel?'rgba(201,168,76,0.5)':'rgba(255,255,255,0.12)'};background:${sel?'rgba(201,168,76,0.08)':'rgba(0,0,0,0.2)'};user-select:none"><div style="font-weight:600;font-size:0.85rem;color:${sel?'var(--gold-l)':'rgba(255,255,255,0.85)'}">${labels[m]}</div><div style="font-size:0.72rem;color:rgba(255,255,255,0.4);margin-top:3px">${descs[m]}</div></div>`;}).join('')}
+    </div>`:''}
+  </div>`;
+}
+function toggleGpsPrefPanel(){
+  const wrap=document.getElementById('myGpsPrefWrap');
+  if(!wrap)return;
+  wrap.dataset.open=wrap.dataset.open==='1'?'0':'1';
+  renderGpsPreferencePanel();
+}
+function chooseGpsDetailMode(mode){
+  if(!activeId)return;
+  setGpsDetailMode(activeId,mode);
+  const wrap=document.getElementById('myGpsPrefWrap');
+  if(wrap)wrap.dataset.open='0';
+  renderGpsPreferencePanel();
+  toast('GPS tracking preference saved');
+}
 
 // ── Players ───────────────────────────────────────────────────────────────────
 function showPicker(){
