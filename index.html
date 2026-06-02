@@ -1336,15 +1336,21 @@ function renderGpsHole(){
         <div id="gpsLocStatus" style="font-size:0.7rem;color:rgba(255,255,255,0.35)">${GR.pendingShot?.locating?'📍 Locating…':''}</div>
       </div>
       <div>
+        <div style="font-size:0.72rem;color:rgba(255,255,255,0.45);margin-bottom:7px;text-transform:uppercase;letter-spacing:0.05em">Shot kind</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px">
+          ${[{v:'normal',l:'Normal',d:'Standard shot'},{v:'drop',l:'Drop',d:'Penalty / OOB / water'},{v:'replay',l:'Replay',d:'Same spot, hit again'},{v:'provisional',l:'Provisional',d:'Ball may be lost'}].map(k=>`<button class="weight-btn shot-kind-btn${GR.pendingShot.type===k.v?' selected':''}" onclick="selectShotKind('${k.v}',this)" style="display:flex;flex-direction:column;align-items:flex-start;padding:8px 10px;height:auto;white-space:normal;text-align:left"><span style="font-weight:600;font-size:0.82rem">${k.l}</span><span style="font-size:0.68rem;color:rgba(255,255,255,0.45);margin-top:2px;font-weight:400">${k.d}</span></button>`).join('')}
+        </div>
+      </div>
+      ${['clubs','full'].includes(GR.detailMode)?`<div>
+        <div style="font-size:0.72rem;color:rgba(255,255,255,0.45);margin-bottom:7px;text-transform:uppercase;letter-spacing:0.05em">Club</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">${bag.map(c=>`<button class="club-btn${GR.selectedClub===c?' selected':''}" onclick="selectGpsClub('${c.replace(/'/g,"\\'")}',this)">${escHtml(c)}</button>`).join('')}</div>
+      </div>`:''}
+      ${GR.detailMode==='full'?`<div>
         <div style="font-size:0.72rem;color:rgba(255,255,255,0.45);margin-bottom:7px;text-transform:uppercase;letter-spacing:0.05em">Lie</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap">${GPS_LIES.map(l=>`<button class="weight-btn lie-btn${GR.selectedLie===l.v?' selected':''}" onclick="selectGpsLie('${l.v}',this)">${l.l}</button>`).join('')}</div>
       </div>
       <div>
-        <div style="font-size:0.72rem;color:rgba(255,255,255,0.45);margin-bottom:7px;text-transform:uppercase;letter-spacing:0.05em">Club</div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap">${bag.map(c=>`<button class="club-btn${GR.selectedClub===c?' selected':''}" onclick="selectGpsClub('${c.replace(/'/g,"\\'")}',this)">${escHtml(c)}</button>`).join('')}</div>
-      </div>
-      <div>
-        <div style="font-size:0.72rem;color:rgba(255,255,255,0.45);margin-bottom:7px;text-transform:uppercase;letter-spacing:0.05em">Shot type</div>
+        <div style="font-size:0.72rem;color:rgba(255,255,255,0.45);margin-bottom:7px;text-transform:uppercase;letter-spacing:0.05em">Shot weight</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap">${GPS_WEIGHTS.map(w=>`<button class="weight-btn${GR.selectedWeight===w.v?' selected':''}" onclick="selectGpsWeight('${w.v}',this)">${w.l}</button>`).join('')}</div>
       </div>
       <div>
@@ -1355,7 +1361,7 @@ function renderGpsHole(){
           <button class="weight-btn outcome-btn${GR.selectedOutcome==='green'?' selected':''}" onclick="selectGpsOutcome('green',this)">⛳ Green</button>
         </div>
         <div id="outcomeNote" style="font-size:0.7rem;color:rgba(255,255,255,0.35);margin-top:5px;display:${GR.selectedOutcome?'block':'none'}">GPS distance won't be tracked for the next shot</div>
-      </div>
+      </div>`:''}
       <div style="display:flex;gap:8px">
         <button class="btn btn-ghost btn-sm" onclick="cancelPendingShot()">Cancel</button>
         <button class="btn btn-primary" style="flex:1" onclick="savePendingShot()">Save Shot →</button>
@@ -1866,16 +1872,21 @@ async function savePendingShot(){
   try{
     const holeShots=GR.shots.filter(s=>s.hole===GR.currentHole);
     const shot_num=holeShots.length+1;
+    const _mode=GR.detailMode||'full';
     const payload={
       player_id:activeId,round_date:GR.date,hole:GR.currentHole,shot_num,
       type:GR.pendingShot.type,lat:GR.pendingShot.lat,lng:GR.pendingShot.lng,
-      club:GR.selectedClub,shot_weight:GR.selectedWeight,
-      lie:GR.selectedLie||null,direction:GR.selectedDirection||null,shot_outcome:GR.selectedOutcome||null,
+      club:['clubs','full'].includes(_mode)?GR.selectedClub:null,
+      shot_weight:_mode==='full'?GR.selectedWeight:null,
+      lie:_mode==='full'?(GR.selectedLie||null):null,
+      direction:_mode==='full'?(GR.selectedDirection||null):null,
+      shot_outcome:_mode==='full'?(GR.selectedOutcome||null):null,
       wind_speed:currentWeather?.speed_kmh??null,wind_dir:currentWeather?.dir??null,wind_deg:currentWeather?.deg??null,
       accuracy_m:GR.currentAccuracy??null
     };
     const [saved]=await sbInsert('gps_shots',payload);
     GR.shots.push(saved||{...payload,id:Date.now()});
+    if(GR.pendingShot.type==='provisional')GR.provisionalShotId=(saved||payload).id;
     GR.pendingShot=null;
     GR.selectedClub=null;
     GR.selectedDirection=null;
