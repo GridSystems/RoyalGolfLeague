@@ -1502,7 +1502,7 @@ function drawShotMap(holeShots){
 }
 function toggleGreenZoom(){
   if(!GR)return;
-  if(!GR.map){if(!GR.mapOpen){GR.mapOpen=true;renderGpsHole();}return;}
+  if(!GR.map){if(!GR.mapOpen){GR.mapOpen=true;renderGpsHole();if(GR.map)toggleGreenZoom();}return;}
   // Close: remove layers, restore normal shot view
   if(GR.greenZoom){
     if(GR._greenMoveHandler){GR.map.off('moveend',GR._greenMoveHandler);GR._greenMoveHandler=null;}
