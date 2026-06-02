@@ -1312,7 +1312,7 @@ function enterChipAndPutt(){
 }
 function renderGpsHole(){
   // Green zoom layers are tied to the map instance — reset on every re-render
-  if(GR){GR.greenZoom=false;GR.greenLayers=[];GR.greenLabelMarkers=[];GR._greenMoveHandler=null;GR.distRingLayers=[];GR.distRingLabelMarkers=[];GR._distRingMoveHandler=null;if(GR.playerDot){GR.playerDot.remove();GR.playerDot=null;}}
+  if(GR){GR.greenZoom=false;GR.greenLayers=[];GR.greenLabelMarkers=[];GR._greenMoveHandler=null;GR.distRingLayers=[];GR.distRingLabelMarkers=[];GR._distRingMoveHandler=null;if(GR.playerDot){GR.playerDot.remove();GR.playerDot=null;}if(GR.map){GR.map.remove();GR.map=null;GR.markers=[];GR.polylines=[];}}
   const el=document.getElementById('trackContent');
   const p=players.find(x=>x.id===activeId);
   const holeShots=GR.shots.filter(s=>s.hole===GR.currentHole);
@@ -1320,10 +1320,17 @@ function renderGpsHole(){
   const par=HOLE_PARS[GR.currentHole-1];
   const hasProvisional=GR.provisionalShotId!=null;
   const dtg=distToGreen(GR.currentHole,GR.currentLat??null,GR.currentLng??null);
+  const _poly=greenPolygons[GR.currentHole];
+  const _gd=(_poly&&GR.currentLat!=null)?getGreenDistances(_poly,GR.currentLat,GR.currentLng):null;
+  const distHeaderHtml=_gd
+    ?`<span id="gpsDist" style="color:#d4b483;font-weight:600">${dispDist(Math.round(_gd.front.dist))} · ${dispDist(Math.round(_gd.mid.dist))} · ${dispDist(Math.round(_gd.back.dist))} ⛳</span>`
+    :dtg!=null?`<span id="gpsDist" style="color:#d4b483;font-weight:600">${dispDist(dtg)} ⛳</span>`
+    :'<span id="gpsDist"></span>';
   const bag=p?.bag&&p.bag.length?p.bag:['Driver'];
+  const isGpsOnly=GR.detailMode==='gps';
 
-  const bodyHtml=GR.pendingShot?
-    `<div style="padding:1rem;display:flex;flex-direction:column;gap:1.1rem;border-top:1px solid var(--border)">
+  // ── Confirm panel (GR.pendingShot) — Task 5 restructures this ─────────────
+  const confirmPanel=GR.pendingShot?`<div style="padding:1rem;display:flex;flex-direction:column;gap:1.1rem;border-top:1px solid var(--border)">
       <div style="display:flex;justify-content:space-between;align-items:center">
         <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.07em;color:rgba(255,255,255,0.4)">Shot ${shotCount+1} — describe the shot</div>
         <div id="gpsLocStatus" style="font-size:0.7rem;color:rgba(255,255,255,0.35)">${GR.pendingShot?.locating?'📍 Locating…':''}</div>
@@ -1353,39 +1360,41 @@ function renderGpsHole(){
         <button class="btn btn-ghost btn-sm" onclick="cancelPendingShot()">Cancel</button>
         <button class="btn btn-primary" style="flex:1" onclick="savePendingShot()">Save Shot →</button>
       </div>
-    </div>`:
-    GR.chipAndPutt?
+    </div>`:null;
+
+  // ── bodyHtml ───────────────────────────────────────────────────────────────
+  const bodyHtml=confirmPanel??
+    (GR.chipAndPutt?
     `<div style="padding:1.5rem 1rem;display:flex;flex-direction:column;align-items:center;gap:1.2rem;border-top:1px solid var(--border)">
       <div style="font-size:0.82rem;color:rgba(255,255,255,0.35);text-align:center">Chip and putt out, then end the hole</div>
       <div style="display:flex;gap:8px;width:100%;flex-wrap:wrap">
         <button class="btn-shot-type${GR.distRings?' selected':''}" style="flex:0 0 auto" onclick="toggleDistRings()">${GR.distRings?'Rings ✕':'📍 Rings'}</button>
         <button class="btn-shot-type${GR.greenZoom?' selected':''}" style="flex:0 0 auto" onclick="toggleGreenZoom()">${GR.greenZoom?'Green ✕':'⛳ Green'}</button>
+        <button class="btn-shot-type${GR.mapOpen?' selected':''}" style="flex:0 0 auto" onclick="toggleGpsMap()">🗺 Map${GR.mapOpen?' ✕':''}</button>
         <button class="btn btn-primary" style="flex:1;min-width:120px;padding:0.9rem;font-size:1rem" onclick="confirmEndHole()">End Hole →</button>
+      </div>
+    </div>`:
+    isGpsOnly?
+    `<div class="gps-actions">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;width:100%">
+        <button class="btn-shot-type${GR.distRings?' selected':''}" onclick="toggleDistRings()">${GR.distRings?'Rings ✕':'📍 Rings'}</button>
+        <button class="btn-shot-type${GR.greenZoom?' selected':''}" onclick="toggleGreenZoom()">${GR.greenZoom?'Green ✕':'⛳ Green'}</button>
       </div>
     </div>`:
     `<div class="gps-actions">
       <button class="btn-hit" onclick="recordShot('normal')">🎯 Hit</button>
-      <button class="btn-shot-type" onclick="recordShot('drop')">⬇ Drop</button>
-      <button class="btn-shot-type" onclick="recordShot('replay')">↩ Replay</button>
-      <button class="btn-shot-type provisional" onclick="recordShot('provisional')">P Provisional</button>
-      <button class="btn-shot-type${GR.distRings?' selected':''}" onclick="toggleDistRings()">${GR.distRings?'Rings ✕':'📍 Rings'}</button>
-      <button class="btn-shot-type${GR.greenZoom?' selected':''}" onclick="toggleGreenZoom()">${GR.greenZoom?'Green ✕':'⛳ Green'}</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;width:100%">
+        <button class="btn-shot-type${GR.distRings?' selected':''}" onclick="toggleDistRings()">${GR.distRings?'Rings ✕':'📍 Rings'}</button>
+        <button class="btn-shot-type${GR.greenZoom?' selected':''}" onclick="toggleGreenZoom()">${GR.greenZoom?'Green ✕':'⛳ Green'}</button>
+        <button class="btn-shot-type${GR.mapOpen?' selected':''}" onclick="toggleGpsMap()">🗺 Map${GR.mapOpen?' ✕':''}</button>
+      </div>
       ${hasProvisional?`
       <button class="btn-shot-type" style="color:#7fcc9e;border-color:rgba(127,204,158,0.4)" onclick="resolveProvisional('found')">✓ Found Original</button>
       <button class="btn-shot-type" style="color:#f0c060;border-color:rgba(240,192,96,0.4)" onclick="resolveProvisional('inplay')">▶ Provisional In Play</button>`:''}
-    </div>`;
+    </div>`);
 
-  el.innerHTML=`
-    <div style="background:rgba(0,0,0,0.3);border:1px solid var(--border);border-radius:14px;overflow:hidden">
-      <div class="gps-hole-header">
-        <div>
-          <div style="font-family:'Playfair Display',serif;color:var(--gold-l);font-size:1.1rem">Hole ${GR.currentHole}</div>
-          <div style="font-size:0.72rem;color:rgba(255,255,255,0.4)">Par ${par} · SI ${HOLE_HCP[GR.currentHole-1]} · Shot ${shotCount+1}${dtg!=null?` · <span id="gpsDist" style="color:#d4b483;font-weight:600">${dispDist(dtg)} ⛳</span>`:'&thinsp;<span id="gpsDist"></span>'}</div>
-        </div>
-        ${GR.chipAndPutt?`<button class="btn btn-ghost btn-sm" onclick="confirmEndHole()">End Hole →</button>`:`<button class="btn btn-ghost btn-sm" onclick="enterChipAndPutt()">⛳ Chip &amp; Putt →</button>`}
-      </div>
-      ${bodyHtml}
-      ${GR.distRings?`<div style="display:flex;gap:8px;align-items:center;padding:8px 12px;background:rgba(100,160,255,0.08);border-top:1px solid rgba(100,180,255,0.18);flex-wrap:wrap">
+  // ── Rings / green zoom control bar ────────────────────────────────────────
+  const controlBar=GR.distRings?`<div style="display:flex;gap:8px;align-items:center;padding:8px 12px;background:rgba(100,160,255,0.08);border-top:1px solid rgba(100,180,255,0.18);flex-wrap:wrap">
         <button class="btn btn-ghost btn-sm" onclick="shiftDistRings(-50)" style="min-width:44px">−50</button>
         <span id="distRingCentreDisplay" style="font-size:0.8rem;color:rgba(100,190,255,0.9);font-weight:600;min-width:58px;text-align:center">~${GR.distRingCentre}${getUnits()}</span>
         <button class="btn btn-ghost btn-sm" onclick="shiftDistRings(50)" style="min-width:44px">+50</button>
@@ -1398,14 +1407,34 @@ function renderGpsHole(){
         <span id="gpsAccBadge" style="font-size:0.75rem;font-weight:600;color:${GR.currentAccuracy!=null?(GR.currentAccuracy<=5?'rgba(127,204,158,0.9)':'rgba(240,180,60,0.9)'):'rgba(255,255,255,0.3)'}">${GR.currentAccuracy!=null?`📍 ±${Math.round(GR.currentAccuracy)}m`:'📍 …'}</span>
       </div>`:GR.greenZoom?`<div style="display:flex;gap:8px;align-items:center;padding:6px 12px;background:rgba(46,204,113,0.06);border-top:1px solid rgba(46,204,113,0.18)">
         <span id="gpsAccBadge" style="font-size:0.75rem;font-weight:600;color:${GR.currentAccuracy!=null?(GR.currentAccuracy<=5?'rgba(127,204,158,0.9)':'rgba(240,180,60,0.9)'):'rgba(255,255,255,0.3)'}">${GR.currentAccuracy!=null?`📍 ±${Math.round(GR.currentAccuracy)}m`:'📍 …'}</span>
-      </div>`:''}
-      <div id="gpsMap"></div>
+      </div>`:'';
+
+  // ── Header ─────────────────────────────────────────────────────────────────
+  const headerSub=isGpsOnly
+    ?`Par ${par} · SI ${HOLE_HCP[GR.currentHole-1]} · ${distHeaderHtml}`
+    :`Par ${par} · SI ${HOLE_HCP[GR.currentHole-1]} · Shot ${shotCount+1} · ${distHeaderHtml}`;
+  const headerBtn=isGpsOnly||GR.chipAndPutt
+    ?`<button class="btn btn-ghost btn-sm" onclick="confirmEndHole()">End Hole →</button>`
+    :`<button class="btn btn-ghost btn-sm" onclick="enterChipAndPutt()">⛳ Chip &amp; Putt →</button>`;
+
+  el.innerHTML=`
+    <div style="background:rgba(0,0,0,0.3);border:1px solid var(--border);border-radius:14px;overflow:hidden">
+      <div class="gps-hole-header">
+        <div>
+          <div style="font-family:'Playfair Display',serif;color:var(--gold-l);font-size:1.1rem">Hole ${GR.currentHole}</div>
+          <div style="font-size:0.72rem;color:rgba(255,255,255,0.4)">${headerSub}</div>
+        </div>
+        ${headerBtn}
+      </div>
+      ${bodyHtml}
+      ${controlBar}
+      <div id="gpsMapWrap" style="${GR.mapOpen?'':'display:none'}"><div id="gpsMap"></div></div>
       <div style="padding:0.5rem 1rem;display:flex;gap:8px;justify-content:flex-end;border-top:1px solid var(--border)">
         <button class="btn btn-ghost btn-sm" onclick="abandonGpsRound()">Abandon</button>
         <button class="btn btn-primary btn-sm" onclick="confirmEndHole()">Finish Round</button>
       </div>
     </div>`;
-  initGpsMap(holeShots);
+  if(GR.mapOpen)initGpsMap(holeShots);
 }
 function initGpsMap(holeShots){
   if(GR.map){GR.map.remove();GR.map=null;GR.markers=[];GR.polylines=[];}
@@ -1472,7 +1501,8 @@ function drawShotMap(holeShots){
   }
 }
 function toggleGreenZoom(){
-  if(!GR||!GR.map)return;
+  if(!GR)return;
+  if(!GR.map){if(!GR.mapOpen){GR.mapOpen=true;renderGpsHole();}return;}
   // Close: remove layers, restore normal shot view
   if(GR.greenZoom){
     if(GR._greenMoveHandler){GR.map.off('moveend',GR._greenMoveHandler);GR._greenMoveHandler=null;}
@@ -1650,7 +1680,8 @@ function ringFairwayIntersections(playerLat, playerLng, radiusM, polys, greenBrg
 }
 
 function toggleDistRings(){
-  if(!GR||!GR.map)return;
+  if(!GR)return;
+  if(!GR.map){if(!GR.mapOpen){GR.mapOpen=true;GR.distRings=!GR.distRings;renderGpsHole();}return;}
   if(GR.distRings){
     if(GR._distRingMoveHandler){GR.map.off('move',GR._distRingMoveHandler);GR._distRingMoveHandler=null;}
     clearTimeout(GR._distRingMoveTimer);GR._distRingMoveTimer=null;
