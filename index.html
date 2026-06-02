@@ -1080,6 +1080,16 @@ function buildScoringForList(date){
     return p?{p,roundId:r.id}:null;
   }).filter(Boolean);
 }
+function selectGpsTrackMode(mode){
+  document.getElementById('gpsTrackMode').value=mode;
+  document.querySelectorAll('#gpsTrackModeCards>[data-mode]').forEach(d=>{
+    const sel=d.dataset.mode===mode;
+    d.style.border=sel?'1px solid rgba(201,168,76,0.5)':'1px solid rgba(255,255,255,0.12)';
+    d.style.background=sel?'rgba(201,168,76,0.08)':'rgba(0,0,0,0.2)';
+    d.querySelector('div').style.color=sel?'var(--gold-l)':'rgba(255,255,255,0.85)';
+  });
+}
+
 function renderGpsStart(){
   const el=document.getElementById('trackContent');
   const p=players.find(x=>x.id===activeId);
@@ -1102,6 +1112,13 @@ function renderGpsStart(){
             <div class="tee-sel" id="gpsTeeSelect">
               ${TEES.map(t=>`<div class="tee-opt${t.id==='platinum'?' selected':''}" onclick="selectGpsTee('${t.id}',this)"><span class="tee-dot" style="background:${t.color}"></span>${t.name}</div>`).join('')}
             </div>
+          </div>
+        </div>
+        <div>
+          <label style="font-size:0.78rem;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:0.05em">Tracking</label>
+          <input type="hidden" id="gpsTrackMode" value="${getGpsDetailMode(activeId)}">
+          <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px" id="gpsTrackModeCards">
+            ${[{v:'gps',l:'GPS only',d:'Map, distances and rings. No shots recorded — use this when you just want live yardages.'},{v:'shots',l:'Shots only',d:"Records each shot's GPS position and count. One confirm tap per shot, nothing else."},{v:'clubs',l:'Shots + clubs',d:"Adds club selection to each shot. Good for tracking what you're hitting without the full detail."},{v:'full',l:'Full detail',d:'Records lie, club, shot weight and result. Full shot analysis after the round.'}].map(m=>{const sel=getGpsDetailMode(activeId)===m.v;return `<div onclick="selectGpsTrackMode('${m.v}')" data-mode="${m.v}" style="padding:10px 12px;border-radius:9px;cursor:pointer;border:1px solid ${sel?'rgba(201,168,76,0.5)':'rgba(255,255,255,0.12)'};background:${sel?'rgba(201,168,76,0.08)':'rgba(0,0,0,0.2)'};user-select:none"><div style="font-weight:600;font-size:0.85rem;color:${sel?'var(--gold-l)':'rgba(255,255,255,0.85)'}">${m.l}</div><div style="font-size:0.72rem;color:rgba(255,255,255,0.4);margin-top:3px">${m.d}</div></div>`;}).join('')}
           </div>
         </div>
         ${(()=>{const date=document.getElementById('gpsDate')?.value||today();const list=buildScoringForList(date);return list.length?`<div>
