@@ -216,7 +216,7 @@ select option { background: #1a3a2a; }
     <button class="nav-tab" id="tabHistory" onclick="showView('history',this)">My Rounds</button>
     <button class="nav-tab" id="tabPlayers" onclick="showView('players',this)">Players</button>
     <button class="nav-tab" onclick="showView('rules',this)">Rules</button>
-    <button class="nav-tab" id="tabTrack" onclick="showView('track',this)" style="display:none">📍 Track</button>
+    <button class="nav-tab" id="tabTrack" onclick="openTrackTab()" style="display:none">📍 Track</button>
     <button class="nav-tab" id="adminTab" style="display:none" onclick="requireAdminPin(this)">⚙ Admin</button>
   </div>
 
@@ -823,6 +823,7 @@ function getGreenDistances(vertices,playerLat,playerLng){
 function getGpsDetailMode(playerId){return localStorage.getItem('sl_gps_detail_'+playerId)||'full';}
 function setGpsDetailMode(playerId,mode){localStorage.setItem('sl_gps_detail_'+playerId,mode);}
 function toggleGpsMap(){if(!GR)return;GR.mapOpen=!GR.mapOpen;renderGpsHole();}
+function openTrackTab(){window.open(location.href.split('?')[0]+'?view=track','_blank');}
 function selectShotKind(kind,el){
   if(!GR||!GR.pendingShot)return;
   GR.pendingShot.type=kind;
@@ -4011,6 +4012,8 @@ async function init(){
   updateAdminUI();applyPendingUI();buildPlayerCheckboxes();checkForResumableRounds();
 
   setLoading(false);
+  const _initView=new URLSearchParams(location.search).get('view');
+  if(_initView==='track')showView('track',document.getElementById('tabTrack'));
 }
 if(sessionStorage.getItem('sl_session_player')){document.getElementById('lockScreen').style.display='none';init();}else{setLoading(false);setTimeout(()=>document.getElementById('loginEmail').focus(),100);}
 </script>
