@@ -4013,7 +4013,7 @@ async function init(){
 
   setLoading(false);
   const _initView=new URLSearchParams(location.search).get('view');
-  if(_initView==='track')showView('track',document.getElementById('tabTrack'));
+  if(_initView==='track'){showView('track',document.getElementById('tabTrack'));history.replaceState(null,'',location.href.split('?')[0]);}
 }
 if(sessionStorage.getItem('sl_session_player')){document.getElementById('lockScreen').style.display='none';init();}else{setLoading(false);setTimeout(()=>document.getElementById('loginEmail').focus(),100);}
 </script>
