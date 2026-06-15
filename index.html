@@ -1953,6 +1953,7 @@ function confirmEndHole(){
         </div>
         <div class="fa">
           <button class="btn btn-ghost" onclick="renderGpsHole()">← Back</button>
+          <button class="btn btn-ghost" onclick="skipHoleScore()">No Score</button>
           ${GR.currentHole<18?`<button class="btn btn-ghost" onclick="saveHoleScore(true)">Finish Round</button>`:''}
           <button class="btn btn-primary" onclick="saveHoleScore()">
             ${GR.currentHole<18?'Next Hole →':'Finish Round'}
@@ -1970,6 +1971,18 @@ function saveHoleScore(finishAfter=false){
   if(GR.scoringForIds&&GR.scoringForIds.length>0){
     renderMarkerScoring(0);
   }else if(!finishAfter&&GR.currentHole<18){
+    GR.currentHole++;
+    GR.provisionalShotId=null;GR.chipAndPutt=false;
+    renderGpsHole();
+  }else{
+    finishGpsRound();
+  }
+}
+function skipHoleScore(){
+  GR._pendingFinish=GR.currentHole>=18;
+  if(GR.scoringForIds&&GR.scoringForIds.length>0){
+    renderMarkerScoring(0);
+  }else if(GR.currentHole<18){
     GR.currentHole++;
     GR.provisionalShotId=null;GR.chipAndPutt=false;
     renderGpsHole();
