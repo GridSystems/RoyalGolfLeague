@@ -3974,6 +3974,68 @@ function renderAdminTees(){
   if(archived.length)html+=`<div style="font-size:0.72rem;color:rgba(255,255,255,0.25);padding:10px 0 4px;text-transform:uppercase;letter-spacing:0.05em">Archived</div>`+archived.map(t=>teeRow(t)).join('');
   el.innerHTML=html||'<div class="empty">No tees.</div>';
 }
+async function saveTeeEdit(id){
+  const name=document.getElementById('teeEditName').value.trim();
+  const color=document.getElementById('teeEditColor').value;
+  const rating=parseFloat(document.getElementById('teeEditRating').value);
+  const slope=parseInt(document.getElementById('teeEditSlope').value,10);
+  if(!name||isNaN(rating)||isNaN(slope)){alert('Name, CR and Slope are required.');return;}
+  const dist=getTeeDistFromInputs();
+  setLoading(true,'Saving…');
+  try{
+    await sbUpdate('tees',id,{name,color,rating,slope,dist});
+    const t=tees.find(x=>x.id===id);
+    if(t)Object.assign(t,{name,color,rating,slope,dist});
+    _editingTeeId=null;
+    renderAdminTees();
+    _refreshTeeSelectors();
+    toast('Tee updated ✓');
+  }catch(e){alert('Error: '+e.message);}
+  finally{setLoading(false);}
+}
+async function addTee(){
+  const name=document.getElementById('teeEditName').value.trim();
+  const color=document.getElementById('teeEditColor').value;
+  const rating=parseFloat(document.getElementById('teeEditRating').value);
+  const slope=parseInt(document.getElementById('teeEditSlope').value,10);
+  if(!name||isNaN(rating)||isNaN(slope)){alert('Name, CR and Slope are required.');return;}
+  const dist=getTeeDistFromInputs();
+  let base=name.toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,'');
+  let id=base,n=2;
+  while(tees.find(t=>t.id===id)){id=base+'-'+n++;}
+  setLoading(true,'Saving…');
+  try{
+    const rows=await sbInsert('tees',{id,name,color,rating,slope,dist,archived:false});
+    tees.push(rows?.[0]||{id,name,color,rating,slope,dist,archived:false});
+    _addingTee=false;
+    renderAdminTees();
+    _refreshTeeSelectors();
+    toast('Tee added ✓');
+  }catch(e){alert('Error: '+e.message);}
+  finally{setLoading(false);}
+}
+async function archiveTee(id){
+  const t=tees.find(x=>x.id===id);if(!t)return;
+  if(!t.archived){
+    const inUse=[selTeeId,BE?.teeId,typeof erSelTeeId!=='undefined'?erSelTeeId:null,typeof gpsTeeId!=='undefined'?gpsTeeId:null].filter(Boolean);
+    if(inUse.includes(id)){toast('Cannot archive — tee is currently selected');return;}
+  }
+  setLoading(true,'Saving…');
+  try{
+    await sbUpdate('tees',id,{archived:!t.archived});
+    t.archived=!t.archived;
+    renderAdminTees();
+    _refreshTeeSelectors();
+    toast(t.archived?'Tee archived':'Tee restored');
+  }catch(e){alert('Error: '+e.message);}
+  finally{setLoading(false);}
+}
+function _refreshTeeSelectors(){
+  buildTeeSelectorEl('teeSelector',selTeeId,'selTeeId');
+  buildTeeSelectorEl('beTeeSelector',BE?.teeId||'platinum','beTeeId');
+  buildTeeSelectorEl('erTeeSelector',typeof erSelTeeId!=='undefined'?erSelTeeId:'platinum','erSelTeeId');
+  buildTeeSelectorEl('gpsTeeSelector',typeof gpsTeeId!=='undefined'?gpsTeeId:'platinum','gpsTeeId');
+}
 function renderAdmin(){
   const panel=document.getElementById('adminHcpPanel');const ap=adminPlayer();
   if(!players.length){panel.innerHTML='<div class="empty">No players.</div>';return;}
