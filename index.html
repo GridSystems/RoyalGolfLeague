@@ -494,46 +494,66 @@ select option { background: #1a3a2a; }
       <button class="btn btn-ghost btn-sm" onclick="document.getElementById('changePinModal').style.display='flex'">Change Admin PIN</button>
     </div>
     <div class="panel" id="adminTeesPanel">
-      <div class="ph">
+      <div class="ph" onclick="toggleAdminSection('adminTeesBody','achev-tees')" style="cursor:pointer;user-select:none">
         <span class="pt">Tees</span>
-        <button class="btn btn-ghost btn-sm" onclick="openAddTee()">+ Add Tee</button>
+        <div style="display:flex;align-items:center;gap:8px">
+          <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openAddTee()">+ Add Tee</button>
+          <span id="achev-tees" style="color:rgba(255,255,255,0.35);font-size:1.2rem;transition:transform 0.2s;display:inline-block;line-height:1">›</span>
+        </div>
       </div>
-      <div class="pb" id="adminTeesBody"></div>
+      <div class="pb" id="adminTeesBody" style="display:none"></div>
     </div>
     <div class="panel" id="pendingApprovalsPanel" style="display:none">
       <div class="ph"><span class="pt">Pending Approvals</span><span id="pendingBadge" style="font-size:0.75rem;color:var(--gold-l)"></span></div>
       <div class="pb" id="pendingApprovalsList"></div>
     </div>
     <div class="panel" id="bulkEntryPanel">
-      <div class="ph"><span class="pt">Bulk Round Entry</span><span style="font-size:0.75rem;color:rgba(255,255,255,0.35)">Enter a full round for one player at a time</span></div>
-      <div class="pb" id="bulkEntryBody">
-        <!-- built by renderBulkEntry() -->
-      </div>
-    </div>
-    <div class="panel">
-      <div class="ph"><span class="pt">Handicap Index History</span></div>
-      <div class="pb" id="adminHcpPanel"></div>
-    </div>
-    <div class="panel">
-      <div class="ph">
-        <span class="pt">All Rounds</span>
-        <select id="adminRoundPlayer" onchange="renderAdminRounds()" style="background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.14);border-radius:6px;color:var(--cream);font-size:0.75rem;padding:4px 8px;outline:none"></select>
-      </div>
-      <div id="adminRoundsTable"></div>
-    </div>
-    <div class="panel">
-      <div class="ph">
-        <span class="pt">Fines</span>
-        <div style="display:flex;gap:8px">
-          <button class="btn btn-ghost btn-sm" onclick="document.getElementById('fineTypesModal').style.display='flex';renderFineTypesList()">Manage Fine Types</button>
-          <button class="btn btn-warn btn-sm" onclick="showAddFine(null,true)">🚨 Issue Fine</button>
+      <div class="ph" onclick="toggleAdminSection('bulkEntryBody','achev-bulk')" style="cursor:pointer;user-select:none">
+        <span class="pt">Bulk Round Entry</span>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:0.75rem;color:rgba(255,255,255,0.35)">One player at a time</span>
+          <span id="achev-bulk" style="color:rgba(255,255,255,0.35);font-size:1.2rem;transition:transform 0.2s;display:inline-block;line-height:1">›</span>
         </div>
       </div>
-      <div id="adminFinesTable" class="pb"></div>
+      <div class="pb" id="bulkEntryBody" style="display:none"></div>
     </div>
     <div class="panel">
-      <div class="ph"><span class="pt">Saturday Draw</span><span style="font-size:0.75rem;color:rgba(255,255,255,0.35)">Manage sign-ups and allocate tee times</span></div>
-      <div class="pb" id="saturdayAdminBody"></div>
+      <div class="ph" onclick="toggleAdminSection('adminHcpPanel','achev-hcp')" style="cursor:pointer;user-select:none">
+        <span class="pt">Handicap Index History</span>
+        <span id="achev-hcp" style="color:rgba(255,255,255,0.35);font-size:1.2rem;transition:transform 0.2s;display:inline-block;line-height:1">›</span>
+      </div>
+      <div class="pb" id="adminHcpPanel" style="display:none"></div>
+    </div>
+    <div class="panel">
+      <div class="ph" onclick="toggleAdminSection('adminRoundsTable','achev-rounds')" style="cursor:pointer;user-select:none">
+        <span class="pt">All Rounds</span>
+        <div style="display:flex;align-items:center;gap:8px">
+          <select id="adminRoundPlayer" onchange="renderAdminRounds()" onclick="event.stopPropagation()" style="background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.14);border-radius:6px;color:var(--cream);font-size:0.75rem;padding:4px 8px;outline:none"></select>
+          <span id="achev-rounds" style="color:rgba(255,255,255,0.35);font-size:1.2rem;transition:transform 0.2s;display:inline-block;line-height:1">›</span>
+        </div>
+      </div>
+      <div id="adminRoundsTable" style="display:none"></div>
+    </div>
+    <div class="panel">
+      <div class="ph" onclick="toggleAdminSection('adminFinesTable','achev-fines')" style="cursor:pointer;user-select:none">
+        <span class="pt">Fines</span>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();document.getElementById('fineTypesModal').style.display='flex';renderFineTypesList()">Manage Fine Types</button>
+          <button class="btn btn-warn btn-sm" onclick="event.stopPropagation();showAddFine(null,true)">🚨 Issue Fine</button>
+          <span id="achev-fines" style="color:rgba(255,255,255,0.35);font-size:1.2rem;transition:transform 0.2s;display:inline-block;line-height:1">›</span>
+        </div>
+      </div>
+      <div id="adminFinesTable" class="pb" style="display:none"></div>
+    </div>
+    <div class="panel">
+      <div class="ph" onclick="toggleAdminSection('saturdayAdminBody','achev-sat')" style="cursor:pointer;user-select:none">
+        <span class="pt">Saturday Draw</span>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:0.75rem;color:rgba(255,255,255,0.35)">Sign-ups &amp; tee times</span>
+          <span id="achev-sat" style="color:rgba(255,255,255,0.35);font-size:1.2rem;transition:transform 0.2s;display:inline-block;line-height:1">›</span>
+        </div>
+      </div>
+      <div class="pb" id="saturdayAdminBody" style="display:none"></div>
     </div>
   </div>
 </div>
@@ -4056,6 +4076,8 @@ function _refreshTeeSelectors(){
   const _gpsSel=document.getElementById('gpsTeeSelect');
   if(_gpsSel)_gpsSel.innerHTML=tees.filter(t=>!t.archived).map(t=>`<div class="tee-opt${t.id===gpsTeeId?' selected':''}" onclick="selectGpsTee('${t.id}',this)"><span class="tee-dot" style="background:${t.color}"></span>${t.name}</div>`).join('');
 }
+function toggleAdminSection(bodyId,chevId){const body=document.getElementById(bodyId);if(!body)return;const isOpen=body.style.display!=='none';body.style.display=isOpen?'none':'';const chev=document.getElementById(chevId);if(chev)chev.style.transform=isOpen?'':'rotate(90deg)';}
+
 function renderAdmin(){
   const panel=document.getElementById('adminHcpPanel');const ap=adminPlayer();
   if(!players.length){panel.innerHTML='<div class="empty">No players.</div>';return;}
