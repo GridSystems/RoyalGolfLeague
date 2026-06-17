@@ -869,7 +869,7 @@ function calcHolePoints(round,player){const tee=getTee(round.tee_id||'platinum')
 
 // ── Storage ───────────────────────────────────────────────────────────────────
 let pendingPlayers=[];
-async function loadData(){tees=await sbGet('tees','order=archived.asc,name.asc');if(tees.length===0)await seedTees();const all=await sbGet('players','order=created_at.asc');pendingPlayers=all.filter(p=>p.approved===false);players=all.filter(p=>p.approved!==false);allRounds=await sbGet('rounds','order=date.desc');fineTypes=await sbGet('fine_types','order=name.asc');allFines=await sbGet('fines','order=created_at.desc');try{saturdayEvents=await sbGet('saturday_events','order=date.asc');}catch(e){saturdayEvents=[];}try{saturdaySignups=await sbGet('saturday_signups','order=created_at.asc');}catch(e){saturdaySignups=[];}try{const pg=await sbGet('green_polygons','');greenPolygons={};pg.forEach(r=>{greenPolygons[r.hole]=r.vertices;});}catch(e){console.warn('green_polygons load failed:',e);}try{const fp=await sbGet('fairway_polygons','');fairwayPolygons={};fp.forEach(r=>{fairwayPolygons[r.hole]=r.polygons;});}catch(e){console.warn('fairway_polygons load failed:',e);}}
+async function loadData(){try{tees=await sbGet('tees','order=archived.asc,name.asc');}catch(e){console.warn('tees fetch failed:',e);tees=[];}if(tees.length===0)await seedTees();const all=await sbGet('players','order=created_at.asc');pendingPlayers=all.filter(p=>p.approved===false);players=all.filter(p=>p.approved!==false);allRounds=await sbGet('rounds','order=date.desc');fineTypes=await sbGet('fine_types','order=name.asc');allFines=await sbGet('fines','order=created_at.desc');try{saturdayEvents=await sbGet('saturday_events','order=date.asc');}catch(e){saturdayEvents=[];}try{saturdaySignups=await sbGet('saturday_signups','order=created_at.asc');}catch(e){saturdaySignups=[];}try{const pg=await sbGet('green_polygons','');greenPolygons={};pg.forEach(r=>{greenPolygons[r.hole]=r.vertices;});}catch(e){console.warn('green_polygons load failed:',e);}try{const fp=await sbGet('fairway_polygons','');fairwayPolygons={};fp.forEach(r=>{fairwayPolygons[r.hole]=r.polygons;});}catch(e){console.warn('fairway_polygons load failed:',e);}}
 
 async function seedTees(){try{const rows=await sbInsert('tees',_TEES_SEED);tees=rows;}catch(e){console.warn('seedTees failed:',e);tees=[..._TEES_SEED];}}
 
@@ -4016,9 +4016,9 @@ async function deleteRoundAdmin(){
 // ── Init ──────────────────────────────────────────────────────────────────────
 async function init(){
   document.getElementById('roundDate').value=lastSaturday();
-  buildTeeSelectorEl('teeSelector',selTeeId,'selTeeId');
   try{
     await loadData();
+    buildTeeSelectorEl('teeSelector',selTeeId,'selTeeId');
     document.getElementById('dbStatus').textContent='● Supabase';document.getElementById('dbStatus').className='db-status db-ok';
   }catch(e){document.getElementById('dbStatus').textContent='✕ DB Error';document.getElementById('dbStatus').className='db-status db-err';console.error(e);}
   populateYearSelects();renderTodayLb();renderGrid();
