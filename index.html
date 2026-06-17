@@ -4000,7 +4000,7 @@ async function addTee(){
   const slope=parseInt(document.getElementById('teeEditSlope').value,10);
   if(!name||isNaN(rating)||isNaN(slope)){alert('Name, CR and Slope are required.');return;}
   const dist=getTeeDistFromInputs();
-  let base=name.toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,'');
+  let base=name.toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,'')||'tee';
   let id=base,n=2;
   while(tees.find(t=>t.id===id)){id=base+'-'+n++;}
   setLoading(true,'Saving…');
@@ -4017,7 +4017,7 @@ async function addTee(){
 async function archiveTee(id){
   const t=tees.find(x=>x.id===id);if(!t)return;
   if(!t.archived){
-    const inUse=[selTeeId,BE?.teeId,typeof erSelTeeId!=='undefined'?erSelTeeId:null,typeof gpsTeeId!=='undefined'?gpsTeeId:null].filter(Boolean);
+    const inUse=[selTeeId,BE?.teeId,typeof erSelTeeId!=='undefined'?erSelTeeId:null,typeof gpsTeeId!=='undefined'?gpsTeeId:null,...Object.values(playerTees)].filter(Boolean);
     if(inUse.includes(id)){toast('Cannot archive — tee is currently selected');return;}
   }
   setLoading(true,'Saving…');
@@ -4034,7 +4034,8 @@ function _refreshTeeSelectors(){
   buildTeeSelectorEl('teeSelector',selTeeId,'selTeeId');
   buildTeeSelectorEl('beTeeSelector',BE?.teeId||'platinum','beTeeId');
   buildTeeSelectorEl('erTeeSelector',typeof erSelTeeId!=='undefined'?erSelTeeId:'platinum','erSelTeeId');
-  buildTeeSelectorEl('gpsTeeSelector',typeof gpsTeeId!=='undefined'?gpsTeeId:'platinum','gpsTeeId');
+  const _gpsSel=document.getElementById('gpsTeeSelect');
+  if(_gpsSel)_gpsSel.innerHTML=tees.filter(t=>!t.archived).map(t=>`<div class="tee-opt${t.id===gpsTeeId?' selected':''}" onclick="selectGpsTee('${t.id}',this)"><span class="tee-dot" style="background:${t.color}"></span>${t.name}</div>`).join('');
 }
 function renderAdmin(){
   const panel=document.getElementById('adminHcpPanel');const ap=adminPlayer();
