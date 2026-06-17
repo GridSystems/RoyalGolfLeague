@@ -2309,7 +2309,8 @@ function getScoresFromInputs(pfx){return Array.from({length:18},(_,i)=>({hole:i+
 function liveTotals(pfx,phcp){let oT=0,iT=0,oP=0,iP=0,oPts=0,iPts=0,oC=0,iC=0;for(let i=0;i<18;i++){const el=document.getElementById(`${pfx}${i+1}`);const val=el&&el.value?parseInt(el.value):null;const par=HOLE_PARS[i];const isF=i<9;if(isF)oP+=par;else iP+=par;if(val!=null){const d=val-par;const vpEl=document.getElementById(`${pfx}vp${i+1}`);if(vpEl){vpEl.textContent=ds(d);vpEl.style.color=vpC(d);}if(isF){oT+=val;oC++;}else{iT+=val;iC++;}if(phcp!=null&&!isNaN(phcp)){const str=strokesOnHole(phcp,i);const pts=stablefordPts(val,par,str);const ptEl=document.getElementById(`${pfx}pt${i+1}`);if(ptEl&&pts!=null){ptEl.textContent=pts;ptEl.style.color=ptC(pts);}if(isF)oPts+=pts||0;else iPts+=pts||0;}}else{const vpEl=document.getElementById(`${pfx}vp${i+1}`);if(vpEl)vpEl.textContent='';const ptEl=document.getElementById(`${pfx}pt${i+1}`);if(ptEl)ptEl.textContent='';}}const set=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=v;};const setC=(id,c)=>{const e=document.getElementById(id);if(e)e.style.color=c;};if(oC>0){set(`${pfx}tot_out`,oT);const d=oT-oP;set(`${pfx}vp_out`,ds(d));setC(`${pfx}vp_out`,vpC(d));}else{set(`${pfx}tot_out`,'—');set(`${pfx}vp_out`,'');}if(iC>0){set(`${pfx}tot_in`,iT);const d=iT-iP;set(`${pfx}vp_in`,ds(d));setC(`${pfx}vp_in`,vpC(d));}else{set(`${pfx}tot_in`,'—');set(`${pfx}vp_in`,'');}if(oC+iC>0){const t=oT+iT;set(`${pfx}tot_total`,t);const d=t-(oP+iP);set(`${pfx}vp_total`,ds(d));setC(`${pfx}vp_total`,vpC(d));}else{set(`${pfx}tot_total`,'—');set(`${pfx}vp_total`,'');}if(phcp!=null&&!isNaN(phcp)){if(oC>0)set(`${pfx}pts_out`,oPts);else set(`${pfx}pts_out`,'—');if(iC>0)set(`${pfx}pts_in`,iPts);else set(`${pfx}pts_in`,'—');if(oC+iC>0)set(`${pfx}pts_total`,oPts+iPts);else set(`${pfx}pts_total`,'—');}}
 
 // ── Hole-by-hole entry ────────────────────────────────────────────────────────
-let HE={playerList:[],scores:{},roundIds:{},currentHole:1,currentPidx:0,startHole:1,tee:null,teeId:'',date:'',notes:''};
+let HE={playerList:[],scores:{},pickups:{},roundIds:{},currentHole:1,currentPidx:0,startHole:1,tee:null,teeId:'',date:'',notes:''};
+let _heKeypadBuffer='';
 
 // Returns holes 1-18 in play order starting from startHole, wrapping around
 function heOrderedHoles(startHole){
@@ -2351,7 +2352,7 @@ function setStartHole(val){
 
 async function heInit(playerList,date,notes,startHole){
   startWeatherRefresh();
-  const scores={},roundIds={};
+  const scores={},roundIds={},pickups={};
   setLoading(true,'Starting round…');
   try{
     for(const entry of playerList){
@@ -2360,7 +2361,7 @@ async function heInit(playerList,date,notes,startHole){
       entry.tee=tee;
       const courseHcp=index!=null?calcCourseHcp(index,tee):null;
       entry.phcp=index!=null?calcPlayingHcp(index,tee):null;
-      scores[p.id]=Array(18).fill(null);
+      scores[p.id]=Array(18).fill(null);pickups[p.id]=Array(18).fill(false);
       const holes=Array.from({length:18},(_,i)=>({hole:i+1,score:null,par:HOLE_PARS[i],hcp:HOLE_HCP[i]}));
       const payload={id:Date.now()+Math.floor(Math.random()*100000),player_id:p.id,course:'Royal Golf Club, Copenhagen',date,tee_time:HE.teeTime||null,tee_id:entry.teeId,tee_name:tee.name,tee_color:tee.color,rating:tee.rating,slope:tee.slope,hcp_index:index,course_hcp:courseHcp,playing_hcp:entry.phcp,notes,holes};
       const[saved]=await sbInsert('rounds',payload);
@@ -2370,7 +2371,7 @@ async function heInit(playerList,date,notes,startHole){
     }
   }catch(e){alert('Error creating rounds: '+e.message);setLoading(false);return;}
   setLoading(false);
-  HE={playerList,scores,roundIds,currentHole:startHole,currentPidx:0,startHole,date,notes,teeTime:HE.teeTime||null};
+  HE={playerList,scores,pickups,roundIds,currentHole:startHole,currentPidx:0,startHole,date,notes,teeTime:HE.teeTime||null};
   saveActiveGroup();
   heRender();
 }
@@ -2496,7 +2497,7 @@ async function hePatchRound(pid){
     buildPlayerCheckboxes();
     return;
   }
-  const holes=HE.scores[pid].map((score,i)=>({hole:i+1,score,par:HOLE_PARS[i],hcp:HOLE_HCP[i]}));
+  const holes=HE.scores[pid].map((score,i)=>{const pu=HE.pickups&&HE.pickups[pid]&&HE.pickups[pid][i];return{hole:i+1,score:pu?null:score,par:HOLE_PARS[i],hcp:HOLE_HCP[i],...(pu?{pickup:true}:{})};});
   try{
     await sbUpdate('rounds',rid,{holes});
     const r=allRounds.find(x=>x.id===rid);if(r)r.holes=holes;
@@ -2518,14 +2519,15 @@ function heRender(){
   const card=document.getElementById('holeEntryCard');if(!card)return;
 
   const firstTee=s.playerList[0]?.tee||getTee('platinum');
+  const curEntry=s.playerList[s.currentPidx];const curPlayer=curEntry?.p;
   const startLabel=s.startHole!==1?`<span style="font-size:0.68rem;background:rgba(201,168,76,0.12);border:1px solid rgba(201,168,76,0.25);color:var(--gold-l);padding:2px 8px;border-radius:10px;margin-left:6px">Starting H${s.startHole}</span>`:'';
   const nextLabel=nextH?'Hole '+nextH+' →':'Done ✓';
 
   // Progress dots in play order
   const dots=order.map(h=>{
     const isCur=h===hole;
-    const filled=s.playerList.every(({p})=>s.scores[p.id][h-1]!==null);
-    const partial=s.playerList.some(({p})=>s.scores[p.id][h-1]!==null);
+    const filled=s.playerList.every(({p})=>s.scores[p.id][h-1]!==null||(HE.pickups&&HE.pickups[p.id]&&HE.pickups[p.id][h-1]));
+    const partial=s.playerList.some(({p})=>s.scores[p.id][h-1]!==null||(HE.pickups&&HE.pickups[p.id]&&HE.pickups[p.id][h-1]));
     const state=holeState(h);
     let bg;
     if(isCur){bg='#82aaf0';}
@@ -2559,12 +2561,15 @@ function heRender(){
     const scoreTD=h=>{
       const isCur=h===hole;
       const val=s.scores[p.id][h-1];
-      if(isCur){
-        return`<td style="${TD}${curBg}padding:2px 2px"><input type="number" id="he_${p.id}" value="${val!=null?val:''}" min="1" max="15" style="width:40px;text-align:center;font-family:'DM Mono',monospace;font-size:0.9rem;font-weight:600;padding:4px 1px;background:rgba(0,0,0,0.45);border:1px solid ${isCurPlayer?'rgba(130,170,240,0.85)':'rgba(130,170,240,0.4)'};border-radius:6px;color:var(--cream);outline:none"></td>`;
+      const pu=HE.pickups&&HE.pickups[p.id]&&HE.pickups[p.id][h-1];
+      if(isCur&&isCurPlayer){
+        const disp=_heKeypadBuffer||(val!=null?String(val):'');
+        return`<td style="${TD}${curBg}padding:4px 2px"><div id="heScoreDisplay" style="width:40px;min-height:28px;text-align:center;font-family:'DM Mono',monospace;font-size:0.9rem;font-weight:600;background:rgba(0,0,0,0.45);border:1px solid rgba(130,170,240,0.85);border-radius:6px;color:var(--cream);display:flex;align-items:center;justify-content:center;margin:0 auto">${disp||'<span style="color:rgba(255,255,255,0.2)">·</span>'}</div></td>`;
       }
-      if(val===null)return`<td style="${TD}color:rgba(255,255,255,0.18)">·</td>`;
+      if(pu)return`<td style="${TD}${isCur?curBg:''}"><span style="font-family:'DM Mono',monospace;font-weight:700;color:#f0a030">P</span></td>`;
+      if(val===null)return`<td style="${TD}${isCur?curBg:''}color:rgba(255,255,255,0.18)">·</td>`;
       const diff=val-HOLE_PARS[h-1];
-      return`<td style="${TD}font-family:'DM Mono',monospace;font-weight:600;color:${vpC(diff)}">${val}</td>`;
+      return`<td style="${TD}${isCur?curBg:''}font-family:'DM Mono',monospace;font-weight:600;color:${vpC(diff)}">${val}</td>`;
     };
     const fS=F.map(h=>s.scores[p.id][h-1]).filter(x=>x!==null);
     const bS=B.map(h=>s.scores[p.id][h-1]).filter(x=>x!==null);
@@ -2638,36 +2643,34 @@ function heRender(){
           </tbody>
         </table>
       </div>
+      ${curPlayer?`<div style="margin-top:1.25rem">
+        <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:0.85rem;padding-bottom:0.75rem;border-bottom:1px solid rgba(255,255,255,0.06)">
+          <div style="width:26px;height:26px;border-radius:50%;background:${clr(curPlayer)};display:flex;align-items:center;justify-content:center;font-size:0.62rem;font-weight:700;color:#fff;flex-shrink:0">${ini(curPlayer.name)}</div>
+          <span style="font-size:1rem;font-weight:600;color:var(--cream)">${curPlayer.name.split(' ')[0]}</span>
+          ${curEntry.phcp!=null?`<span style="font-size:0.72rem;color:rgba(255,255,255,0.35)">(HCP ${curEntry.phcp})</span>`:''}
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;max-width:320px;margin:0 auto;padding:0 4px">
+          ${[1,2,3,4,5,6,7,8,9].map(d=>`<button onclick="heKeypadDigit(${d})" style="font-family:'DM Mono',monospace;font-size:1.5rem;font-weight:600;color:var(--cream);background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:10px;padding:15px 0;touch-action:manipulation;cursor:pointer;-webkit-tap-highlight-color:transparent">${d}</button>`).join('')}
+          <button onclick="heKeypadPickup()" style="font-size:0.8rem;font-weight:700;color:#f0a030;background:rgba(240,160,48,0.08);border:1px solid rgba(240,160,48,0.3);border-radius:10px;padding:15px 0;touch-action:manipulation;cursor:pointer;-webkit-tap-highlight-color:transparent">Pickup</button>
+          <button onclick="heKeypadBackspace()" style="font-size:1.3rem;color:rgba(255,255,255,0.6);background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:15px 0;touch-action:manipulation;cursor:pointer;-webkit-tap-highlight-color:transparent">⌫</button>
+          <button onclick="heKeypadEnter()" style="font-size:0.9rem;font-weight:700;color:#fff;background:rgba(74,140,92,0.55);border:1px solid rgba(74,140,92,0.5);border-radius:10px;padding:15px 0;touch-action:manipulation;cursor:pointer;-webkit-tap-highlight-color:transparent">Enter →</button>
+        </div>
+      </div>`:''}
     </div>
   </div>`;
 
   window.scrollTo(0,_scrollY);
-  s.playerList.forEach(({p},pidx)=>{
-    const inp=document.getElementById(`he_${p.id}`);
-    if(!inp)return;
-    inp.addEventListener('input',()=>heUpdateScore(p.id,pidx));
-    inp.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();e.stopPropagation();heEnter(pidx);}});
-  });
-  setTimeout(()=>{const inp=document.getElementById(`he_${s.playerList[s.currentPidx]?.p.id}`);if(inp){inp.focus();inp.select();inp.scrollIntoView({block:'nearest',inline:'nearest',behavior:'instant'});}},50);
-}
-
-function heUpdateScore(pid,pidx){
-  const inp=document.getElementById(`he_${pid}`);
-  if(!inp)return;
-  HE.scores[pid][HE.currentHole-1]=inp.value?parseInt(inp.value):null;
 }
 
 async function heEnter(pidx){
   const pl=HE.playerList[pidx];
-  if(pl){const inp=document.getElementById(`he_${pl.p.id}`);if(inp)HE.scores[pl.p.id][HE.currentHole-1]=inp.value?parseInt(inp.value):null;}
+  if(pl&&_heKeypadBuffer){HE.scores[pl.p.id][HE.currentHole-1]=parseInt(_heKeypadBuffer,10);}_heKeypadBuffer='';
   const order=heOrderedHoles(HE.startHole);
   const pos=order.indexOf(HE.currentHole);
   const nextH=pos<17?order[pos+1]:null;
 
   if(pidx<HE.playerList.length-1){
     HE.currentPidx=pidx+1;
-    const nextInp=document.getElementById(`he_${HE.playerList[HE.currentPidx].p.id}`);
-    if(nextInp){nextInp.focus();nextInp.select();}
     heRender();
   } else {
     heFlushInputs();hePatchAll();
@@ -2675,7 +2678,20 @@ async function heEnter(pidx){
   }
 }
 
-function heFlushInputs(){HE.playerList.forEach(({p})=>{const inp=document.getElementById(`he_${p.id}`);if(inp)HE.scores[p.id][HE.currentHole-1]=inp.value?parseInt(inp.value):null;});}
+function heFlushInputs(){const cur=HE.playerList[HE.currentPidx];if(cur&&_heKeypadBuffer){HE.scores[cur.p.id][HE.currentHole-1]=parseInt(_heKeypadBuffer,10);}_heKeypadBuffer='';}
+function heKeypadDigit(d){if(_heKeypadBuffer.length>=2)return;_heKeypadBuffer+=String(d);const el=document.getElementById('heScoreDisplay');if(el)el.innerHTML=_heKeypadBuffer;}
+function heKeypadBackspace(){_heKeypadBuffer=_heKeypadBuffer.slice(0,-1);const el=document.getElementById('heScoreDisplay');if(el)el.innerHTML=_heKeypadBuffer||'<span style="color:rgba(255,255,255,0.2)">·</span>';}
+function heKeypadEnter(){heEnter(HE.currentPidx);}
+async function heKeypadPickup(){
+  if(!HE||!HE.playerList)return;
+  const pl=HE.playerList[HE.currentPidx];if(!pl)return;
+  if(!HE.pickups)HE.pickups={};
+  if(!HE.pickups[pl.p.id])HE.pickups[pl.p.id]=Array(18).fill(false);
+  HE.pickups[pl.p.id][HE.currentHole-1]=true;
+  HE.scores[pl.p.id][HE.currentHole-1]=null;
+  _heKeypadBuffer='';
+  await heEnter(HE.currentPidx);
+}
 
 async function heNext(){
   heFlushInputs();
@@ -2704,19 +2720,20 @@ async function autoResumeGroup(){
   const playerList=[];
   const scores={};
   const roundIds={};
+  const pickups={};
   let startAtHole=1;
   for(const{id,teeId}of saved.players){
     const p=players.find(x=>x.id===id)||pendingPlayers.find(x=>x.id===id);
     if(!p)continue;
-    const r=allRounds.find(ar=>ar.player_id===id&&ar.date===td&&ar.holes.filter(h=>h&&h.score!=null).length<18);
+    const r=allRounds.find(ar=>ar.player_id===id&&ar.date===td&&ar.holes.filter(h=>h&&(h.score!=null||h.pickup)).length<18);
     if(!r)continue;
     const tee=getTee(teeId||'platinum');
     const index=hcpOnDate(p,td);
     const phcp=index!=null?calcPlayingHcp(index,tee):null;
-    scores[id]=r.holes.map(h=>h?h.score:null);
+    scores[id]=r.holes.map(h=>h?h.score:null);pickups[id]=r.holes.map(h=>h?!!h.pickup:false);
     roundIds[id]=r.id;
     playerList.push({p,phcp,index,tee,teeId:teeId||'platinum'});
-    const firstUnscored=r.holes.find(h=>h&&h.score==null);
+    const firstUnscored=r.holes.find(h=>h&&h.score==null&&!h.pickup);
     const resumeHole=firstUnscored?firstUnscored.hole:18;
     if(id===saved.scorerPlayerId||startAtHole===1){
       startAtHole=resumeHole;
@@ -2724,7 +2741,7 @@ async function autoResumeGroup(){
   }
   if(!playerList.length){localStorage.removeItem('sl_active_group');checkForResumableRounds();return;}
   groupPlayerIds=playerList.map(x=>x.p.id);
-  HE={playerList,scores,roundIds,currentHole:startAtHole,currentPidx:0,startHole:saved.startHole||1,date:td,notes:'',teeTime:null};
+  HE={playerList,scores,pickups,roundIds,currentHole:startAtHole,currentPidx:0,startHole:saved.startHole||1,date:td,notes:'',teeTime:null};
   document.getElementById('logStep1').style.display='none';
   document.getElementById('logStep1b').style.display='none';
   document.getElementById('logStep2').style.display='block';
@@ -3526,10 +3543,10 @@ function renderTodayLb(){
   const _byPlayer=new Map();for(const r of _allToday){const comp=r.holes.filter(h=>h&&h.score!=null).length;const prev=_byPlayer.get(r.player_id);const prevComp=prev?prev.holes.filter(h=>h&&h.score!=null).length:-1;if(!prev||comp>prevComp||(comp===prevComp&&r.id>prev.id))_byPlayer.set(r.player_id,r);}
   const todayRounds=Array.from(_byPlayer.values());
   if(!todayRounds.length){document.getElementById('todayTable').innerHTML='<div class="empty">No rounds logged today yet.</div>';document.getElementById('todayScoreboards').innerHTML='';return;}
-  const rows=todayRounds.map(r=>{const p=players.find(x=>x.id===r.player_id);const holePts=p?calcHolePoints(r,p):[];const completed=r.holes.filter(h=>h&&h.score!=null).length;const pts=holePts.filter(x=>x!==null).reduce((s,x)=>s+(x.pts||0),0);const tee=getTee(r.tee_id||'platinum');const index=p?hcpOnDate(p,r.date):null;const phcp=index!=null?calcPlayingHcp(index,tee):null;return{r,p,pts,completed,phcp,holePts};}).sort((a,b)=>b.pts!==a.pts?b.pts-a.pts:b.completed-a.completed);
+  const rows=todayRounds.map(r=>{const p=players.find(x=>x.id===r.player_id);const holePts=p?calcHolePoints(r,p):[];const completed=r.holes.filter(h=>h&&(h.score!=null||h.pickup)).length;const pts=holePts.filter(x=>x!==null).reduce((s,x)=>s+(x.pts||0),0);const tee=getTee(r.tee_id||'platinum');const index=p?hcpOnDate(p,r.date):null;const phcp=index!=null?calcPlayingHcp(index,tee):null;return{r,p,pts,completed,phcp,holePts};}).sort((a,b)=>b.pts!==a.pts?b.pts-a.pts:b.completed-a.completed);
   let _prizeRank=0;const _prizeRanks=rows.map(row=>row.p?.is_social?null:++_prizeRank);
   document.getElementById('todayTable').innerHTML=`<div class="rt-wrap"><table class="rt"><thead><tr><th></th><th>Player</th><th>Tee</th><th>Playing HCP</th><th>Holes</th><th>Progress</th><th>Points</th></tr></thead><tbody>${rows.map((row,i)=>{const pr=_prizeRanks[i];const rc=pr?(pr===1?'rank gold':pr===2?'rank silver':pr===3?'rank bronze':'rank'):'rank';const med=pr?(pr===1?'1st':pr===2?'2nd':pr===3?'3rd':`${pr}th`):`<span class="tag tag-social" style="font-size:0.6rem">Social</span>`;const pct=Math.round((row.completed/18)*100);return`<tr><td class="${rc}">${med}</td><td><div style="display:flex;align-items:center;gap:8px">${row.p?`<div class="av" style="background:${clr(row.p)}">${ini(row.p.name)}</div>${row.p.name}${row.p.is_social?'<span class="tag tag-social" style="font-size:0.6rem;padding:1px 5px">Social</span>':''}`:'Unknown'}</div></td><td><span style="display:inline-flex;align-items:center;gap:4px;font-size:0.76rem"><span class="tee-dot" style="background:${row.r.tee_color||'#888'}"></span>${row.r.tee_name||'—'}</span></td><td style="font-family:'DM Mono',monospace;color:rgba(255,255,255,0.5)">${row.phcp!=null?row.phcp:'—'}</td><td style="font-family:'DM Mono',monospace">${row.completed}<span style="color:rgba(255,255,255,0.3)">/18</span></td><td><div class="prog-bar"><div class="prog-fill" style="width:${pct}%"></div></div></td><td style="font-family:'DM Mono',monospace;font-weight:600;font-size:1.1rem;color:#82aaf0">${row.pts}</td></tr>`;}).join('')}</tbody></table></div>`;
-  document.getElementById('todayScoreboards').innerHTML=rows.map(row=>{if(!row.p)return'';const F=[0,1,2,3,4,5,6,7,8],B=[9,10,11,12,13,14,15,16,17];const hp=row.holePts;function cell(i){const h=row.r.holes[i];const x=hp[i];if(!h||h.score==null)return`<td style="color:rgba(255,255,255,0.2)">·</td>`;const d=h.score-h.par;return`<td style="font-family:'DM Mono',monospace;font-size:0.82rem;font-weight:500;color:${vpC(d)}">${h.score}</td>`;}function ptsCell(i){const x=hp[i];if(!x)return`<td style="color:rgba(255,255,255,0.18)">·</td>`;return`<td style="font-family:'DM Mono',monospace;font-size:0.78rem;font-weight:500;color:${ptC(x.pts)}">${x.pts}</td>`;}const fPts=F.map(i=>hp[i]?.pts||0).reduce((a,b)=>a+b,0),bPts=B.map(i=>hp[i]?.pts||0).reduce((a,b)=>a+b,0);return`<div style="margin-top:1rem;padding-top:1rem;border-top:1px solid rgba(255,255,255,0.06)"><div style="display:flex;align-items:center;gap:9px;margin-bottom:0.6rem"><div class="av" style="background:${clr(row.p)};width:22px;height:22px;font-size:0.6rem">${ini(row.p.name)}</div><span style="font-weight:500;font-size:0.88rem">${row.p.name}</span><span style="font-size:0.75rem;color:rgba(255,255,255,0.38)">${row.completed} holes · HCP ${row.phcp!=null?row.phcp:'—'}</span></div><div class="scorecard-wrap"><table class="sc-table" style="min-width:500px"><thead><tr><th class="left">Hole</th>${F.map(i=>`<th>${i+1}</th>`).join('')}<th>Out</th><th class="sep"></th>${B.map(i=>`<th>${i+1}</th>`).join('')}<th>In</th><th>Total</th></tr></thead><tbody><tr><td class="left muted">Par</td>${F.map(i=>`<td class="mono muted">${HOLE_PARS[i]}</td>`).join('')}<td class="tot mono muted">35</td><td class="sep"></td>${B.map(i=>`<td class="mono muted">${HOLE_PARS[i]}</td>`).join('')}<td class="tot mono muted">37</td><td class="tot mono muted">72</td></tr><tr><td class="left" style="font-weight:500;color:var(--gold-l);font-size:0.77rem">Score</td>${F.map(i=>cell(i)).join('')}<td class="tot">${F.some(i=>row.r.holes[i]?.score)?tS(row.r.holes.slice(0,9).filter(h=>h?.score)):''}</td><td class="sep"></td>${B.map(i=>cell(i)).join('')}<td class="tot">${B.some(i=>row.r.holes[i]?.score)?tS(row.r.holes.slice(9).filter(h=>h?.score)):''}</td><td class="tot" style="font-weight:600">${row.completed?tS(row.r.holes.filter(h=>h?.score)):''}</td></tr><tr><td class="left" style="color:#82aaf0;font-size:0.77rem">Points</td>${F.map(i=>ptsCell(i)).join('')}<td class="tot" style="color:#82aaf0;font-weight:600">${fPts||'—'}</td><td class="sep"></td>${B.map(i=>ptsCell(i)).join('')}<td class="tot" style="color:#82aaf0;font-weight:600">${bPts||'—'}</td><td class="tot" style="color:#82aaf0;font-weight:700;font-size:1rem">${row.pts}</td></tr></tbody></table></div>`;}).join('');}
+  document.getElementById('todayScoreboards').innerHTML=rows.map(row=>{if(!row.p)return'';const F=[0,1,2,3,4,5,6,7,8],B=[9,10,11,12,13,14,15,16,17];const hp=row.holePts;function cell(i){const h=row.r.holes[i];if(!h)return`<td style="color:rgba(255,255,255,0.2)">·</td>`;if(h.pickup)return`<td style="font-family:'DM Mono',monospace;font-size:0.82rem;font-weight:700;color:#f0a030">P</td>`;if(h.score==null)return`<td style="color:rgba(255,255,255,0.2)">·</td>`;const d=h.score-h.par;return`<td style="font-family:'DM Mono',monospace;font-size:0.82rem;font-weight:500;color:${vpC(d)}">${h.score}</td>`;}function ptsCell(i){const x=hp[i];if(!x)return`<td style="color:rgba(255,255,255,0.18)">·</td>`;return`<td style="font-family:'DM Mono',monospace;font-size:0.78rem;font-weight:500;color:${ptC(x.pts)}">${x.pts}</td>`;}const fPts=F.map(i=>hp[i]?.pts||0).reduce((a,b)=>a+b,0),bPts=B.map(i=>hp[i]?.pts||0).reduce((a,b)=>a+b,0);return`<div style="margin-top:1rem;padding-top:1rem;border-top:1px solid rgba(255,255,255,0.06)"><div style="display:flex;align-items:center;gap:9px;margin-bottom:0.6rem"><div class="av" style="background:${clr(row.p)};width:22px;height:22px;font-size:0.6rem">${ini(row.p.name)}</div><span style="font-weight:500;font-size:0.88rem">${row.p.name}</span><span style="font-size:0.75rem;color:rgba(255,255,255,0.38)">${row.completed} holes · HCP ${row.phcp!=null?row.phcp:'—'}</span></div><div class="scorecard-wrap"><table class="sc-table" style="min-width:500px"><thead><tr><th class="left">Hole</th>${F.map(i=>`<th>${i+1}</th>`).join('')}<th>Out</th><th class="sep"></th>${B.map(i=>`<th>${i+1}</th>`).join('')}<th>In</th><th>Total</th></tr></thead><tbody><tr><td class="left muted">Par</td>${F.map(i=>`<td class="mono muted">${HOLE_PARS[i]}</td>`).join('')}<td class="tot mono muted">35</td><td class="sep"></td>${B.map(i=>`<td class="mono muted">${HOLE_PARS[i]}</td>`).join('')}<td class="tot mono muted">37</td><td class="tot mono muted">72</td></tr><tr><td class="left" style="font-weight:500;color:var(--gold-l);font-size:0.77rem">Score</td>${F.map(i=>cell(i)).join('')}<td class="tot">${F.some(i=>row.r.holes[i]?.score)?tS(row.r.holes.slice(0,9).filter(h=>h?.score)):''}</td><td class="sep"></td>${B.map(i=>cell(i)).join('')}<td class="tot">${B.some(i=>row.r.holes[i]?.score)?tS(row.r.holes.slice(9).filter(h=>h?.score)):''}</td><td class="tot" style="font-weight:600">${row.completed?tS(row.r.holes.filter(h=>h?.score)):''}</td></tr><tr><td class="left" style="color:#82aaf0;font-size:0.77rem">Points</td>${F.map(i=>ptsCell(i)).join('')}<td class="tot" style="color:#82aaf0;font-weight:600">${fPts||'—'}</td><td class="sep"></td>${B.map(i=>ptsCell(i)).join('')}<td class="tot" style="color:#82aaf0;font-weight:600">${bPts||'—'}</td><td class="tot" style="color:#82aaf0;font-weight:700;font-size:1rem">${row.pts}</td></tr></tbody></table></div>`;}).join('');}
 
 function renderSeasonLb(){
   const season=document.getElementById('seasonYear')?.value||new Date().getFullYear().toString();
