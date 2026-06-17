@@ -3953,7 +3953,7 @@ async function saveMyHcp(){
 
 let _editingTeeId=null,_addingTee=false;
 // ── Admin functions ───────────────────────────────────────────────────────────
-function getTeeDistFromInputs(){const vals=Array.from({length:18},(_,i)=>{const v=document.getElementById('teeDistEdit_'+i)?.value;return v!==''&&v!=null?parseInt(v):null;});return vals.every(v=>v===null)?null:vals;}
+function getTeeDistFromInputs(){const vals=Array.from({length:18},(_,i)=>{const v=document.getElementById('teeDistEdit_'+i)?.value;return v!==''&&v!=null?parseInt(v,10):null;});return vals.every(v=>v===null)?null:vals;}
 function openAddTee(){_editingTeeId=null;_addingTee=!_addingTee;renderAdminTees();}
 function renderAdminTees(){
   const el=document.getElementById('adminTeesBody');if(!el)return;
