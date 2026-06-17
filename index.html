@@ -3522,7 +3522,9 @@ function populateYearSelects(){const seasons=getSeasons();['seasonYear','dreamYe
 
 function renderTodayLb(){
   const td=today();document.getElementById('todayDateLabel').textContent=new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
-  const todayRounds=allRounds.filter(r=>r.date===td);
+  const _allToday=allRounds.filter(r=>r.date===td);
+  const _byPlayer=new Map();for(const r of _allToday){const comp=r.holes.filter(h=>h&&h.score!=null).length;const prev=_byPlayer.get(r.player_id);const prevComp=prev?prev.holes.filter(h=>h&&h.score!=null).length:-1;if(!prev||comp>prevComp||(comp===prevComp&&r.id>prev.id))_byPlayer.set(r.player_id,r);}
+  const todayRounds=Array.from(_byPlayer.values());
   if(!todayRounds.length){document.getElementById('todayTable').innerHTML='<div class="empty">No rounds logged today yet.</div>';document.getElementById('todayScoreboards').innerHTML='';return;}
   const rows=todayRounds.map(r=>{const p=players.find(x=>x.id===r.player_id);const holePts=p?calcHolePoints(r,p):[];const completed=r.holes.filter(h=>h&&h.score!=null).length;const pts=holePts.filter(x=>x!==null).reduce((s,x)=>s+(x.pts||0),0);const tee=getTee(r.tee_id||'platinum');const index=p?hcpOnDate(p,r.date):null;const phcp=index!=null?calcPlayingHcp(index,tee):null;return{r,p,pts,completed,phcp,holePts};}).sort((a,b)=>b.pts!==a.pts?b.pts-a.pts:b.completed-a.completed);
   let _prizeRank=0;const _prizeRanks=rows.map(row=>row.p?.is_social?null:++_prizeRank);
