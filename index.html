@@ -3391,6 +3391,21 @@ function renderTournamentDrawHtml(tourn){
       <button class="btn btn-primary btn-sm" id="tmConfirmPick" data-needs="${needsCount}" onclick="tmConfirmPick(${tourn.id},${activeMatch?.id},${isFourball})" disabled style="margin-top:0.75rem">Confirm Pick</button>
     </div>`:waitMsg||specMsg;
 
+  const adminOverride=isAdmin()?`<div style="margin-top:1rem;padding-top:0.75rem;border-top:1px solid rgba(255,255,255,0.08)">
+  <div style="font-size:0.75rem;color:rgba(255,255,255,0.35);margin-bottom:0.4rem">Admin override — fill any unfilled slot</div>
+  <select id="tmOverrideMatch" class="input" style="font-size:0.8rem;padding:0.25rem 0.5rem;margin-right:0.4rem">
+    ${tMatches.filter(m=>!m.team_a_p1_id||!m.team_b_p1_id).map(m=>`<option value="${m.id}">Match ${m.match_num}</option>`).join('')}
+  </select>
+  <select id="tmOverrideTeam" class="input" style="font-size:0.8rem;padding:0.25rem 0.5rem;margin-right:0.4rem">
+    <option value="a">Team A</option><option value="b">Team B</option>
+  </select>
+  <select id="tmOverridePid1" class="input" style="font-size:0.8rem;padding:0.25rem 0.5rem;margin-right:0.4rem">
+    ${players.map(p=>`<option value="${p.id}">${p.name}</option>`).join('')}
+  </select>
+  ${isFourball?`<select id="tmOverridePid2" class="input" style="font-size:0.8rem;padding:0.25rem 0.5rem;margin-right:0.4rem">${players.map(p=>`<option value="${p.id}">${p.name}</option>`).join('')}</select>`:''}
+  <button class="btn btn-warn btn-sm" onclick="tmAdminOverridePick(${tourn.id},${isFourball})" style="font-size:0.75rem">Override</button>
+</div>`:'';
+
   return`<div>
     <h3 style="font-family:'Playfair Display',serif;font-size:1.1rem;margin:0 0 0.75rem">${isFourball?'Fourball Draw':'Singles Draw'}</h3>
     <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:10px;margin-bottom:1rem;overflow:hidden">
@@ -3400,7 +3415,23 @@ function renderTournamentDrawHtml(tourn){
       ${matchRows}
     </div>
     ${pickHtml}
+    ${adminOverride}
   </div>`;
+}
+
+async function tmAdminOverridePick(tournId,isFourball){
+  const matchId=parseInt(document.getElementById('tmOverrideMatch').value);
+  const team=document.getElementById('tmOverrideTeam').value;
+  const p1=parseInt(document.getElementById('tmOverridePid1').value);
+  const p2=isFourball?parseInt(document.getElementById('tmOverridePid2')?.value):null;
+  const patch=isFourball?{[`team_${team}_p1_id`]:p1,[`team_${team}_p2_id`]:p2}:{[`team_${team}_p1_id`]:p1};
+  try{
+    await sbUpdate('tournament_matches',matchId,patch);
+    const m=tournamentMatches.find(x=>x.id===matchId);if(m)Object.assign(m,patch);
+    const tourn=tournaments.find(t=>t.id===tournId);
+    if(tourn)await checkTournamentDrawAdvance(tourn);
+    toast('Override applied');renderTournament();
+  }catch(e){alert('Error: '+e.message);}
 }
 
 function wireTournamentDrawEvents(tourn){
