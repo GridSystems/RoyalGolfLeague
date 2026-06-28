@@ -3406,6 +3406,9 @@ function renderTournamentDrawHtml(tourn){
       <button class="btn btn-primary btn-sm" id="tmConfirmPick" data-needs="${needsCount}" onclick="tmConfirmPick(${tourn.id},${activeMatch?.id},${isFourball})" disabled style="margin-top:0.75rem">Confirm Pick</button>
     </div>`:waitMsg||specMsg;
 
+  const tpA=tPlayers.filter(tp=>tp.team==='a').map(tp=>players.find(p=>p.id===tp.player_id)).filter(Boolean);
+  const tpB=tPlayers.filter(tp=>tp.team==='b').map(tp=>players.find(p=>p.id===tp.player_id)).filter(Boolean);
+  const overridePlayerOpts=`<optgroup label="${tourn.team_a_name}">${tpA.map(p=>`<option value="${p.id}">${p.name}</option>`).join('')}</optgroup><optgroup label="${tourn.team_b_name}">${tpB.map(p=>`<option value="${p.id}">${p.name}</option>`).join('')}</optgroup>`;
   const adminOverride=isAdmin()?`<div style="margin-top:1rem;padding-top:0.75rem;border-top:1px solid rgba(255,255,255,0.08)">
   <div style="font-size:0.75rem;color:rgba(255,255,255,0.35);margin-bottom:0.4rem">Admin override — fill any unfilled slot</div>
   <select id="tmOverrideMatch" class="input" style="font-size:0.8rem;padding:0.25rem 0.5rem;margin-right:0.4rem">
@@ -3414,10 +3417,8 @@ function renderTournamentDrawHtml(tourn){
   <select id="tmOverrideTeam" class="input" style="font-size:0.8rem;padding:0.25rem 0.5rem;margin-right:0.4rem">
     <option value="a">${tourn.team_a_name}</option><option value="b">${tourn.team_b_name}</option>
   </select>
-  <select id="tmOverridePid1" class="input" style="font-size:0.8rem;padding:0.25rem 0.5rem;margin-right:0.4rem">
-    ${players.map(p=>`<option value="${p.id}">${p.name}</option>`).join('')}
-  </select>
-  ${isFourball?`<select id="tmOverridePid2" class="input" style="font-size:0.8rem;padding:0.25rem 0.5rem;margin-right:0.4rem">${players.map(p=>`<option value="${p.id}">${p.name}</option>`).join('')}</select>`:''}
+  <select id="tmOverridePid1" class="input" style="font-size:0.8rem;padding:0.25rem 0.5rem;margin-right:0.4rem">${overridePlayerOpts}</select>
+  ${isFourball?`<select id="tmOverridePid2" class="input" style="font-size:0.8rem;padding:0.25rem 0.5rem;margin-right:0.4rem">${overridePlayerOpts}</select>`:''}
   <button class="btn btn-warn btn-sm" onclick="tmAdminOverridePick(${tourn.id},${isFourball})" style="font-size:0.75rem">Override</button>
 </div>`:'';
 
