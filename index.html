@@ -3689,6 +3689,7 @@ function renderMatchScoring(){
       <div style="display:flex;align-items:center;gap:0.3rem">
         ${currentHole>1?`<button onclick="teGoPrevHole()" style="background:none;border:none;color:rgba(255,255,255,0.5);cursor:pointer;font-size:1.1rem;padding:0;line-height:1;touch-action:manipulation">‹</button>`:''}
         <span style="font-weight:700">Hole ${currentHole}</span>
+        ${currentHole<18&&TE.playerOrder.some(pid=>TE.scores[pid]?.[currentHole+1]!=null)?`<button onclick="teGoNextHole()" style="background:none;border:none;color:rgba(255,255,255,0.5);cursor:pointer;font-size:1.1rem;padding:0;line-height:1;touch-action:manipulation">›</button>`:''}
       </div>
       <span style="font-size:0.8rem;color:rgba(255,255,255,0.5)">Par ${par} · SI ${si}${isStroke?` · <span style="color:#f5c518">stroke hole</span>`:''}</span>
     </div>
@@ -3738,6 +3739,7 @@ function teKey(d){
 }
 function teBack_key(){_teBuffer='';renderMatchScoring();}
 function teGoPrevHole(){if(TE.currentHole<=1)return;TE.currentHole--;TE.currentPlayerIdx=0;_teBuffer='';renderMatchScoring();}
+function teGoNextHole(){if(TE.currentHole>=18)return;const n=TE.currentHole+1;if(!TE.playerOrder.some(pid=>TE.scores[pid]?.[n]!=null))return;TE.currentHole=n;TE.currentPlayerIdx=0;_teBuffer='';renderMatchScoring();}
 async function tePickup(){_teBuffer='0';await teEnter();}
 
 async function teEnter(){
