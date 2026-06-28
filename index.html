@@ -3341,7 +3341,7 @@ function wireTournamentDrawEvents(tourn){}
 function teOpenMatch(matchId){toast('Scoring screen coming soon…');}
 function renderAdminTournament(){
   const el=document.getElementById('adminTournamentBody');if(!el)return;
-  const tourn=tournaments[0]||null;
+  const tourn=(activeTournamentId&&tournaments.find(t=>t.id===activeTournamentId))||tournaments[0]||null;
 
   const createHtml=`
   <div style="margin-bottom:1rem">
@@ -3404,12 +3404,14 @@ function renderAdminTournament(){
   `;
 }
 async function createTournament(){
+  const createBtn=document.querySelector('#adminTournamentBody button.btn-primary');
+  if(createBtn){if(createBtn.disabled)return;createBtn.disabled=true;}
   const name=document.getElementById('tmNewName').value.trim();
   const date=document.getElementById('tmNewDate').value;
   const teeId=document.getElementById('tmNewTee').value;
   const teamAName=document.getElementById('tmNewTeamA').value.trim()||'Team A';
   const teamBName=document.getElementById('tmNewTeamB').value.trim()||'Team B';
-  if(!name||!date||!teeId){alert('Name, date and tee required');return;}
+  if(!name||!date||!teeId){if(createBtn)createBtn.disabled=false;alert('Name, date and tee required');return;}
   const payload={id:Date.now()+Math.floor(Math.random()*9999),name,date,tee_id:teeId,status:'setup',team_a_name:teamAName,team_b_name:teamBName};
   try{
     const[saved]=await sbInsert('tournaments',payload);
@@ -3418,7 +3420,9 @@ async function createTournament(){
     document.getElementById('tabTournament').style.display='';
     toast('Tournament created ✅');
     renderAdminTournament();
-  }catch(e){alert('Error: '+e.message);}
+    renderTournament();
+    // Button is re-rendered by renderAdminTournament so no need to re-enable manually
+  }catch(e){if(createBtn)createBtn.disabled=false;alert('Error: '+e.message);}
 }
 async function assignTournamentPlayer(tournId,team,playerId){
   if(tournamentPlayers.find(tp=>tp.tournament_id===tournId&&tp.player_id===playerId))return;
@@ -3437,7 +3441,9 @@ async function removeTournamentPlayer(tournId,playerId){
     tournamentPlayers=tournamentPlayers.filter(x=>x.id!==tp.id);
     const t=tournaments.find(x=>x.id===tournId);
     if(t&&(t.team_a_captain_id===playerId||t.team_b_captain_id===playerId)){
-      const patch=t.team_a_captain_id===playerId?{team_a_captain_id:null}:{team_b_captain_id:null};
+      const patch={};
+      if(t.team_a_captain_id===playerId)patch.team_a_captain_id=null;
+      if(t.team_b_captain_id===playerId)patch.team_b_captain_id=null;
       await sbUpdate('tournaments',tournId,patch);
       Object.assign(t,patch);
     }
@@ -3459,21 +3465,18 @@ async function advanceTournamentStatus(tournId){
   const transitions={setup:'fourball_draw',round_1:'singles_draw'};
   const next=transitions[t.status];if(!next)return;
   try{
+    const newMatches=[];
     if(next==='fourball_draw'){
-      for(let i=1;i<=4;i++){
-        const payload={id:Date.now()+Math.floor(Math.random()*9999)+i,tournament_id:tournId,round:1,match_num:i,status:'pending'};
-        const[saved]=await sbInsert('tournament_matches',payload);
-        const m=saved||payload;m._teeId=t.tee_id;
-        tournamentMatches.push(m);
-      }
+      for(let i=1;i<=4;i++)newMatches.push({id:Date.now()+Math.floor(Math.random()*999999)+i,tournament_id:tournId,round:1,match_num:i,status:'pending'});
     }
     if(next==='singles_draw'){
-      for(let i=1;i<=8;i++){
-        const payload={id:Date.now()+Math.floor(Math.random()*9999)+i,tournament_id:tournId,round:2,match_num:i,status:'pending'};
-        const[saved]=await sbInsert('tournament_matches',payload);
-        const m=saved||payload;m._teeId=t.tee_id;
-        tournamentMatches.push(m);
-      }
+      for(let i=1;i<=8;i++)newMatches.push({id:Date.now()+Math.floor(Math.random()*999999)+i,tournament_id:tournId,round:2,match_num:i,status:'pending'});
+    }
+    // Insert all match rows before updating status — avoids partial state if insert fails
+    if(newMatches.length>0){
+      const saved=await sbInsert('tournament_matches',newMatches.length===1?newMatches[0]:newMatches);
+      const insertedRows=Array.isArray(saved)?saved:saved?[saved]:newMatches;
+      insertedRows.forEach(m=>{m._teeId=t.tee_id;tournamentMatches.push(m);});
     }
     await sbUpdate('tournaments',tournId,{status:next});
     t.status=next;
@@ -3485,10 +3488,10 @@ async function resetTournament(id){
   if(!confirm('Delete all match and score data for this tournament? The tournament record stays.'))return;
   try{
     const mIds=tournamentMatches.filter(m=>m.tournament_id===id).map(m=>m.id);
-    for(const mid of mIds){
-      await sbDeleteWhere('tournament_scores',`match_id=eq.${mid}`);
+    if(mIds.length>0){
+      await sbDeleteWhere('tournament_scores',`match_id=in.(${mIds.join(',')})`);
+      await sbDeleteWhere('tournament_matches',`id=in.(${mIds.join(',')})`);
     }
-    for(const mid of mIds)await sbDelete('tournament_matches',mid);
     tournamentMatches=tournamentMatches.filter(m=>m.tournament_id!==id);
     tournamentScores=tournamentScores.filter(s=>!mIds.includes(s.match_id));
     await sbUpdate('tournaments',id,{status:'setup',team_a_captain_id:null,team_b_captain_id:null});
