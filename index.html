@@ -3411,7 +3411,7 @@ function renderTournamentDrawHtml(tourn){
     ${tMatches.filter(m=>isFourball?!(m.team_a_p1_id&&m.team_a_p2_id&&m.team_b_p1_id&&m.team_b_p2_id):!(m.team_a_p1_id&&m.team_b_p1_id)).map(m=>`<option value="${m.id}">Match ${m.match_num}</option>`).join('')}
   </select>
   <select id="tmOverrideTeam" class="input" style="font-size:0.8rem;padding:0.25rem 0.5rem;margin-right:0.4rem">
-    <option value="a">Team A</option><option value="b">Team B</option>
+    <option value="a">${tourn.team_a_name}</option><option value="b">${tourn.team_b_name}</option>
   </select>
   <select id="tmOverridePid1" class="input" style="font-size:0.8rem;padding:0.25rem 0.5rem;margin-right:0.4rem">
     ${players.map(p=>`<option value="${p.id}">${p.name}</option>`).join('')}
