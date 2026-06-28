@@ -17,3 +17,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON public.gps_shots        TO anon, authent
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.survey_points    TO anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.green_polygons   TO anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.tees             TO anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.tournaments         TO anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.tournament_players  TO anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.tournament_matches  TO anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.tournament_scores   TO anon, authenticated;

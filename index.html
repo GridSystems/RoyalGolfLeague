@@ -746,6 +746,10 @@ async function sbGet(t,p=''){const r=await fetch(`${SUPABASE_URL}/rest/v1/${t}?$
 async function sbInsert(t,b){const r=await fetch(`${SUPABASE_URL}/rest/v1/${t}`,{method:'POST',headers:{...H,'Prefer':'return=representation'},body:JSON.stringify(b)});if(!r.ok)throw new Error(await r.text());return r.json();}
 async function sbUpdate(t,id,b){const r=await fetch(`${SUPABASE_URL}/rest/v1/${t}?id=eq.${id}`,{method:'PATCH',headers:{...H,'Prefer':'return=representation'},body:JSON.stringify(b)});if(!r.ok)throw new Error(await r.text());return r.json();}
 async function sbDelete(t,id){const r=await fetch(`${SUPABASE_URL}/rest/v1/${t}?id=eq.${id}`,{method:'DELETE',headers:H});if(!r.ok)throw new Error(await r.text());}
+async function sbDeleteWhere(t,filter){
+  const r=await fetch(`${SUPABASE_URL}/rest/v1/${t}?${filter}`,{method:'DELETE',headers:H});
+  if(!r.ok)throw new Error(await r.text());
+}
 
 // ── Course data ───────────────────────────────────────────────────────────────
 const HOLE_PARS=[4,4,5,3,4,4,3,4,4,4,4,4,3,5,4,3,5,5];
@@ -801,6 +805,8 @@ let weatherInterval = null;
 let fineTypes=[],allFines=[];
 let editingFineTypeId=null;
 let saturdayEvents=[],saturdaySignups=[];
+let tournaments=[],tournamentPlayers=[],tournamentMatches=[],tournamentScores=[];
+let activeTournamentId=null;
 const MOBILEPAY_FINES_URL='https://qr.mobilepay.dk/box/19b8d876-6c09-4fbd-b471-6d46df7c61e5/pay-in';
 let pendingDraw={};
 let satSignupForm=null;   // date currently showing the sign-up form
@@ -896,7 +902,17 @@ function calcHolePoints(round,player){const tee=getTee(round.tee_id||'platinum')
 
 // ── Storage ───────────────────────────────────────────────────────────────────
 let pendingPlayers=[];
-async function loadData(){let _teesFetchOk=false;try{tees=await sbGet('tees','order=archived.asc,name.asc');_teesFetchOk=true;}catch(e){console.warn('tees fetch failed:',e);tees=[];}if(_teesFetchOk&&tees.length===0)await seedTees();const all=await sbGet('players','order=created_at.asc');pendingPlayers=all.filter(p=>p.approved===false);players=all.filter(p=>p.approved!==false);allRounds=await sbGet('rounds','order=date.desc');fineTypes=await sbGet('fine_types','order=name.asc');allFines=await sbGet('fines','order=created_at.desc');try{saturdayEvents=await sbGet('saturday_events','order=date.asc');}catch(e){saturdayEvents=[];}try{saturdaySignups=await sbGet('saturday_signups','order=created_at.asc');}catch(e){saturdaySignups=[];}try{const pg=await sbGet('green_polygons','');greenPolygons={};pg.forEach(r=>{greenPolygons[r.hole]=r.vertices;});}catch(e){console.warn('green_polygons load failed:',e);}try{const fp=await sbGet('fairway_polygons','');fairwayPolygons={};fp.forEach(r=>{fairwayPolygons[r.hole]=r.polygons;});}catch(e){console.warn('fairway_polygons load failed:',e);}}
+async function loadData(){let _teesFetchOk=false;try{tees=await sbGet('tees','order=archived.asc,name.asc');_teesFetchOk=true;}catch(e){console.warn('tees fetch failed:',e);tees=[];}if(_teesFetchOk&&tees.length===0)await seedTees();const all=await sbGet('players','order=created_at.asc');pendingPlayers=all.filter(p=>p.approved===false);players=all.filter(p=>p.approved!==false);allRounds=await sbGet('rounds','order=date.desc');fineTypes=await sbGet('fine_types','order=name.asc');allFines=await sbGet('fines','order=created_at.desc');try{saturdayEvents=await sbGet('saturday_events','order=date.asc');}catch(e){saturdayEvents=[];}try{saturdaySignups=await sbGet('saturday_signups','order=created_at.asc');}catch(e){saturdaySignups=[];}try{const pg=await sbGet('green_polygons','');greenPolygons={};pg.forEach(r=>{greenPolygons[r.hole]=r.vertices;});}catch(e){console.warn('green_polygons load failed:',e);}try{const fp=await sbGet('fairway_polygons','');fairwayPolygons={};fp.forEach(r=>{fairwayPolygons[r.hole]=r.polygons;});}catch(e){console.warn('fairway_polygons load failed:',e);}
+try{tournaments=await sbGet('tournaments','order=created_at.desc');}catch(e){tournaments=[];}
+try{tournamentPlayers=await sbGet('tournament_players','order=id.asc');}catch(e){tournamentPlayers=[];}
+try{tournamentMatches=await sbGet('tournament_matches','order=round.asc,match_num.asc');}catch(e){tournamentMatches=[];}
+try{tournamentScores=await sbGet('tournament_scores','order=id.asc');}catch(e){tournamentScores=[];}
+if(tournaments.length>0&&!activeTournamentId)activeTournamentId=tournaments[0].id;
+// Inject tee info onto matches so tmMatchHcpInfo can find it
+tournamentMatches.forEach(m=>{
+  const tourn=tournaments.find(t=>t.id===m.tournament_id);
+  if(tourn)m._teeId=tourn.tee_id;
+});}
 
 async function seedTees(){try{const rows=await sbInsert('tees',_TEES_SEED);tees=rows;}catch(e){console.warn('seedTees failed:',e);tees=[..._TEES_SEED];}}
 
