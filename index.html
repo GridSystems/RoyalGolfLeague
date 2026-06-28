@@ -3435,7 +3435,18 @@ function renderTournamentDrawHtml(tourn){
   <button class="btn btn-warn btn-sm" onclick="tmAdminOverridePick(${tourn.id},${isFourball})" style="font-size:0.75rem">Override</button>
 </div>`:'';
 
+  const isCap=!!myTeam;
+  const eBtn=fn=>isCap?`<button onclick="${fn}" style="background:none;border:none;color:rgba(255,255,255,0.3);cursor:pointer;font-size:0.75rem;padding:0 0 0 4px" title="Edit">✏</button>`:'';
+  const ef=(f,v)=>`tmEditField(${tourn.id},'${f}','${v.replace(/'/g,"\\'")}')`;
   return`<div>
+    <div style="margin-bottom:0.75rem">
+      <h2 style="font-family:'Playfair Display',serif;font-size:1.3rem;margin:0 0 0.2rem">${tourn.name}${eBtn(ef('name',tourn.name))}</h2>
+      <div style="display:flex;gap:0.5rem;align-items:center;font-size:0.85rem;font-weight:600">
+        <span style="color:#4a9e6b">${tourn.team_a_name}${eBtn(ef('team_a_name',tourn.team_a_name))}</span>
+        <span style="color:rgba(255,255,255,0.25)">vs</span>
+        <span style="color:#d4a017">${tourn.team_b_name}${eBtn(ef('team_b_name',tourn.team_b_name))}</span>
+      </div>
+    </div>
     <h3 style="font-family:'Playfair Display',serif;font-size:1.1rem;margin:0 0 0.75rem">${isFourball?'Fourball Draw':'Singles Draw'}</h3>
     <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:10px;margin-bottom:1rem;overflow:hidden">
       <div style="display:grid;grid-template-columns:1fr auto 1fr;padding:0.4rem 0.75rem;font-size:0.7rem;font-weight:600;color:rgba(255,255,255,0.3);border-bottom:1px solid rgba(255,255,255,0.06)">
@@ -4108,9 +4119,9 @@ function renderTournamentIndividualHtml(tourn){
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.4rem">${cards.join('')}</div>
     </div>`;
   };
-  return section(tourn.team_a_name,'#4a9e6b',all.filter(s=>s.team==='a'))
-        +section(tourn.team_b_name,'#d4a017',all.filter(s=>s.team==='b'))
-        +section('Overall','rgba(255,255,255,0.55)',all);
+  return section('Overall','rgba(255,255,255,0.55)',all)
+        +section(tourn.team_a_name,'#4a9e6b',all.filter(s=>s.team==='a'))
+        +section(tourn.team_b_name,'#d4a017',all.filter(s=>s.team==='b'));
 }
 
 function tmSetPlayersTab(btn){
