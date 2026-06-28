@@ -3352,7 +3352,7 @@ function renderTournamentDrawHtml(tourn){
   const benchB=tPlayers.filter(tp=>tp.team==='b'&&!placedB.has(tp.player_id)).map(tp=>players.find(p=>p.id===tp.player_id)).filter(Boolean);
 
   // Find active match (first where not all slots filled)
-  const activeMatch=tMatches.find(m=>isFourball?(m.team_a_p1_id==null||m.team_b_p1_id==null):(m.team_a_p1_id==null||m.team_b_p1_id==null))||null;
+  const activeMatch=tMatches.find(m=>isFourball?(m.team_a_p1_id==null||m.team_a_p2_id==null||m.team_b_p1_id==null||m.team_b_p2_id==null):(m.team_a_p1_id==null||m.team_b_p1_id==null))||null;
   const pickState=activeMatch?tmDrawPickState(activeMatch):null;
 
   const myTurn=myTeam&&pickState&&(pickState===`${myTeam}_picks`||pickState===`${myTeam}_responds`);
@@ -3413,14 +3413,16 @@ function wireTournamentDrawEvents(tourn){
       // Also re-fetch tournament status in case it advanced
       const freshT=await sbGet('tournaments',`id=eq.${tourn.id}`);
       if(freshT[0]){Object.assign(tourn,freshT[0]);const idx=tournaments.findIndex(t=>t.id===tourn.id);if(idx>=0)tournaments[idx]=freshT[0];}
+      _tmSelectedPids=[];
       renderTournament();
     }catch(e){/* silent */}
   },5000);
 }
 
 function tmDrawPickState(match){
-  const aFull=match.team_a_p1_id!=null;
-  const bFull=match.team_b_p1_id!=null;
+  const fourball=match.round===1;
+  const aFull=fourball?(match.team_a_p1_id!=null&&match.team_a_p2_id!=null):(match.team_a_p1_id!=null);
+  const bFull=fourball?(match.team_b_p1_id!=null&&match.team_b_p2_id!=null):(match.team_b_p1_id!=null);
   if(!aFull&&!bFull)return match.match_num%2===1?'a_picks':'b_picks';
   if(aFull&&!bFull)return'b_responds';
   if(!aFull&&bFull)return'a_responds';
@@ -3438,12 +3440,13 @@ function tmTogglePick(el){
 }
 
 async function tmConfirmPick(tournId,matchId,isFourball){
+  const _confirmBtn=document.getElementById('tmConfirmPick');
+  if(_confirmBtn)_confirmBtn.disabled=true;
   const tourn=tournaments.find(t=>t.id===tournId);
   const match=tournamentMatches.find(m=>m.id===matchId);
   if(!tourn||!match)return;
   const need=isFourball?2:1;
   if(_tmSelectedPids.length!==need){alert(`Please select ${need} player(s)`);return;}
-  const pickState=tmDrawPickState(match);
   const myTeam=activeId===tourn.team_a_captain_id?'a':activeId===tourn.team_b_captain_id?'b':null;
   if(!myTeam)return;
   const patch=isFourball
@@ -3457,7 +3460,7 @@ async function tmConfirmPick(tournId,matchId,isFourball){
     await checkTournamentDrawAdvance(tourn);
     renderTournament();
     toast('Pick saved ✅');
-  }catch(e){alert('Error: '+e.message);}
+  }catch(e){if(_confirmBtn)_confirmBtn.disabled=false;alert('Error: '+e.message);}
 }
 
 async function checkTournamentDrawAdvance(tourn){
