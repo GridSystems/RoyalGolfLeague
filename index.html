@@ -3739,7 +3739,17 @@ function teKey(d){
 }
 function teBack_key(){_teBuffer='';renderMatchScoring();}
 function teGoPrevHole(){if(TE.currentHole<=1)return;TE.currentHole--;TE.currentPlayerIdx=0;_teBuffer='';renderMatchScoring();}
-function teGoNextHole(){if(TE.currentHole>=18)return;const n=TE.currentHole+1;if(!TE.playerOrder.some(pid=>TE.scores[pid]?.[n]!=null))return;TE.currentHole=n;TE.currentPlayerIdx=0;_teBuffer='';renderMatchScoring();}
+function teGoNextHole(){
+  let n=TE.currentHole+1;
+  if(n>18)return;
+  while(n<=18){
+    if(!TE.playerOrder.some(pid=>TE.scores[pid]?.[n]!=null))return;
+    TE.currentHole=n;TE.currentPlayerIdx=0;_teBuffer='';
+    if(!TE.playerOrder.every(pid=>TE.scores[pid]?.[n]!=null))break;
+    n++;
+  }
+  renderMatchScoring();
+}
 async function tePickup(){_teBuffer='0';await teEnter();}
 
 async function teEnter(){
