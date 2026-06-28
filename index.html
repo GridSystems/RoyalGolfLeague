@@ -217,6 +217,7 @@ select option { background: #1a3a2a; }
     <button class="nav-tab" id="tabPlayers" onclick="showView('players',this)">Players</button>
     <button class="nav-tab" onclick="showView('rules',this)">Rules</button>
     <button class="nav-tab" id="tabTrack" onclick="openTrackTab()" style="display:none">📍 Track</button>
+    <button class="nav-tab" id="tabTournament" style="display:none" onclick="showView('tournament',this)">🏆 Tournament</button>
     <button class="nav-tab" id="adminTab" style="display:none" onclick="requireAdminPin(this)">⚙ Admin</button>
   </div>
 
@@ -485,6 +486,11 @@ select option { background: #1a3a2a; }
   <!-- GPS ROUND TRACKER -->
   <div class="view" id="view-track">
     <div id="trackContent"></div>
+  </div>
+
+  <!-- TOURNAMENT -->
+  <div class="view" id="view-tournament">
+    <div id="tournamentContent"></div>
   </div>
 
   <!-- ADMIN -->
@@ -1122,6 +1128,7 @@ function saveNewPin(){const v1=document.getElementById('newPinVal').value.trim()
 
 // ── Navigation ────────────────────────────────────────────────────────────────
 function showView(id,btn){
+  if(id!=='tournament'){clearInterval(window._tmRefreshInterval);clearInterval(window._tmDrawPollInterval);}
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
   document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
   document.getElementById('view-'+id).classList.add('active');
@@ -1135,6 +1142,18 @@ function showView(id,btn){
   if(id==='track')renderTrackView();
   if(id==='signup')renderSaturdayView();
   if(id==='teesheet')renderTeeSheet();
+  if(id==='tournament'){
+    clearInterval(window._tmRefreshInterval);
+    renderTournament();
+    window._tmRefreshInterval=setInterval(async()=>{
+      try{
+        tournamentMatches=await sbGet('tournament_matches','order=round.asc,match_num.asc');
+        tournamentScores=await sbGet('tournament_scores','order=id.asc');
+        tournamentMatches.forEach(m=>{const t=tournaments.find(x=>x.id===m.tournament_id);if(t)m._teeId=t.tee_id;});
+        renderTournament();
+      }catch(e){/* silent */}
+    },30000);
+  }
 }
 function renderRules(){
   const approved=players.filter(p=>p.approved!==false&&!p.is_social).length;
@@ -3164,6 +3183,11 @@ async function toggleSaturdaySignup(date){
     renderSaturdayView();renderSaturdayAdmin();
   }catch(e){alert('Error: '+e.message);}
 }
+function renderTournament(){
+  const el=document.getElementById('tournamentContent');
+  if(!el)return;
+  el.innerHTML='<p style="padding:1rem;color:rgba(255,255,255,0.5)">Loading tournament…</p>';
+}
 function renderSaturdayAdmin(){
   const el=document.getElementById('saturdayAdminBody');if(!el)return;
   const sats=getNextSaturdays(4);
@@ -4281,6 +4305,7 @@ async function init(){
   const savedId=localStorage.getItem('sl_active_player');
   if(savedId){const saved=players.find(p=>p.id==savedId)||pendingPlayers.find(p=>p.id==savedId);if(saved){activeId=saved.id;document.getElementById('playerName').textContent=saved.name;const av=document.getElementById('playerAvatar');av.textContent=ini(saved.name);av.style.background=clr(saved);const hb=document.getElementById('myHcpBtn');if(hb)hb.style.display='inline-block';const bb=document.getElementById('myBagBtn');if(bb)bb.style.display='inline-block';updateUnitsBtn();}}
   updateAdminUI();applyPendingUI();buildPlayerCheckboxes();checkForResumableRounds();
+  document.getElementById('tabTournament').style.display=tournaments.length>0?'':'none';
 
   setLoading(false);
   const _initView=new URLSearchParams(location.search).get('view');
