@@ -3267,6 +3267,7 @@ function renderTournamentLeaderboardHtml(tourn){
   <div style="display:flex;gap:0.5rem;margin-bottom:0.75rem">
     <button onclick="tmSetRoundTab(1,this)" class="sub-tab${activeRound===1?' active':''}" id="tmTabR1">Fourballs</button>
     <button onclick="tmSetRoundTab(2,this)" class="sub-tab${activeRound===2?' active':''}" id="tmTabR2">Singles</button>
+    <button onclick="tmSetPlayersTab(this)" class="sub-tab" id="tmTabPlayers">Players</button>
   </div>
 
   <div id="tmRoundContent">
@@ -4011,6 +4012,89 @@ async function resetTournament(id){
     renderTournament();
   }catch(e){alert('Error: '+e.message);}
 }
+
+function computeTournamentPlayerStats(tourn){
+  const tPlayers=tournamentPlayers.filter(tp=>tp.tournament_id===tourn.id);
+  const tMatches=tournamentMatches.filter(m=>m.tournament_id===tourn.id);
+  const stats={};
+  tPlayers.forEach(tp=>{if(tp.player_id)stats[tp.player_id]={pid:tp.player_id,team:tp.team,contributed:0,halves:0,fineTotal:0,played:0};});
+  allFines.filter(f=>f.date===tourn.date).forEach(f=>{if(stats[f.player_id])stats[f.player_id].fineTotal+=(f.amount||0);});
+  tMatches.forEach(match=>{
+    const hcpInfo=tmMatchHcpInfo(match,tourn.date);
+    const mScores=tournamentScores.filter(s=>s.match_id===match.id);
+    for(let hi=0;hi<18;hi++){
+      const pids=[match.team_a_p1_id,match.team_b_p1_id];
+      if(match.team_a_p2_id)pids.push(match.team_a_p2_id);
+      if(match.team_b_p2_id)pids.push(match.team_b_p2_id);
+      const grossByPid={};let complete=true;
+      for(const pid of pids){const s=mScores.find(s=>s.player_id===pid&&s.hole===hi+1);if(!s){complete=false;break;}grossByPid[pid]=s.gross;}
+      if(!complete)continue;
+      const hr=tmHoleResult(hi,match,hcpInfo,grossByPid);
+      if(!hr.result)continue;
+      const addShare=(p1pts,p2pts,p1id,p2id)=>{
+        if(p1pts==null)return;
+        if(stats[p1id])stats[p1id].played++;
+        if(p2pts==null){
+          if(stats[p1id]){stats[p1id].contributed+=1;if(hr.result==='half')stats[p1id].halves+=1;}return;
+        }
+        if(stats[p2id])stats[p2id].played++;
+        const mx=Math.max(p1pts,p2pts);
+        const tie=p1pts===mx&&p2pts===mx;
+        const sh=tie?0.5:1.0;
+        if(p1pts===mx&&stats[p1id]){stats[p1id].contributed+=sh;if(hr.result==='half')stats[p1id].halves+=sh;}
+        if(p2pts===mx&&stats[p2id]){stats[p2id].contributed+=sh;if(hr.result==='half')stats[p2id].halves+=sh;}
+      };
+      addShare(hr.ptsA1,hr.ptsA2,match.team_a_p1_id,match.team_a_p2_id);
+      addShare(hr.ptsB1,hr.ptsB2,match.team_b_p1_id,match.team_b_p2_id);
+    }
+  });
+  return Object.values(stats);
+}
+
+function renderTournamentIndividualHtml(tourn){
+  const all=computeTournamentPlayerStats(tourn);
+  if(!all.length)return`<div style="color:rgba(255,255,255,0.4);text-align:center;padding:2rem 0">No players yet</div>`;
+  const pName=pid=>{const p=players.find(x=>x.id===pid);return p?p.name.split(' ')[0]:'?';};
+  const fmtN=v=>v%1===0?String(v):v.toFixed(1);
+  const statCard=(icon,label,arr,val,fmt,asc=false)=>{
+    const active=asc?arr.filter(s=>s.played>0):arr;
+    if(!active.length)return'';
+    const sorted=[...active].sort((a,b)=>asc?val(a)-val(b):val(b)-val(a));
+    const best=val(sorted[0]);
+    if(!asc&&best===0)return'';
+    const tied=sorted.filter(s=>val(s)===best);
+    const names=tied.map(s=>pName(s.pid)).join(' / ');
+    return`<div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:0.5rem 0.65rem">
+      <div style="font-size:0.6rem;color:rgba(255,255,255,0.35);margin-bottom:0.15rem">${icon} ${label}</div>
+      <div style="font-size:0.85rem;font-weight:700">${names}</div>
+      <div style="font-size:0.7rem;color:rgba(255,255,255,0.45)">${fmt(best)}</div>
+    </div>`;
+  };
+  const section=(title,color,arr)=>{
+    if(!arr.length)return'';
+    const c1=statCard('🚨','Most Fined',arr,s=>s.fineTotal,v=>`DKK ${v}`);
+    const c2=statCard('⭐','Most Contributions',arr,s=>s.contributed,v=>`${fmtN(v)} holes`);
+    const c3=statCard('📉','Fewest Contributions',arr,s=>s.contributed,v=>`${fmtN(v)} holes`,true);
+    const c4=statCard('🤝','Most Halves',arr,s=>s.halves,v=>`${fmtN(v)} halves`);
+    const cards=[c1,c2,c3,c4].filter(Boolean);
+    if(!cards.length)return'';
+    return`<div style="margin-bottom:1.25rem">
+      <div style="font-size:0.75rem;font-weight:700;color:${color};margin-bottom:0.4rem;text-transform:uppercase;letter-spacing:0.04em">${title}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.4rem">${cards.join('')}</div>
+    </div>`;
+  };
+  return section(tourn.team_a_name,'#4a9e6b',all.filter(s=>s.team==='a'))
+        +section(tourn.team_b_name,'#d4a017',all.filter(s=>s.team==='b'))
+        +section('Overall','rgba(255,255,255,0.55)',all);
+}
+
+function tmSetPlayersTab(btn){
+  document.querySelectorAll('#view-tournament .sub-tab').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  const tourn=tournaments.find(t=>t.id===activeTournamentId);
+  document.getElementById('tmRoundContent').innerHTML=tourn?renderTournamentIndividualHtml(tourn):'';
+}
+
 function renderSaturdayAdmin(){
   const el=document.getElementById('saturdayAdminBody');if(!el)return;
   const sats=getNextSaturdays(4);
