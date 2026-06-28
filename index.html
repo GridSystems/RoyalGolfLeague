@@ -3205,12 +3205,15 @@ function renderTournament(){
     wireTournamentDrawEvents(tourn);
     return;
   }
+  if(tourn.status==='setup'){
+    el.innerHTML=selectorHtml+`<div style="text-align:center;padding:2rem 1rem;color:rgba(255,255,255,0.45)"><div style="font-size:2rem;margin-bottom:0.5rem">⚙</div><div style="font-size:0.9rem">Tournament setup in progress — configure teams and captains in Admin.</div></div>`;
+    return;
+  }
 
   // Scoring/complete — show leaderboard
   el.innerHTML=selectorHtml+renderTournamentLeaderboardHtml(tourn);
 }
 function renderTournamentLeaderboardHtml(tourn){
-  const tPlayers=tournamentPlayers.filter(tp=>tp.tournament_id===tourn.id);
   const tMatches=tournamentMatches.filter(m=>m.tournament_id===tourn.id);
   const r1Matches=tMatches.filter(m=>m.round===1);
   const r2Matches=tMatches.filter(m=>m.round===2);
@@ -3250,7 +3253,7 @@ function renderTournamentLeaderboardHtml(tourn){
   </div>
 
   <div id="tmRoundContent">
-    ${renderTournamentMatchRows(tourn,activeRound===1?r1Matches:r2Matches,tourn,activeRound)}
+    ${renderTournamentMatchRows(tourn,activeRound===1?r1Matches:r2Matches,activeRound)}
   </div>`;
 }
 function tmSetRoundTab(round,btn){
@@ -3259,9 +3262,9 @@ function tmSetRoundTab(round,btn){
   const tourn=tournaments.find(t=>t.id===activeTournamentId);
   if(!tourn)return;
   const tMatches=tournamentMatches.filter(m=>m.tournament_id===tourn.id&&m.round===round);
-  document.getElementById('tmRoundContent').innerHTML=renderTournamentMatchRows(tourn,tMatches,tourn,round);
+  document.getElementById('tmRoundContent').innerHTML=renderTournamentMatchRows(tourn,tMatches,round);
 }
-function renderTournamentMatchRows(tourn,matches,_unused,round){
+function renderTournamentMatchRows(tourn,matches,round){
   if(matches.length===0){
     if((round===1&&(tourn.status==='setup'||tourn.status==='fourball_draw'))||
        (round===2&&['setup','fourball_draw','round_1','singles_draw'].includes(tourn.status))){
