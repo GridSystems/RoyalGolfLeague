@@ -903,7 +903,7 @@ function tmPlayingHcp(player,tee,date){
 // Returns {receivingTeam:'a'|'b', diff, strokeHoles:[0-indexed hole indices], phA1,phA2,phB1,phB2}
 // Works for both fourball (p2 ids set) and singles (p2 ids null)
 function tmMatchHcpInfo(match,date){
-  const getP=id=>players.find(p=>p.id===id);
+  const getP=id=>players.find(p=>p.id===id)||{hcp_history:[],handicap:0};
   const tee=tees.find(t=>t.id===match._teeId)||{slope:113,rating:COURSE_PAR,id:match._teeId};
   const phA1=match.team_a_p1_id?tmPlayingHcp(getP(match.team_a_p1_id),tee,date):0;
   const phA2=match.team_a_p2_id?tmPlayingHcp(getP(match.team_a_p2_id),tee,date):0;
