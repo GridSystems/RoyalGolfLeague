@@ -3317,8 +3317,8 @@ function renderTournamentMatchRows(tourn,matches,round){
     const bWin=isDone&&match.result==='b';
     const liveAUp=isLive&&state.matchStatus>0;
     const liveBUp=isLive&&state.matchStatus<0;
-    const aBg=aWin||liveAUp?'rgba(232,83,74,0.18)':'transparent';
-    const bBg=bWin||liveBUp?'rgba(74,144,232,0.18)':'transparent';
+    const aBg=aWin||liveAUp?'rgba(74,158,107,0.22)':'transparent';
+    const bBg=bWin||liveBUp?'rgba(212,160,23,0.22)':'transparent';
     const halfBg=isDone&&match.result==='half'?'rgba(255,255,255,0.06)':'transparent';
 
     const aNames=match.team_a_p1_id
@@ -3638,8 +3638,8 @@ function renderMatchScoring(){
   const mScores=tournamentScores.filter(s=>s.match_id===match.id);
   const state=tmMatchState(match,hcpInfo,mScores);
   const statusText=state.matchStatus===0?`All Square thru ${state.holesPlayed}`
-    :state.matchStatus>0?`${tournament.team_a_name} ${state.matchStatus}UP thru ${state.holesPlayed}`
-    :`${tournament.team_b_name} ${Math.abs(state.matchStatus)}UP thru ${state.holesPlayed}`;
+    :state.matchStatus>0?`${tournament.team_a_name} ${state.matchStatus}UP H${state.holesPlayed}`
+    :`${tournament.team_b_name} ${Math.abs(state.matchStatus)}UP H${state.holesPlayed}`;
 
   // Hole strip
   let _cum=0;
