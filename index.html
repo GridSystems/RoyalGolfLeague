@@ -1157,7 +1157,13 @@ function showView(id,btn){
         tournamentMatches=await sbGet('tournament_matches','order=round.asc,match_num.asc');
         tournamentScores=await sbGet('tournament_scores','order=id.asc');
         tournamentMatches.forEach(m=>{const t=tournaments.find(x=>x.id===m.tournament_id);if(t)m._teeId=m.tee_id||t.tee_id;});
-        if(TE.matchId==null)renderTournament();
+        if(TE.matchId!=null){
+          // Silently merge server scores into TE — don't touch the screen
+          tournamentScores.filter(s=>s.match_id===TE.matchId).forEach(s=>{
+            if(!TE.scores[s.player_id])TE.scores[s.player_id]={};
+            TE.scores[s.player_id][s.hole]=s.gross;
+          });
+        }else{renderTournament();}
       }catch(e){/* silent */}
     },30000);
   }
