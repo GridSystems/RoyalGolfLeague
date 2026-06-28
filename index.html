@@ -3468,8 +3468,8 @@ function wireTournamentDrawEvents(tourn){
       // Also re-fetch tournament status in case it advanced
       const freshT=await sbGet('tournaments',`id=eq.${tourn.id}`);
       if(freshT[0]){Object.assign(tourn,freshT[0]);const idx=tournaments.findIndex(t=>t.id===tourn.id);if(idx>=0)tournaments[idx]=freshT[0];}
-      _tmSelectedPids=[];
-      renderTournament();
+      const overrideBusy=['tmOverrideMatch','tmOverrideTeam','tmOverridePid1','tmOverridePid2'].some(id=>document.activeElement?.id===id);
+      if(!overrideBusy){_tmSelectedPids=[];renderTournament();}
     }catch(e){/* silent */}
   },5000);
 }
