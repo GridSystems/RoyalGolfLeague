@@ -3334,11 +3334,14 @@ function renderTournamentMatchRows(tourn,matches,round){
     // Hole strip for live matches
     let holeStrip='';
     if(isLive){
+      let _lbCum=0;
       const dots=state.holeResults.map((hr,i)=>{
-        if(!hr)return`<span style="display:inline-block;width:16px;height:16px;border-radius:3px;background:rgba(255,255,255,0.08);font-size:0.6rem;line-height:16px;text-align:center;color:rgba(255,255,255,0.3)">${i+1}</span>`;
-        const c=hr.result==='a'?'rgba(232,83,74,0.7)':hr.result==='b'?'rgba(74,144,232,0.7)':'rgba(255,255,255,0.25)';
-        const lbl=hr.result==='a'?'S':hr.result==='b'?'L':'½';
-        return`<span style="display:inline-block;width:16px;height:16px;border-radius:3px;background:${c};font-size:0.6rem;line-height:16px;text-align:center;font-weight:600">${lbl}</span>`;
+        if(!hr)return`<span style="display:inline-block;width:20px;height:16px;border-radius:3px;background:rgba(255,255,255,0.08);font-size:0.55rem;line-height:16px;text-align:center;color:rgba(255,255,255,0.3)">${i+1}</span>`;
+        let c,lbl;
+        if(hr.result==='a')_lbCum++;else if(hr.result==='b')_lbCum--;
+        if(hr.result==='half'){c='rgba(255,255,255,0.2)';lbl='½';}
+        else{c=_lbCum>0?'rgba(74,158,107,0.8)':'rgba(212,160,23,0.8)';lbl='+'+Math.abs(_lbCum);}
+        return`<span style="display:inline-block;width:20px;height:16px;border-radius:3px;background:${c};font-size:0.55rem;line-height:16px;text-align:center;font-weight:700">${lbl}</span>`;
       }).join('');
       holeStrip=`<div style="padding:0.35rem 0.75rem;display:flex;gap:2px;flex-wrap:wrap">${dots}</div>`;
     }
@@ -3639,12 +3642,19 @@ function renderMatchScoring(){
     :`${tournament.team_b_name} ${Math.abs(state.matchStatus)}UP thru ${state.holesPlayed}`;
 
   // Hole strip
+  let _cum=0;
   const holeStrip=Array.from({length:18},(_,i)=>{
     const hr2=state.holeResults[i];
     const isCur=i+1===currentHole;
-    const bg=isCur?'rgba(245,197,24,0.7)':!hr2?'rgba(255,255,255,0.06)':hr2.result==='a'?'rgba(232,83,74,0.7)':hr2.result==='b'?'rgba(74,144,232,0.7)':'rgba(255,255,255,0.2)';
-    const lbl=isCur?currentHole:!hr2?'':hr2.result==='a'?'S':hr2.result==='b'?'L':'½';
-    return`<span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:3px;background:${bg};font-size:0.55rem;font-weight:600">${lbl}</span>`;
+    let bg,lbl;
+    if(isCur){bg='rgba(245,197,24,0.7)';lbl=currentHole;}
+    else if(!hr2){bg='rgba(255,255,255,0.06)';lbl='';}
+    else{
+      if(hr2.result==='a')_cum++;else if(hr2.result==='b')_cum--;
+      if(hr2.result==='half'){bg='rgba(255,255,255,0.2)';lbl='½';}
+      else{bg=_cum>0?'rgba(74,158,107,0.8)':'rgba(212,160,23,0.8)';lbl='+'+Math.abs(_cum);}
+    }
+    return`<span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:20px;border-radius:3px;background:${bg};font-size:0.6rem;font-weight:700">${lbl}</span>`;
   }).join('');
 
   // HCP banner
