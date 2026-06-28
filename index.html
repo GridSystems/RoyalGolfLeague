@@ -3488,8 +3488,250 @@ async function checkTournamentDrawAdvance(tourn){
     }
   }
 }
-// Stubs — replaced in Tasks 5 and 7
-function teOpenMatch(matchId){toast('Scoring screen coming soon…');}
+// ── Tournament Entry (TE) state ───────────────────────────────────
+let TE={matchId:null,match:null,tournament:null,tee:null,hcpInfo:null,playerOrder:[],currentPlayerIdx:0,currentHole:1,scores:{}};
+let _teBuffer='';
+
+function teOpenMatch(matchId){
+  const match=tournamentMatches.find(m=>m.id===matchId);if(!match)return;
+  const tournament=tournaments.find(t=>t.id===match.tournament_id);if(!tournament)return;
+  const tee=tees.find(t=>t.id===tournament.tee_id)||{slope:113,rating:COURSE_PAR,id:tournament.tee_id};
+  match._teeId=tee.id;
+  const hcpInfo=tmMatchHcpInfo(match,tournament.date);
+  const playerOrder=[match.team_a_p1_id];
+  if(match.team_a_p2_id)playerOrder.push(match.team_a_p2_id);
+  playerOrder.push(match.team_b_p1_id);
+  if(match.team_b_p2_id)playerOrder.push(match.team_b_p2_id);
+
+  // Load existing scores
+  const scores={};
+  const mScores=tournamentScores.filter(s=>s.match_id===matchId);
+  for(const s of mScores){
+    if(!scores[s.player_id])scores[s.player_id]={};
+    scores[s.player_id][s.hole]=s.gross;
+  }
+
+  // Find first incomplete hole
+  let currentHole=1;
+  for(let h=1;h<=18;h++){
+    const allScored=playerOrder.every(pid=>scores[pid]?.[h]!=null);
+    if(!allScored){currentHole=h;break;}
+    if(h===18){currentHole=18;}
+  }
+
+  TE={matchId,match,tournament,tee,hcpInfo,playerOrder,currentPlayerIdx:0,currentHole,scores};
+  _teBuffer='';
+
+  if(match.status==='pending'){
+    sbUpdate('tournament_matches',matchId,{status:'in_progress'}).catch(()=>{});
+    match.status='in_progress';
+  }
+
+  renderMatchScoring();
+}
+
+function renderMatchScoring(){
+  const el=document.getElementById('tournamentContent');if(!el)return;
+  const{match,tournament,tee,hcpInfo,playerOrder,currentPlayerIdx,currentHole,scores}=TE;
+  const holeIdx=currentHole-1;
+  const par=HOLE_PARS[holeIdx];
+  const si=HOLE_HCP[holeIdx];
+  const isStroke=hcpInfo.strokeHoles.includes(holeIdx);
+  const currentPid=playerOrder[currentPlayerIdx];
+  const currentP=players.find(p=>p.id===currentPid);
+
+  const pCard=(pid,teamLabel)=>{
+    const p=players.find(x=>x.id===pid);if(!p)return'';
+    const gross=scores[pid]?.[currentHole]??null;
+    const isCurrent=pid===currentPid;
+    const onReceiving=hcpInfo.receivingTeam===(teamLabel==='A'?'a':'b');
+    const hasStroke=isStroke&&onReceiving;
+    const pts=gross!=null?tmPlayerPts(gross,par,hasStroke):null;
+    return`<div style="display:flex;align-items:center;gap:0.5rem;padding:0.4rem;border-radius:6px;background:${isCurrent?'rgba(255,255,255,0.07)':'transparent'}">
+      <span style="width:24px;height:24px;border-radius:50%;background:${clr(p)};display:inline-flex;align-items:center;justify-content:center;font-size:0.6rem;font-weight:700">${ini(p.name)}</span>
+      <span style="flex:1;font-size:0.85rem${isCurrent?';font-weight:600':''}">${p.name.split(' ')[0]}</span>
+      ${hasStroke?'<span style="font-size:0.65rem;background:rgba(255,200,50,0.2);color:#f5c518;border-radius:4px;padding:1px 4px">+stroke</span>':''}
+      <span style="font-size:1.1rem;font-weight:700;min-width:28px;text-align:center">${gross??'—'}</span>
+      <span style="font-size:0.85rem;color:rgba(255,255,255,0.5);min-width:30px;text-align:center">${pts!=null?pts+'pts':'—'}</span>
+    </div>`;
+  };
+
+  // Compute current hole result if all scored
+  const grossByPid={};
+  let holeComplete=true;
+  for(const pid of playerOrder){
+    const g=scores[pid]?.[currentHole]??null;
+    if(g==null){holeComplete=false;}
+    grossByPid[pid]=g;
+  }
+  const hr=holeComplete?tmHoleResult(holeIdx,match,hcpInfo,grossByPid):null;
+  const holeResultHtml=hr&&hr.result?`<div style="text-align:center;padding:0.35rem;font-size:0.8rem;font-weight:600;color:${hr.result==='a'?'#e8534a':hr.result==='b'?'#4a90e8':'rgba(255,255,255,0.6)'}">
+    ${hr.result==='a'?tournament.team_a_name+' wins hole':hr.result==='b'?tournament.team_b_name+' wins hole':'Hole halved'} · ${hr.aScore}–${hr.bScore} bb pts
+  </div>`:'';
+
+  // Match status banner
+  const mScores=tournamentScores.filter(s=>s.match_id===match.id);
+  const state=tmMatchState(match,hcpInfo,mScores);
+  const statusText=state.matchStatus===0?`All Square thru ${state.holesPlayed}`
+    :state.matchStatus>0?`${tournament.team_a_name} ${state.matchStatus}UP thru ${state.holesPlayed}`
+    :`${tournament.team_b_name} ${Math.abs(state.matchStatus)}UP thru ${state.holesPlayed}`;
+
+  // Hole strip
+  const holeStrip=Array.from({length:18},(_,i)=>{
+    const hr2=state.holeResults[i];
+    const isCur=i+1===currentHole;
+    const bg=isCur?'rgba(245,197,24,0.7)':!hr2?'rgba(255,255,255,0.06)':hr2.result==='a'?'rgba(232,83,74,0.7)':hr2.result==='b'?'rgba(74,144,232,0.7)':'rgba(255,255,255,0.2)';
+    const lbl=isCur?currentHole:!hr2?'':hr2.result==='a'?'S':hr2.result==='b'?'L':'½';
+    return`<span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:3px;background:${bg};font-size:0.55rem;font-weight:600">${lbl}</span>`;
+  }).join('');
+
+  // HCP banner
+  const recv=hcpInfo.receivingTeam==='a'?tournament.team_a_name:tournament.team_b_name;
+  const hcpBanner=hcpInfo.diff>0?`<div style="font-size:0.75rem;color:rgba(255,255,255,0.45);margin-bottom:0.75rem;padding:0.4rem 0.5rem;background:rgba(255,255,255,0.04);border-radius:6px">${recv} receive ${hcpInfo.diff} stroke${hcpInfo.diff>1?'s':''} · SI 1–${hcpInfo.diff}</div>`:'';
+
+  // Team A p2 and Team B p2 sections
+  const aP2html=match.team_a_p2_id?pCard(match.team_a_p2_id,'A'):'';
+  const bP2html=match.team_b_p2_id?pCard(match.team_b_p2_id,'B'):'';
+
+  el.innerHTML=`
+  <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem">
+    <button onclick="teBack()" style="background:none;border:none;color:rgba(255,255,255,0.5);cursor:pointer;font-size:1.1rem;padding:0">←</button>
+    <div style="flex:1">
+      <div style="font-size:0.85rem;font-weight:600">${tournament.team_a_name} vs ${tournament.team_b_name}</div>
+      <div style="font-size:0.75rem;color:rgba(255,255,255,0.4)">${statusText}</div>
+    </div>
+    <button class="btn btn-ghost btn-sm" onclick="teCloseMatchPrompt()" style="font-size:0.7rem">Close match</button>
+  </div>
+
+  ${hcpBanner}
+
+  <!-- Hole card -->
+  <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:10px;margin-bottom:0.75rem;overflow:hidden">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:0.5rem 0.75rem;border-bottom:1px solid rgba(255,255,255,0.08)">
+      <span style="font-weight:700">Hole ${currentHole}</span>
+      <span style="font-size:0.8rem;color:rgba(255,255,255,0.5)">Par ${par} · SI ${si}${isStroke?` · <span style="color:#f5c518">stroke hole</span>`:''}</span>
+    </div>
+    <div style="padding:0.5rem">
+      <div style="font-size:0.7rem;font-weight:600;color:#e8534a;margin-bottom:0.2rem">${tournament.team_a_name}</div>
+      ${pCard(match.team_a_p1_id,'A')}
+      ${aP2html}
+      <div style="font-size:0.7rem;font-weight:600;color:#4a90e8;margin:0.5rem 0 0.2rem">${tournament.team_b_name}</div>
+      ${pCard(match.team_b_p1_id,'B')}
+      ${bP2html}
+      ${holeResultHtml}
+    </div>
+  </div>
+
+  <!-- Hole strip -->
+  <div style="display:flex;gap:2px;flex-wrap:wrap;margin-bottom:0.75rem">${holeStrip}</div>
+
+  <!-- Entering label -->
+  <div style="font-size:0.8rem;color:rgba(255,255,255,0.4);margin-bottom:0.4rem">Entering: <strong style="color:#fff">${currentP?.name||'?'}</strong></div>
+
+  <!-- Keypad -->
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.35rem;max-width:260px;margin:0 auto">
+    ${[1,2,3,4,5,6,7,8,9].map(d=>`<button onclick="teKey(${d})" style="padding:0.9rem;font-size:1.2rem;font-weight:700;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);border-radius:8px;color:#fff;cursor:pointer">${d}</button>`).join('')}
+    <button onclick="teBack_key()" style="padding:0.9rem;font-size:1rem;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#fff;cursor:pointer">⌫</button>
+    <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:1.3rem;font-weight:700;min-height:52px">${_teBuffer||'—'}</div>
+    <button onclick="teEnter()" style="padding:0.9rem;font-size:0.75rem;font-weight:700;background:rgba(74,144,232,0.3);border:1px solid rgba(74,144,232,0.4);border-radius:8px;color:#fff;cursor:pointer">NEXT →</button>
+  </div>`;
+}
+
+function teKey(d){_teBuffer=String(d);renderMatchScoring();}
+function teBack_key(){_teBuffer='';renderMatchScoring();}
+
+async function teEnter(){
+  const gross=parseInt(_teBuffer);
+  if(!gross||gross<1||gross>15){toast('Enter score 1–15');return;}
+  const pid=TE.playerOrder[TE.currentPlayerIdx];
+  if(!TE.scores[pid])TE.scores[pid]={};
+  TE.scores[pid][TE.currentHole]=gross;
+  _teBuffer='';
+
+  // Save to Supabase (delete existing + insert)
+  try{
+    await sbDeleteWhere('tournament_scores',`match_id=eq.${TE.matchId}&hole=eq.${TE.currentHole}&player_id=eq.${pid}`);
+    const payload={id:Date.now()+Math.floor(Math.random()*9999),match_id:TE.matchId,hole:TE.currentHole,player_id:pid,gross};
+    const[saved]=await sbInsert('tournament_scores',payload);
+    tournamentScores=tournamentScores.filter(s=>!(s.match_id===TE.matchId&&s.hole===TE.currentHole&&s.player_id===pid));
+    tournamentScores.push(saved||payload);
+  }catch(e){toast('Save error: '+e.message,3000);}
+
+  // Advance player
+  TE.currentPlayerIdx++;
+  if(TE.currentPlayerIdx>=TE.playerOrder.length){
+    // All players scored this hole
+    TE.currentPlayerIdx=0;
+    // Auto-close check
+    const mScores=tournamentScores.filter(s=>s.match_id===TE.matchId);
+    const state=tmMatchState(TE.match,TE.hcpInfo,mScores);
+    if(TE.currentHole<18&&Math.abs(state.matchStatus)>state.holesRemaining-1){
+      const up=Math.abs(state.matchStatus);
+      const winner=state.matchStatus>0?TE.tournament.team_a_name:TE.tournament.team_b_name;
+      if(confirm(`${winner} wins ${up}&${state.holesRemaining-1}. Close match?`)){
+        await teCloseMatch(state.matchStatus>0?'a':'b');return;
+      }
+    }
+    if(TE.currentHole<18)TE.currentHole++;
+  }
+  renderMatchScoring();
+}
+
+function teBack(){
+  clearInterval(window._tmRefreshInterval);
+  clearInterval(window._tmDrawPollInterval);
+  TE={matchId:null,match:null,tournament:null,tee:null,hcpInfo:null,playerOrder:[],currentPlayerIdx:0,currentHole:1,scores:{}};
+  renderTournament();
+  // Re-start leaderboard refresh
+  showView('tournament',null);
+}
+
+function teCloseMatchPrompt(){
+  const mScores=tournamentScores.filter(s=>s.match_id===TE.matchId);
+  const state=tmMatchState(TE.match,TE.hcpInfo,mScores);
+  let result,label;
+  if(state.matchStatus>0){result='a';label=`${TE.tournament.team_a_name} wins`;}
+  else if(state.matchStatus<0){result='b';label=`${TE.tournament.team_b_name} wins`;}
+  else{result='half';label='Match halved';}
+  if(confirm(`Close match: ${label}?`))teCloseMatch(result);
+}
+
+async function teCloseMatch(result){
+  try{
+    await sbUpdate('tournament_matches',TE.matchId,{status:'complete',result});
+    TE.match.status='complete';TE.match.result=result;
+    const idx=tournamentMatches.findIndex(m=>m.id===TE.matchId);
+    if(idx>=0){tournamentMatches[idx].status='complete';tournamentMatches[idx].result=result;}
+    toast('Match closed ✅');
+    await checkTournamentStatusAdvance(TE.tournament);
+    teBack();
+  }catch(e){alert('Error: '+e.message);}
+}
+
+async function checkTournamentStatusAdvance(tourn){
+  const tMatches=tournamentMatches.filter(m=>m.tournament_id===tourn.id);
+  if(tourn.status==='round_1'){
+    const r1Done=tMatches.filter(m=>m.round===1&&m.status==='complete').length===4;
+    if(r1Done){
+      await sbUpdate('tournaments',tourn.id,{status:'singles_draw'});
+      tourn.status='singles_draw';
+      const idx=tournaments.findIndex(t=>t.id===tourn.id);
+      if(idx>=0)tournaments[idx].status='singles_draw';
+      toast('All fourballs complete — Singles draw is open! 🏆');
+    }
+  }
+  if(tourn.status==='round_2'){
+    const r2Done=tMatches.filter(m=>m.round===2&&m.status==='complete').length===8;
+    if(r2Done){
+      await sbUpdate('tournaments',tourn.id,{status:'complete'});
+      tourn.status='complete';
+      const idx=tournaments.findIndex(t=>t.id===tourn.id);
+      if(idx>=0)tournaments[idx].status='complete';
+      toast('Tournament complete! 🏆');
+    }
+  }
+}
+
 function renderAdminTournament(){
   const el=document.getElementById('adminTournamentBody');if(!el)return;
   const tourn=(activeTournamentId&&tournaments.find(t=>t.id===activeTournamentId))||tournaments[0]||null;
