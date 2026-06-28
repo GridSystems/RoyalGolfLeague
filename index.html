@@ -892,6 +892,95 @@ function closeModal(id){document.getElementById(id).style.display='none';}
 
 // ── Handicap logic ────────────────────────────────────────────────────────────
 function hcpOnDate(player,date){const hist=player.hcp_history||[];if(!hist.length)return player.handicap;const s=[...hist].sort((a,b)=>a.date.localeCompare(b.date));let v=s[0].value;for(const e of s){if(e.date<=date)v=e.value;else break;}return v;}
+
+// ── Tournament helpers ────────────────────────────────────────────
+function tmPlayingHcp(player,tee,date){
+  const idx=hcpOnDate(player,date);
+  const courseHcp=Math.round(idx*tee.slope/113+(tee.rating-COURSE_PAR));
+  return Math.round(courseHcp*0.90);
+}
+
+// Returns {receivingTeam:'a'|'b', diff, strokeHoles:[0-indexed hole indices], phA1,phA2,phB1,phB2}
+// Works for both fourball (p2 ids set) and singles (p2 ids null)
+function tmMatchHcpInfo(match,date){
+  const getP=id=>players.find(p=>p.id===id);
+  const tee=tees.find(t=>t.id===match._teeId)||{slope:113,rating:COURSE_PAR,id:match._teeId};
+  const phA1=match.team_a_p1_id?tmPlayingHcp(getP(match.team_a_p1_id),tee,date):0;
+  const phA2=match.team_a_p2_id?tmPlayingHcp(getP(match.team_a_p2_id),tee,date):0;
+  const phB1=match.team_b_p1_id?tmPlayingHcp(getP(match.team_b_p1_id),tee,date):0;
+  const phB2=match.team_b_p2_id?tmPlayingHcp(getP(match.team_b_p2_id),tee,date):0;
+  const combA=phA1+phA2,combB=phB1+phB2;
+  const diff=Math.abs(combA-combB);
+  const receivingTeam=combA>=combB?'a':'b';
+  const strokeHoles=HOLE_HCP.map((si,i)=>({si,i})).filter(({si})=>si<=diff).map(({i})=>i);
+  return{receivingTeam,diff,strokeHoles,combA,combB,phA1,phA2,phB1,phB2};
+}
+
+function tmPlayerPts(gross,par,hasStroke){
+  if(gross==null)return null;
+  return Math.max(0,2+par+(hasStroke?1:0)-gross);
+}
+
+// holeIdx is 0-based. Returns {aScore,bScore,result:'a'|'b'|'half'|null, ptsA1,ptsA2,ptsB1,ptsB2}
+function tmHoleResult(holeIdx,match,hcpInfo,grossByPid){
+  const par=HOLE_PARS[holeIdx];
+  const isStroke=hcpInfo.strokeHoles.includes(holeIdx);
+  const ptsA1=tmPlayerPts(grossByPid[match.team_a_p1_id],par,isStroke&&hcpInfo.receivingTeam==='a');
+  const ptsA2=match.team_a_p2_id!=null?tmPlayerPts(grossByPid[match.team_a_p2_id],par,isStroke&&hcpInfo.receivingTeam==='a'):null;
+  const ptsB1=tmPlayerPts(grossByPid[match.team_b_p1_id],par,isStroke&&hcpInfo.receivingTeam==='b');
+  const ptsB2=match.team_b_p2_id!=null?tmPlayerPts(grossByPid[match.team_b_p2_id],par,isStroke&&hcpInfo.receivingTeam==='b'):null;
+  const aScore=ptsA2!=null?Math.max(ptsA1??-1,ptsA2??-1):ptsA1;
+  const bScore=ptsB2!=null?Math.max(ptsB1??-1,ptsB2??-1):ptsB1;
+  if(aScore==null||bScore==null)return{aScore,bScore,result:null,ptsA1,ptsA2,ptsB1,ptsB2};
+  const result=aScore>bScore?'a':bScore>aScore?'b':'half';
+  return{aScore,bScore,result,ptsA1,ptsA2,ptsB1,ptsB2};
+}
+
+// Returns {holesWon:{a,b,half}, matchStatus (positive=A up), holesPlayed, holesRemaining, holeResults:[]}
+function tmMatchState(match,hcpInfo,scores){
+  // scores: tournament_scores rows for this match
+  const holesWon={a:0,b:0,half:0};
+  const holeResults=[];
+  let holesPlayed=0;
+  const playerIds=[match.team_a_p1_id,match.team_b_p1_id];
+  if(match.team_a_p2_id)playerIds.push(match.team_a_p2_id);
+  if(match.team_b_p2_id)playerIds.push(match.team_b_p2_id);
+  for(let i=0;i<18;i++){
+    const grossByPid={};
+    let complete=true;
+    for(const pid of playerIds){
+      const s=scores.find(s=>s.player_id===pid&&s.hole===i+1);
+      if(!s){complete=false;break;}
+      grossByPid[pid]=s.gross;
+    }
+    if(!complete){holeResults.push(null);continue;}
+    const hr=tmHoleResult(i,match,hcpInfo,grossByPid);
+    holeResults.push(hr);
+    if(hr.result){holesWon[hr.result]++;holesPlayed++;}
+  }
+  const matchStatus=holesWon.a-holesWon.b;
+  const holesRemaining=18-holesPlayed;
+  return{holesWon,matchStatus,holesPlayed,holesRemaining,holeResults};
+}
+
+// Returns display string: "3&2" | "A/S F" | "2UP H14" | "—"
+function tmResultLabel(match,hcpInfo,scores){
+  if(!match.team_a_p1_id||!match.team_b_p1_id)return'—';
+  if(match.status==='pending'&&match.result==null)return'—';
+  const{holesWon,matchStatus,holesPlayed,holesRemaining}=tmMatchState(match,hcpInfo,scores);
+  if(match.status==='complete'){
+    if(match.result==='half')return'A/S F';
+    const up=Math.abs(matchStatus);
+    return holesRemaining>0?`${up}&${holesRemaining}`:`${up}UP`;
+  }
+  if(match.status==='in_progress'){
+    if(matchStatus===0)return`A/S H${holesPlayed+1}`;
+    return`${Math.abs(matchStatus)}UP H${holesPlayed+1}`;
+  }
+  return'—';
+}
+// ── End tournament helpers ────────────────────────────────────────
+
 function currentHcp(player){const hist=player.hcp_history||[];if(!hist.length)return player.handicap;return[...hist].sort((a,b)=>b.date.localeCompare(a.date))[0].value;}
 function calcCourseHcp(index,tee){return Math.round(index*(tee.slope/113)+(tee.rating-COURSE_PAR));}
 function calcPlayingHcp(index,tee){return Math.round(calcCourseHcp(index,tee)*0.95);}
