@@ -561,6 +561,13 @@ select option { background: #1a3a2a; }
       </div>
       <div class="pb" id="saturdayAdminBody" style="display:none"></div>
     </div>
+    <div class="panel">
+      <div class="ph" onclick="toggleAdminSection('adminTournamentBody','achev-tourn')" style="cursor:pointer;user-select:none">
+        <span class="pt">🏆 Tournament</span>
+        <span id="achev-tourn" style="color:rgba(255,255,255,0.35);font-size:1.2rem;transition:transform 0.2s;display:inline-block;line-height:1">›</span>
+      </div>
+      <div class="pb" id="adminTournamentBody" style="display:none"></div>
+    </div>
   </div>
 </div>
 
@@ -1137,7 +1144,7 @@ function showView(id,btn){
   if(id==='history'){renderMyRounds();const b=document.getElementById('myHcpBtn');if(b)b.style.display=activeId?'inline-block':'none';showHistorySub('rounds',document.querySelector('#view-history .sub-tab'));}
   if(id==='players'){renderGrid();}
   if(id==='log'){buildPlayerCheckboxes();checkForResumableRounds();applySaturdayDraw();}
-  if(id==='admin'){renderPendingApprovals();renderAdmin();renderBulkEntry();renderAdminFines();renderSaturdayAdmin();}
+  if(id==='admin'){renderPendingApprovals();renderAdmin();renderBulkEntry();renderAdminFines();renderSaturdayAdmin();renderAdminTournament();}
   if(id==='rules')renderRules();
   if(id==='track')renderTrackView();
   if(id==='signup')renderSaturdayView();
@@ -3332,7 +3339,166 @@ function renderTournamentDrawHtml(tourn){return'<p style="padding:1rem;color:rgb
 function wireTournamentDrawEvents(tourn){}
 // Stubs — replaced in Tasks 5 and 7
 function teOpenMatch(matchId){toast('Scoring screen coming soon…');}
-function resetTournament(id){alert('Reset not yet implemented.');}
+function renderAdminTournament(){
+  const el=document.getElementById('adminTournamentBody');if(!el)return;
+  const tourn=tournaments[0]||null;
+
+  const createHtml=`
+  <div style="margin-bottom:1rem">
+    <h4 style="margin:0 0 0.75rem;font-size:0.9rem">New Tournament</h4>
+    <div style="display:grid;gap:0.5rem">
+      <input id="tmNewName" placeholder="Tournament name" class="input" value="Mid-Season Invitational">
+      <input id="tmNewDate" type="date" class="input" value="${new Date().toISOString().slice(0,10)}">
+      <select id="tmNewTee" class="input">
+        ${tees.filter(t=>!t.archived).map(t=>`<option value="${t.id}">${t.name}</option>`).join('')}
+      </select>
+      <input id="tmNewTeamA" placeholder="Team A name" class="input" value="Team A">
+      <input id="tmNewTeamB" placeholder="Team B name" class="input" value="Team B">
+      <button class="btn btn-primary btn-sm" onclick="createTournament()">Create Tournament</button>
+    </div>
+  </div>`;
+
+  if(!tourn){el.innerHTML=createHtml;return;}
+
+  const tPlayers=tournamentPlayers.filter(tp=>tp.tournament_id===tourn.id);
+  const teamA=tPlayers.filter(tp=>tp.team==='a').map(tp=>players.find(p=>p.id===tp.player_id)).filter(Boolean);
+  const teamB=tPlayers.filter(tp=>tp.team==='b').map(tp=>players.find(p=>p.id===tp.player_id)).filter(Boolean);
+  const unassigned=players.filter(p=>!tPlayers.find(tp=>tp.player_id===p.id));
+
+  const pRow=(p,team)=>`<div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.3rem">
+    <span style="width:22px;height:22px;border-radius:50%;background:${clr(p)};display:inline-flex;align-items:center;justify-content:center;font-size:0.6rem;font-weight:700">${ini(p.name)}</span>
+    <span style="flex:1;font-size:0.85rem">${p.name}</span>
+    ${tourn.team_a_captain_id===p.id||tourn.team_b_captain_id===p.id?'<span style="font-size:0.7rem;color:gold">★ Cap</span>':''}
+    <button class="btn btn-ghost btn-sm" onclick="setTournamentCaptain(${tourn.id},'${team}',${p.id})" style="font-size:0.65rem;padding:0.1rem 0.4rem">★ Cap</button>
+    <button class="btn btn-ghost btn-sm" onclick="removeTournamentPlayer(${tourn.id},${p.id})" style="font-size:0.65rem;padding:0.1rem 0.4rem;color:rgba(220,80,80,0.7)">✕</button>
+  </div>`;
+
+  const addDropdown=(team)=>unassigned.length?`<select id="tmAdd${team}" class="input" style="font-size:0.8rem;padding:0.25rem 0.5rem">
+    ${unassigned.map(p=>`<option value="${p.id}">${p.name}</option>`).join('')}
+  </select>
+  <button class="btn btn-ghost btn-sm" onclick="assignTournamentPlayer(${tourn.id},'${team}',parseInt(document.getElementById('tmAdd${team}').value))" style="font-size:0.75rem">+ Add</button>`:'<span style="font-size:0.75rem;color:rgba(255,255,255,0.3)">All players assigned</span>';
+
+  const canAdvance=tourn.status==='setup'&&teamA.length>0&&teamB.length>0&&tourn.team_a_captain_id&&tourn.team_b_captain_id;
+  const canAdvanceR2=tourn.status==='round_1'&&tournamentMatches.filter(m=>m.tournament_id===tourn.id&&m.round===1&&m.status==='complete').length===4;
+
+  el.innerHTML=`
+  ${createHtml}
+  <hr style="border-color:rgba(255,255,255,0.08);margin:1rem 0">
+  <h4 style="margin:0 0 0.75rem;font-size:0.9rem">${tourn.name} <span style="font-size:0.7rem;opacity:0.5">${tourn.status}</span></h4>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem">
+    <div>
+      <div style="font-size:0.75rem;font-weight:600;color:#e8534a;margin-bottom:0.4rem">Team A: ${tourn.team_a_name}</div>
+      ${teamA.map(p=>pRow(p,'a')).join('')}
+      <div style="margin-top:0.5rem;display:flex;gap:0.4rem;align-items:center">${addDropdown('a')}</div>
+    </div>
+    <div>
+      <div style="font-size:0.75rem;font-weight:600;color:#4a90e8;margin-bottom:0.4rem">Team B: ${tourn.team_b_name}</div>
+      ${teamB.map(p=>pRow(p,'b')).join('')}
+      <div style="margin-top:0.5rem;display:flex;gap:0.4rem;align-items:center">${addDropdown('b')}</div>
+    </div>
+  </div>
+
+  ${tourn.status==='setup'?`<button class="btn btn-primary btn-sm" onclick="advanceTournamentStatus(${tourn.id})" ${canAdvance?'':'disabled'} title="${canAdvance?'':'Need teams + captains set'}">Start Draw (Fourballs) →</button>`:''}
+  ${tourn.status==='round_1'?`<button class="btn btn-primary btn-sm" onclick="advanceTournamentStatus(${tourn.id})" ${canAdvanceR2?'':'disabled'} title="${canAdvanceR2?'':'Complete all 4 fourballs first'}">Start Singles Draw →</button>`:''}
+  `;
+}
+async function createTournament(){
+  const name=document.getElementById('tmNewName').value.trim();
+  const date=document.getElementById('tmNewDate').value;
+  const teeId=document.getElementById('tmNewTee').value;
+  const teamAName=document.getElementById('tmNewTeamA').value.trim()||'Team A';
+  const teamBName=document.getElementById('tmNewTeamB').value.trim()||'Team B';
+  if(!name||!date||!teeId){alert('Name, date and tee required');return;}
+  const payload={id:Date.now()+Math.floor(Math.random()*9999),name,date,tee_id:teeId,status:'setup',team_a_name:teamAName,team_b_name:teamBName};
+  try{
+    const[saved]=await sbInsert('tournaments',payload);
+    tournaments.unshift(saved||payload);
+    activeTournamentId=(saved||payload).id;
+    document.getElementById('tabTournament').style.display='';
+    toast('Tournament created ✅');
+    renderAdminTournament();
+  }catch(e){alert('Error: '+e.message);}
+}
+async function assignTournamentPlayer(tournId,team,playerId){
+  if(tournamentPlayers.find(tp=>tp.tournament_id===tournId&&tp.player_id===playerId))return;
+  const payload={id:Date.now()+Math.floor(Math.random()*9999),tournament_id:tournId,player_id:playerId,team};
+  try{
+    const[saved]=await sbInsert('tournament_players',payload);
+    tournamentPlayers.push(saved||payload);
+    renderAdminTournament();
+  }catch(e){alert('Error: '+e.message);}
+}
+async function removeTournamentPlayer(tournId,playerId){
+  const tp=tournamentPlayers.find(x=>x.tournament_id===tournId&&x.player_id===playerId);
+  if(!tp)return;
+  try{
+    await sbDelete('tournament_players',tp.id);
+    tournamentPlayers=tournamentPlayers.filter(x=>x.id!==tp.id);
+    const t=tournaments.find(x=>x.id===tournId);
+    if(t&&(t.team_a_captain_id===playerId||t.team_b_captain_id===playerId)){
+      const patch=t.team_a_captain_id===playerId?{team_a_captain_id:null}:{team_b_captain_id:null};
+      await sbUpdate('tournaments',tournId,patch);
+      Object.assign(t,patch);
+    }
+    renderAdminTournament();
+  }catch(e){alert('Error: '+e.message);}
+}
+async function setTournamentCaptain(tournId,team,playerId){
+  const t=tournaments.find(x=>x.id===tournId);if(!t)return;
+  const patch=team==='a'?{team_a_captain_id:playerId}:{team_b_captain_id:playerId};
+  try{
+    await sbUpdate('tournaments',tournId,patch);
+    Object.assign(t,patch);
+    toast('Captain set ★');
+    renderAdminTournament();
+  }catch(e){alert('Error: '+e.message);}
+}
+async function advanceTournamentStatus(tournId){
+  const t=tournaments.find(x=>x.id===tournId);if(!t)return;
+  const transitions={setup:'fourball_draw',round_1:'singles_draw'};
+  const next=transitions[t.status];if(!next)return;
+  try{
+    if(next==='fourball_draw'){
+      for(let i=1;i<=4;i++){
+        const payload={id:Date.now()+Math.floor(Math.random()*9999)+i,tournament_id:tournId,round:1,match_num:i,status:'pending'};
+        const[saved]=await sbInsert('tournament_matches',payload);
+        const m=saved||payload;m._teeId=t.tee_id;
+        tournamentMatches.push(m);
+      }
+    }
+    if(next==='singles_draw'){
+      for(let i=1;i<=8;i++){
+        const payload={id:Date.now()+Math.floor(Math.random()*9999)+i,tournament_id:tournId,round:2,match_num:i,status:'pending'};
+        const[saved]=await sbInsert('tournament_matches',payload);
+        const m=saved||payload;m._teeId=t.tee_id;
+        tournamentMatches.push(m);
+      }
+    }
+    await sbUpdate('tournaments',tournId,{status:next});
+    t.status=next;
+    toast('Tournament advanced ✅');
+    renderAdminTournament();
+  }catch(e){alert('Error: '+e.message);}
+}
+async function resetTournament(id){
+  if(!confirm('Delete all match and score data for this tournament? The tournament record stays.'))return;
+  try{
+    const mIds=tournamentMatches.filter(m=>m.tournament_id===id).map(m=>m.id);
+    for(const mid of mIds){
+      await sbDeleteWhere('tournament_scores',`match_id=eq.${mid}`);
+    }
+    for(const mid of mIds)await sbDelete('tournament_matches',mid);
+    tournamentMatches=tournamentMatches.filter(m=>m.tournament_id!==id);
+    tournamentScores=tournamentScores.filter(s=>!mIds.includes(s.match_id));
+    await sbUpdate('tournaments',id,{status:'setup',team_a_captain_id:null,team_b_captain_id:null});
+    const t=tournaments.find(x=>x.id===id);
+    if(t){t.status='setup';t.team_a_captain_id=null;t.team_b_captain_id=null;}
+    toast('Tournament reset');
+    renderAdminTournament();
+    renderTournament();
+  }catch(e){alert('Error: '+e.message);}
+}
 function renderSaturdayAdmin(){
   const el=document.getElementById('saturdayAdminBody');if(!el)return;
   const sats=getNextSaturdays(4);
@@ -4375,6 +4541,7 @@ function renderAdmin(){
   const rsel=document.getElementById('adminRoundPlayer');rsel.innerHTML=`<option value="all">All players</option>`+players.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
   renderAdminRounds();
   renderAdminTees();
+  renderAdminTournament();
 }
 function openHcpEdit(pid){
   editingHcpPlayerId=pid;const p=players.find(x=>x.id===pid);
