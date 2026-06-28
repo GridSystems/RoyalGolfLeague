@@ -1157,7 +1157,7 @@ function showView(id,btn){
         tournamentMatches=await sbGet('tournament_matches','order=round.asc,match_num.asc');
         tournamentScores=await sbGet('tournament_scores','order=id.asc');
         tournamentMatches.forEach(m=>{const t=tournaments.find(x=>x.id===m.tournament_id);if(t)m._teeId=m.tee_id||t.tee_id;});
-        renderTournament();
+        if(TE.matchId==null)renderTournament();
       }catch(e){/* silent */}
     },30000);
   }
