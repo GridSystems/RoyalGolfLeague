@@ -3394,7 +3394,7 @@ function renderTournamentDrawHtml(tourn){
   const adminOverride=isAdmin()?`<div style="margin-top:1rem;padding-top:0.75rem;border-top:1px solid rgba(255,255,255,0.08)">
   <div style="font-size:0.75rem;color:rgba(255,255,255,0.35);margin-bottom:0.4rem">Admin override — fill any unfilled slot</div>
   <select id="tmOverrideMatch" class="input" style="font-size:0.8rem;padding:0.25rem 0.5rem;margin-right:0.4rem">
-    ${tMatches.filter(m=>!m.team_a_p1_id||!m.team_b_p1_id).map(m=>`<option value="${m.id}">Match ${m.match_num}</option>`).join('')}
+    ${tMatches.filter(m=>isFourball?!(m.team_a_p1_id&&m.team_a_p2_id&&m.team_b_p1_id&&m.team_b_p2_id):!(m.team_a_p1_id&&m.team_b_p1_id)).map(m=>`<option value="${m.id}">Match ${m.match_num}</option>`).join('')}
   </select>
   <select id="tmOverrideTeam" class="input" style="font-size:0.8rem;padding:0.25rem 0.5rem;margin-right:0.4rem">
     <option value="a">Team A</option><option value="b">Team B</option>
@@ -3420,10 +3420,16 @@ function renderTournamentDrawHtml(tourn){
 }
 
 async function tmAdminOverridePick(tournId,isFourball){
+  const matchSel=document.getElementById('tmOverrideMatch');
+  if(!matchSel||!matchSel.options.length){alert('No unfilled matches remaining.');return;}
   const matchId=parseInt(document.getElementById('tmOverrideMatch').value);
   const team=document.getElementById('tmOverrideTeam').value;
   const p1=parseInt(document.getElementById('tmOverridePid1').value);
   const p2=isFourball?parseInt(document.getElementById('tmOverridePid2')?.value):null;
+  const mCheck=tournamentMatches.find(x=>x.id===matchId);
+  if(mCheck&&mCheck[`team_${team}_p1_id`]!=null){
+    if(!confirm(`Team ${team.toUpperCase()} slot for Match ${matchId} is already filled — overwrite?`))return;
+  }
   const patch=isFourball?{[`team_${team}_p1_id`]:p1,[`team_${team}_p2_id`]:p2}:{[`team_${team}_p1_id`]:p1};
   try{
     await sbUpdate('tournament_matches',matchId,patch);
