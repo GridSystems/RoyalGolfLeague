@@ -3637,7 +3637,12 @@ function renderMatchScoring(){
   </div>`;
 }
 
-function teKey(d){_teBuffer=String(d);renderMatchScoring();}
+function teKey(d){
+  const next=_teBuffer+String(d);
+  if(parseInt(next)>15)return;
+  _teBuffer=next;
+  renderMatchScoring();
+}
 function teBack_key(){_teBuffer='';renderMatchScoring();}
 
 async function teEnter(){
@@ -3649,13 +3654,18 @@ async function teEnter(){
   _teBuffer='';
 
   // Save to Supabase (delete existing + insert)
+  const _payload={id:Date.now()+Math.floor(Math.random()*9999),match_id:TE.matchId,hole:TE.currentHole,player_id:pid,gross};
   try{
     await sbDeleteWhere('tournament_scores',`match_id=eq.${TE.matchId}&hole=eq.${TE.currentHole}&player_id=eq.${pid}`);
-    const payload={id:Date.now()+Math.floor(Math.random()*9999),match_id:TE.matchId,hole:TE.currentHole,player_id:pid,gross};
-    const[saved]=await sbInsert('tournament_scores',payload);
+    const[saved]=await sbInsert('tournament_scores',_payload);
     tournamentScores=tournamentScores.filter(s=>!(s.match_id===TE.matchId&&s.hole===TE.currentHole&&s.player_id===pid));
-    tournamentScores.push(saved||payload);
-  }catch(e){toast('Save error: '+e.message,3000);}
+    tournamentScores.push(saved||_payload);
+  }catch(e){
+    // Keep in-memory consistent so auto-close and display stay correct
+    tournamentScores=tournamentScores.filter(s=>!(s.match_id===TE.matchId&&s.hole===TE.currentHole&&s.player_id===pid));
+    tournamentScores.push(_payload);
+    toast('Save error — score kept locally',3000);
+  }
 
   // Advance player
   TE.currentPlayerIdx++;
@@ -3681,19 +3691,18 @@ function teBack(){
   clearInterval(window._tmRefreshInterval);
   clearInterval(window._tmDrawPollInterval);
   TE={matchId:null,match:null,tournament:null,tee:null,hcpInfo:null,playerOrder:[],currentPlayerIdx:0,currentHole:1,scores:{}};
-  renderTournament();
-  // Re-start leaderboard refresh
+  // Re-start leaderboard refresh (also calls renderTournament)
   showView('tournament',null);
 }
 
-function teCloseMatchPrompt(){
+async function teCloseMatchPrompt(){
   const mScores=tournamentScores.filter(s=>s.match_id===TE.matchId);
   const state=tmMatchState(TE.match,TE.hcpInfo,mScores);
   let result,label;
   if(state.matchStatus>0){result='a';label=`${TE.tournament.team_a_name} wins`;}
   else if(state.matchStatus<0){result='b';label=`${TE.tournament.team_b_name} wins`;}
   else{result='half';label='Match halved';}
-  if(confirm(`Close match: ${label}?`))teCloseMatch(result);
+  if(confirm(`Close match: ${label}?`))await teCloseMatch(result);
 }
 
 async function teCloseMatch(result){
@@ -3720,7 +3729,7 @@ async function checkTournamentStatusAdvance(tourn){
       toast('All fourballs complete — Singles draw is open! 🏆');
     }
   }
-  if(tourn.status==='round_2'){
+  else if(tourn.status==='round_2'){
     const r2Done=tMatches.filter(m=>m.round===2&&m.status==='complete').length===8;
     if(r2Done){
       await sbUpdate('tournaments',tourn.id,{status:'complete'});
