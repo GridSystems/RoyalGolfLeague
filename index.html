@@ -3186,8 +3186,150 @@ async function toggleSaturdaySignup(date){
 function renderTournament(){
   const el=document.getElementById('tournamentContent');
   if(!el)return;
-  el.innerHTML='<p style="padding:1rem;color:rgba(255,255,255,0.5)">Loading tournament…</p>';
+  if(tournaments.length===0){el.innerHTML='<p style="padding:1rem;color:rgba(255,255,255,0.5)">No tournaments yet.</p>';return;}
+
+  // Selector if multiple
+  let selectorHtml='';
+  if(tournaments.length>1){
+    selectorHtml=`<div style="margin-bottom:1rem"><select onchange="activeTournamentId=parseInt(this.value);renderTournament()" style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:7px;padding:0.4rem 0.75rem;color:#fff;font-size:0.85rem">
+      ${tournaments.map(t=>`<option value="${t.id}"${t.id===activeTournamentId?' selected':''}>${t.name} (${t.date})</option>`).join('')}
+    </select></div>`;
+  }
+
+  const tourn=tournaments.find(t=>t.id===activeTournamentId)||tournaments[0];
+  activeTournamentId=tourn.id;
+
+  // Draw phase — show draw screen for captains, read-only for others
+  if(tourn.status==='fourball_draw'||tourn.status==='singles_draw'){
+    el.innerHTML=selectorHtml+renderTournamentDrawHtml(tourn);
+    wireTournamentDrawEvents(tourn);
+    return;
+  }
+
+  // Scoring/complete — show leaderboard
+  el.innerHTML=selectorHtml+renderTournamentLeaderboardHtml(tourn);
 }
+function renderTournamentLeaderboardHtml(tourn){
+  const tPlayers=tournamentPlayers.filter(tp=>tp.tournament_id===tourn.id);
+  const tMatches=tournamentMatches.filter(m=>m.tournament_id===tourn.id);
+  const r1Matches=tMatches.filter(m=>m.round===1);
+  const r2Matches=tMatches.filter(m=>m.round===2);
+
+  // Team score (completed matches only)
+  let aScore=0,bScore=0;
+  tMatches.filter(m=>m.status==='complete').forEach(m=>{
+    if(m.result==='a')aScore+=1;
+    else if(m.result==='b')bScore+=1;
+    else if(m.result==='half'){aScore+=0.5;bScore+=0.5;}
+  });
+
+  const adminBtn=isAdmin()&&tourn.status==='setup'?`<button class="btn btn-ghost btn-sm" onclick="showView('admin',null)" style="float:right;font-size:0.75rem">⚙ Edit</button>`:'';
+  const resetBtn=isAdmin()&&tourn.status==='complete'?`<button class="btn btn-ghost btn-sm" onclick="resetTournament(${tourn.id})" style="float:right;font-size:0.75rem;color:rgba(220,80,80,0.8)">🗑 Reset</button>`:'';
+
+  // Determine active round tab
+  const activeRound=tourn.status==='round_2'||tourn.status==='singles_draw'||tourn.status==='complete'?2:1;
+
+  return`
+  <div style="margin-bottom:1rem">
+    ${adminBtn}${resetBtn}
+    <h2 style="font-family:'Playfair Display',serif;font-size:1.3rem;margin:0 0 0.25rem">${tourn.name}</h2>
+    <div style="font-size:0.8rem;color:rgba(255,255,255,0.5)">${tourn.date} · ${tees.find(t=>t.id===tourn.tee_id)?.name||tourn.tee_id}</div>
+  </div>
+
+  <!-- Team score header -->
+  <div style="display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:0.5rem;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:1rem;margin-bottom:1rem;text-align:center">
+    <div style="font-size:1rem;font-weight:700;color:#e8534a">${tourn.team_a_name}</div>
+    <div style="font-size:2rem;font-weight:700;letter-spacing:0.1em">${aScore} – ${bScore}</div>
+    <div style="font-size:1rem;font-weight:700;color:#4a90e8">${tourn.team_b_name}</div>
+  </div>
+
+  <!-- Round tabs -->
+  <div style="display:flex;gap:0.5rem;margin-bottom:0.75rem">
+    <button onclick="tmSetRoundTab(1,this)" class="sub-tab${activeRound===1?' active':''}" id="tmTabR1">Fourballs</button>
+    <button onclick="tmSetRoundTab(2,this)" class="sub-tab${activeRound===2?' active':''}" id="tmTabR2">Singles</button>
+  </div>
+
+  <div id="tmRoundContent">
+    ${renderTournamentMatchRows(tourn,activeRound===1?r1Matches:r2Matches,tourn,activeRound)}
+  </div>`;
+}
+function tmSetRoundTab(round,btn){
+  document.querySelectorAll('#view-tournament .sub-tab').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  const tourn=tournaments.find(t=>t.id===activeTournamentId);
+  if(!tourn)return;
+  const tMatches=tournamentMatches.filter(m=>m.tournament_id===tourn.id&&m.round===round);
+  document.getElementById('tmRoundContent').innerHTML=renderTournamentMatchRows(tourn,tMatches,tourn,round);
+}
+function renderTournamentMatchRows(tourn,matches,_unused,round){
+  if(matches.length===0){
+    if((round===1&&(tourn.status==='setup'||tourn.status==='fourball_draw'))||
+       (round===2&&['setup','fourball_draw','round_1','singles_draw'].includes(tourn.status))){
+      return`<div style="color:rgba(255,255,255,0.4);font-size:0.85rem;padding:0.5rem 0">Draw not yet complete</div>`;
+    }
+    return`<div style="color:rgba(255,255,255,0.4);font-size:0.85rem;padding:0.5rem 0">No matches</div>`;
+  }
+
+  return matches.map(match=>{
+    const mScores=tournamentScores.filter(s=>s.match_id===match.id);
+    const hcpInfo=tmMatchHcpInfo(match,tourn.date);
+    const state=tmMatchState(match,hcpInfo,mScores);
+    const label=tmResultLabel(match,hcpInfo,mScores);
+    const isLive=match.status==='in_progress';
+    const isDone=match.status==='complete';
+
+    const pName=id=>{const p=players.find(p=>p.id===id);return p?p.name.split(' ')[0]:'?';};
+    const pColor=id=>{const p=players.find(p=>p.id===id);return p?clr(p):'#666';};
+    const dot=(id)=>`<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${pColor(id)};margin-right:4px"></span>`;
+
+    const aWin=isDone&&match.result==='a';
+    const bWin=isDone&&match.result==='b';
+    const liveAUp=isLive&&state.matchStatus>0;
+    const liveBUp=isLive&&state.matchStatus<0;
+    const aBg=aWin||liveAUp?'rgba(232,83,74,0.18)':'transparent';
+    const bBg=bWin||liveBUp?'rgba(74,144,232,0.18)':'transparent';
+    const halfBg=isDone&&match.result==='half'?'rgba(255,255,255,0.06)':'transparent';
+
+    const aNames=match.team_a_p1_id
+      ?`${dot(match.team_a_p1_id)}${pName(match.team_a_p1_id)}${match.team_a_p2_id?` / ${dot(match.team_a_p2_id)}${pName(match.team_a_p2_id)}`:''}`
+      :'<span style="color:rgba(255,255,255,0.3)">—</span>';
+    const bNames=match.team_b_p1_id
+      ?`${dot(match.team_b_p1_id)}${pName(match.team_b_p1_id)}${match.team_b_p2_id?` / ${dot(match.team_b_p2_id)}${pName(match.team_b_p2_id)}`:''}`
+      :'<span style="color:rgba(255,255,255,0.3)">—</span>';
+
+    const canScore=match.team_a_p1_id&&match.team_b_p1_id&&(match.status==='pending'||match.status==='in_progress');
+    const clickHandler=canScore?`onclick="teOpenMatch(${match.id})" style="cursor:pointer"`:'';
+
+    // Hole strip for live matches
+    let holeStrip='';
+    if(isLive){
+      const dots=state.holeResults.map((hr,i)=>{
+        if(!hr)return`<span style="display:inline-block;width:16px;height:16px;border-radius:3px;background:rgba(255,255,255,0.08);font-size:0.6rem;line-height:16px;text-align:center;color:rgba(255,255,255,0.3)">${i+1}</span>`;
+        const c=hr.result==='a'?'rgba(232,83,74,0.7)':hr.result==='b'?'rgba(74,144,232,0.7)':'rgba(255,255,255,0.25)';
+        const lbl=hr.result==='a'?'S':hr.result==='b'?'L':'½';
+        return`<span style="display:inline-block;width:16px;height:16px;border-radius:3px;background:${c};font-size:0.6rem;line-height:16px;text-align:center;font-weight:600">${lbl}</span>`;
+      }).join('');
+      holeStrip=`<div style="padding:0.35rem 0.75rem;display:flex;gap:2px;flex-wrap:wrap">${dots}</div>`;
+    }
+
+    const statusColor=isLive?'#f5c518':isDone?'rgba(255,255,255,0.6)':'rgba(255,255,255,0.3)';
+
+    return`<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:10px;margin-bottom:0.5rem;overflow:hidden">
+      <div style="display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:0.5rem;padding:0.65rem 0.75rem" ${clickHandler}>
+        <div style="font-size:0.85rem;background:${aWin||liveAUp?aBg:halfBg};padding:0.25rem 0.4rem;border-radius:5px">${aNames}</div>
+        <div style="font-size:0.8rem;font-weight:600;color:${statusColor};text-align:center;min-width:60px">${label}</div>
+        <div style="font-size:0.85rem;text-align:right;background:${bWin||liveBUp?bBg:halfBg};padding:0.25rem 0.4rem;border-radius:5px">${bNames}</div>
+      </div>
+      ${holeStrip}
+    </div>`;
+  }).join('');
+}
+// Stubs — replaced in Task 6
+function renderTournamentDrawHtml(tourn){return'<p style="padding:1rem;color:rgba(255,255,255,0.5)">Draw screen coming soon…</p>';}
+function wireTournamentDrawEvents(tourn){}
+// Stubs — replaced in Tasks 5 and 7
+function teOpenMatch(matchId){toast('Scoring screen coming soon…');}
+function resetTournament(id){alert('Reset not yet implemented.');}
 function renderSaturdayAdmin(){
   const el=document.getElementById('saturdayAdminBody');if(!el)return;
   const sats=getNextSaturdays(4);
