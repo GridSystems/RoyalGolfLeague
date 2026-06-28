@@ -3241,7 +3241,7 @@ function renderTournamentLeaderboardHtml(tourn){
   });
 
   const adminBtn=isAdmin()&&tourn.status==='setup'?`<button class="btn btn-ghost btn-sm" onclick="showView('admin',null)" style="float:right;font-size:0.75rem">⚙ Edit</button>`:'';
-  const resetBtn=isAdmin()&&tourn.status==='complete'?`<button class="btn btn-ghost btn-sm" onclick="resetTournament(${tourn.id})" style="float:right;font-size:0.75rem;color:rgba(220,80,80,0.8)">🗑 Reset</button>`:'';
+  const resetBtn=isAdmin()&&tourn.status!=='setup'?`<button class="btn btn-ghost btn-sm" onclick="resetTournament(${tourn.id})" style="float:right;font-size:0.75rem;color:rgba(220,80,80,0.8)">🗑 Reset</button>`:'';
   const finesBtn=`<button class="btn btn-ghost btn-sm" onclick="showAddFine()" style="float:right;font-size:0.75rem;margin-right:0.4rem">🚨 Fine</button>`;
   const isCap=activeId===tourn.team_a_captain_id||activeId===tourn.team_b_captain_id;
   const editBtn=(label,fn)=>isCap?`<button onclick="${fn}" style="background:none;border:none;color:rgba(255,255,255,0.3);cursor:pointer;font-size:0.75rem;padding:0 0 0 4px" title="Edit">✏</button>`:'';
@@ -4003,9 +4003,9 @@ async function resetTournament(id){
     }
     tournamentMatches=tournamentMatches.filter(m=>m.tournament_id!==id);
     tournamentScores=tournamentScores.filter(s=>!mIds.includes(s.match_id));
-    await sbUpdate('tournaments',id,{status:'setup',team_a_captain_id:null,team_b_captain_id:null});
+    await sbUpdate('tournaments',id,{status:'setup'});
     const t=tournaments.find(x=>x.id===id);
-    if(t){t.status='setup';t.team_a_captain_id=null;t.team_b_captain_id=null;}
+    if(t){t.status='setup';}
     toast('Tournament reset');
     renderAdminTournament();
     renderTournament();
