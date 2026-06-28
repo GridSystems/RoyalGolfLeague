@@ -1013,7 +1013,7 @@ if(tournaments.length>0&&!activeTournamentId)activeTournamentId=tournaments[0].i
 // Inject tee info onto matches so tmMatchHcpInfo can find it
 tournamentMatches.forEach(m=>{
   const tourn=tournaments.find(t=>t.id===m.tournament_id);
-  if(tourn)m._teeId=tourn.tee_id;
+  if(tourn)m._teeId=m.tee_id||tourn.tee_id;
 });}
 
 async function seedTees(){try{const rows=await sbInsert('tees',_TEES_SEED);tees=rows;}catch(e){console.warn('seedTees failed:',e);tees=[..._TEES_SEED];}}
@@ -1156,7 +1156,7 @@ function showView(id,btn){
       try{
         tournamentMatches=await sbGet('tournament_matches','order=round.asc,match_num.asc');
         tournamentScores=await sbGet('tournament_scores','order=id.asc');
-        tournamentMatches.forEach(m=>{const t=tournaments.find(x=>x.id===m.tournament_id);if(t)m._teeId=t.tee_id;});
+        tournamentMatches.forEach(m=>{const t=tournaments.find(x=>x.id===m.tournament_id);if(t)m._teeId=m.tee_id||t.tee_id;});
         renderTournament();
       }catch(e){/* silent */}
     },30000);
@@ -3339,10 +3339,12 @@ function renderTournamentMatchRows(tourn,matches,round){
 
     const statusColor=isLive?'#f5c518':isDone?'rgba(255,255,255,0.6)':'rgba(255,255,255,0.3)';
 
+    const matchTeeName=tees.find(t=>t.id===match._teeId)?.name||'';
+    const teeTag=matchTeeName?`<span style="font-size:0.65rem;color:rgba(255,255,255,0.3);margin-left:0.4rem">${matchTeeName}</span>`:'';
     return`<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:10px;margin-bottom:0.5rem;overflow:hidden">
       <div style="display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:0.5rem;padding:0.65rem 0.75rem" ${clickHandler}>
         <div style="font-size:0.85rem;background:${aWin||liveAUp?aBg:halfBg};padding:0.25rem 0.4rem;border-radius:5px">${aNames}</div>
-        <div style="font-size:0.8rem;font-weight:600;color:${statusColor};text-align:center;min-width:60px">${label}</div>
+        <div style="font-size:0.8rem;font-weight:600;color:${statusColor};text-align:center;min-width:60px">${label}${teeTag}</div>
         <div style="font-size:0.85rem;text-align:right;background:${bWin||liveBUp?bBg:halfBg};padding:0.25rem 0.4rem;border-radius:5px">${bNames}</div>
       </div>
       ${holeStrip}
@@ -3461,7 +3463,7 @@ function wireTournamentDrawEvents(tourn){
   window._tmDrawPollInterval=setInterval(async()=>{
     try{
       const fresh=await sbGet('tournament_matches',`tournament_id=eq.${tourn.id}&order=round.asc,match_num.asc`);
-      fresh.forEach(m=>{m._teeId=tourn.tee_id;});
+      fresh.forEach(m=>{m._teeId=m.tee_id||tourn.tee_id;});
       tournamentMatches=tournamentMatches.filter(m=>m.tournament_id!==tourn.id).concat(fresh);
       // Also re-fetch tournament status in case it advanced
       const freshT=await sbGet('tournaments',`id=eq.${tourn.id}`);
@@ -3548,7 +3550,8 @@ let _teBuffer='';
 function teOpenMatch(matchId){
   const match=tournamentMatches.find(m=>m.id===matchId);if(!match)return;
   const tournament=tournaments.find(t=>t.id===match.tournament_id);if(!tournament)return;
-  const tee=tees.find(t=>t.id===tournament.tee_id)||{slope:113,rating:COURSE_PAR,id:tournament.tee_id};
+  const teeId=match.tee_id||tournament.tee_id;
+  const tee=tees.find(t=>t.id===teeId)||{slope:113,rating:COURSE_PAR,id:teeId};
   match._teeId=tee.id;
   const hcpInfo=tmMatchHcpInfo(match,tournament.date);
   const playerOrder=[match.team_a_p1_id];
@@ -3646,14 +3649,19 @@ function renderMatchScoring(){
   const aP2html=match.team_a_p2_id?pCard(match.team_a_p2_id,'A'):'';
   const bP2html=match.team_b_p2_id?pCard(match.team_b_p2_id,'B'):'';
 
+  const teeOpts=tees.filter(t=>t.active!==false).map(t=>`<option value="${t.id}"${t.id===tee.id?' selected':''}>${t.name}</option>`).join('');
   el.innerHTML=`
-  <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem">
+  <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem">
     <button onclick="teBack()" style="background:none;border:none;color:rgba(255,255,255,0.5);cursor:pointer;font-size:1.1rem;padding:0">←</button>
     <div style="flex:1">
       <div style="font-size:0.85rem;font-weight:600">${tournament.team_a_name} vs ${tournament.team_b_name}</div>
       <div style="font-size:0.75rem;color:rgba(255,255,255,0.4)">${statusText}</div>
     </div>
     <button class="btn btn-ghost btn-sm" onclick="teCloseMatchPrompt()" style="font-size:0.7rem">Close match</button>
+  </div>
+  <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem">
+    <span style="font-size:0.75rem;color:rgba(255,255,255,0.4)">Tee:</span>
+    <select onchange="teChangeTee(this.value)" style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:#fff;font-size:0.78rem;padding:3px 8px;outline:none">${teeOpts}</select>
   </div>
 
   ${hcpBanner}
@@ -3690,6 +3698,15 @@ function renderMatchScoring(){
   </div>`;
 }
 
+async function teChangeTee(teeId){
+  const t=tees.find(x=>x.id===teeId);if(!t)return;
+  TE.tee=t;
+  TE.match._teeId=teeId;
+  TE.match.tee_id=teeId;
+  TE.hcpInfo=tmMatchHcpInfo(TE.match,TE.tournament.date);
+  renderMatchScoring();
+  sbUpdate('tournament_matches',TE.matchId,{tee_id:teeId}).catch(()=>toast('Tee save failed',2000));
+}
 function teKey(d){
   const next=_teBuffer+String(d);
   if(parseInt(next)>15)return;
