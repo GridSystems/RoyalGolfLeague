@@ -3235,6 +3235,7 @@ function renderTournamentLeaderboardHtml(tourn){
 
   const adminBtn=isAdmin()&&tourn.status==='setup'?`<button class="btn btn-ghost btn-sm" onclick="showView('admin',null)" style="float:right;font-size:0.75rem">⚙ Edit</button>`:'';
   const resetBtn=isAdmin()&&tourn.status==='complete'?`<button class="btn btn-ghost btn-sm" onclick="resetTournament(${tourn.id})" style="float:right;font-size:0.75rem;color:rgba(220,80,80,0.8)">🗑 Reset</button>`:'';
+  const finesBtn=`<button class="btn btn-ghost btn-sm" onclick="goToFines()" style="float:right;font-size:0.75rem;margin-right:0.4rem">🚨 Fines</button>`;
   const isCap=activeId===tourn.team_a_captain_id||activeId===tourn.team_b_captain_id;
   const editBtn=(label,fn)=>isCap?`<button onclick="${fn}" style="background:none;border:none;color:rgba(255,255,255,0.3);cursor:pointer;font-size:0.75rem;padding:0 0 0 4px" title="Edit">✏</button>`:'';
 
@@ -3243,7 +3244,7 @@ function renderTournamentLeaderboardHtml(tourn){
 
   return`
   <div style="margin-bottom:1rem">
-    ${adminBtn}${resetBtn}
+    ${adminBtn}${resetBtn}${finesBtn}
     <h2 style="font-family:'Playfair Display',serif;font-size:1.3rem;margin:0 0 0.25rem">${tourn.name}${editBtn('name',`tmEditField(${tourn.id},'name','${tourn.name.replace(/'/g,"\\'")}')`)}</h2>
     <div style="font-size:0.8rem;color:rgba(255,255,255,0.5)">${tourn.date} · ${tees.find(t=>t.id===tourn.tee_id)?.name||tourn.tee_id}</div>
   </div>
@@ -4556,6 +4557,12 @@ function renderMyDreamCard(){
   </div>`;}
 
 // ── Fines ─────────────────────────────────────────────────────────────────────
+function goToFines(){
+  const navBtn=document.getElementById('tabLeaderboard');
+  showView('leaderboard',navBtn);
+  const finesBtn=[...document.querySelectorAll('#view-leaderboard .sub-tab')].find(b=>b.textContent.includes('Fines'));
+  if(finesBtn)showLb('fines',finesBtn);
+}
 function renderFinesLb(){
   const season=document.getElementById('finesYear')?.value||new Date().getFullYear().toString();
   const sf=allFines.filter(f=>f.date&&f.date.startsWith(season));
@@ -4578,11 +4585,12 @@ function renderFinesLb(){
 }
 
 function showAddFine(hole=null,retroactive=false){
-  if(!fineTypes.length){alert('No fine types set up yet. Add them in Admin → Fines → Manage Fine Types.');return;}
+  const activeFineTypes=fineTypes.filter(ft=>ft.active!==false);
+  if(!activeFineTypes.length){alert('No active fine types. Add or reactivate them in Admin → Fines → Manage Fine Types.');return;}
   const pSel=document.getElementById('finePlayer');
   const tSel=document.getElementById('fineType');
   pSel.innerHTML=players.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
-  tSel.innerHTML=fineTypes.map(ft=>`<option value="${ft.id}">${ft.name} — DKK ${ft.amount||10}</option>`).join('');
+  tSel.innerHTML=activeFineTypes.map(ft=>`<option value="${ft.id}">${ft.name} — DKK ${ft.amount||10}</option>`).join('');
   document.getElementById('fineHole').value=hole||'';
   document.getElementById('fineDate').value=HE?.date||today();
   document.getElementById('fineNotes').value='';
@@ -4641,7 +4649,12 @@ function renderFineTypesList(){
     if(ft.id===editingFineTypeId){
       return`<div style="display:flex;align-items:center;gap:6px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.06)"><input id="eftName_${ft.id}" value="${ft.name.replace(/"/g,'&quot;')}" style="${inputStyle};flex:1" placeholder="Name"><input id="eftAmt_${ft.id}" type="number" min="0" step="1" value="${ft.amount||10}" style="${inputStyle};width:64px" placeholder="DKK"><button class="btn btn-primary btn-sm" onclick="saveFineType(${ft.id})">✓</button><button class="btn btn-ghost btn-sm" onclick="cancelEditFineType()">✕</button></div>`;
     }
-    return`<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.06)"><span style="flex:1;font-size:0.88rem">${ft.name}</span><span style="font-family:'DM Mono',monospace;font-size:0.82rem;color:#f0a030">DKK ${ft.amount||10}</span><button class="btn btn-ghost btn-sm" onclick="editFineType(${ft.id})" title="Edit">✏️</button><button class="btn btn-danger btn-sm" onclick="deleteFineType(${ft.id})">✕</button></div>`;
+    const inactive=ft.active===false;
+    const opacity=inactive?'opacity:0.4;':'';
+    const actions=inactive
+      ?`<button class="btn btn-ghost btn-sm" onclick="reactivateFineType(${ft.id})" title="Reactivate">↩ On</button>`
+      :`<button class="btn btn-ghost btn-sm" onclick="editFineType(${ft.id})" title="Edit">✏️</button><button class="btn btn-ghost btn-sm" onclick="deactivateFineType(${ft.id})" title="Deactivate" style="color:rgba(220,80,80,0.7)">Off</button>`;
+    return`<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.06);${opacity}"><span style="flex:1;font-size:0.88rem">${ft.name}${inactive?' <em style="font-size:0.75rem">(inactive)</em>':''}</span><span style="font-family:'DM Mono',monospace;font-size:0.82rem;color:#f0a030">DKK ${ft.amount||10}</span>${actions}</div>`;
   }).join('');
 }
 
@@ -4675,10 +4688,15 @@ async function saveFineType(id){
   }catch(e){alert('Error: '+e.message);}finally{setLoading(false);}
 }
 
-async function deleteFineType(id){
-  if(!confirm('Delete this fine type? Existing fines will lose their label.'))return;
-  setLoading(true,'Deleting…');
-  try{await sbDelete('fine_types',id);fineTypes=fineTypes.filter(f=>f.id!==id);toast('Fine type removed');renderFineTypesList();}
+async function deactivateFineType(id){
+  if(!confirm('Deactivate this fine type? It will no longer appear when issuing fines, but past fines keep their label.'))return;
+  setLoading(true,'Saving…');
+  try{await sbUpdate('fine_types',id,{active:false});const ft=fineTypes.find(f=>f.id===id);if(ft)ft.active=false;toast('Fine type deactivated');renderFineTypesList();}
+  catch(e){alert('Error: '+e.message);}finally{setLoading(false);}
+}
+async function reactivateFineType(id){
+  setLoading(true,'Saving…');
+  try{await sbUpdate('fine_types',id,{active:true});const ft=fineTypes.find(f=>f.id===id);if(ft)ft.active=true;toast('Fine type reactivated');renderFineTypesList();}
   catch(e){alert('Error: '+e.message);}finally{setLoading(false);}
 }
 
