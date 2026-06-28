@@ -931,6 +931,7 @@ function tmMatchHcpInfo(match,date){
 
 function tmPlayerPts(gross,par,hasStroke){
   if(gross==null)return null;
+  if(gross===0)return 0; // pickup
   return Math.max(0,2+par+(hasStroke?1:0)-gross);
 }
 
@@ -3317,8 +3318,8 @@ function renderTournamentMatchRows(tourn,matches,round){
     const bWin=isDone&&match.result==='b';
     const liveAUp=isLive&&state.matchStatus>0;
     const liveBUp=isLive&&state.matchStatus<0;
-    const aBg=aWin||liveAUp?'rgba(74,158,107,0.22)':'transparent';
-    const bBg=bWin||liveBUp?'rgba(212,160,23,0.22)':'transparent';
+    const aBg=aWin||liveAUp?'rgba(74,158,107,0.35)':'transparent';
+    const bBg=bWin||liveBUp?'rgba(212,160,23,0.35)':'transparent';
     const halfBg=isDone&&match.result==='half'?'rgba(255,255,255,0.06)':'transparent';
 
     const aNames=match.team_a_p1_id
@@ -3616,7 +3617,7 @@ function renderMatchScoring(){
       <span style="width:24px;height:24px;border-radius:50%;background:${clr(p)};display:inline-flex;align-items:center;justify-content:center;font-size:0.6rem;font-weight:700">${ini(p.name)}</span>
       <span style="flex:1;font-size:0.85rem${isCurrent?';font-weight:600':''}">${p.name.split(' ')[0]}</span>
       ${hasStroke?'<span style="font-size:0.65rem;background:rgba(255,200,50,0.2);color:#f5c518;border-radius:4px;padding:1px 4px">+stroke</span>':''}
-      <span style="font-size:1.1rem;font-weight:700;min-width:28px;text-align:center">${gross??'—'}</span>
+      <span style="font-size:1.1rem;font-weight:700;min-width:28px;text-align:center">${gross===0?'P':gross??'—'}</span>
       <span style="font-size:0.85rem;color:rgba(255,255,255,0.5);min-width:30px;text-align:center">${pts!=null?pts+'pts':'—'}</span>
     </div>`;
   };
@@ -3637,7 +3638,7 @@ function renderMatchScoring(){
   // Match status banner
   const mScores=tournamentScores.filter(s=>s.match_id===match.id);
   const state=tmMatchState(match,hcpInfo,mScores);
-  const statusText=state.matchStatus===0?`All Square thru ${state.holesPlayed}`
+  const statusText=state.matchStatus===0?`All Square${state.holesPlayed>0?' H'+state.holesPlayed:''}`
     :state.matchStatus>0?`${tournament.team_a_name} ${state.matchStatus}UP H${state.holesPlayed}`
     :`${tournament.team_b_name} ${Math.abs(state.matchStatus)}UP H${state.holesPlayed}`;
 
@@ -3711,6 +3712,9 @@ function renderMatchScoring(){
     <button onclick="teBack_key()" style="padding:0.9rem;font-size:1rem;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#fff;cursor:pointer">⌫</button>
     <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:1.3rem;font-weight:700;min-height:52px">${_teBuffer||'—'}</div>
     <button onclick="teEnter()" style="padding:0.9rem;font-size:0.75rem;font-weight:700;background:rgba(74,144,232,0.3);border:1px solid rgba(74,144,232,0.4);border-radius:8px;color:#fff;cursor:pointer">NEXT →</button>
+  </div>
+  <div style="max-width:260px;margin:0.4rem auto 0">
+    <button onclick="tePickup()" style="width:100%;padding:0.6rem;font-size:0.8rem;font-weight:700;color:#f0a030;background:rgba(240,160,48,0.08);border:1px solid rgba(240,160,48,0.3);border-radius:8px;cursor:pointer">Pickup (0 pts)</button>
   </div>`;
 }
 
@@ -3730,10 +3734,11 @@ function teKey(d){
   renderMatchScoring();
 }
 function teBack_key(){_teBuffer='';renderMatchScoring();}
+async function tePickup(){_teBuffer='0';await teEnter();}
 
 async function teEnter(){
   const gross=parseInt(_teBuffer);
-  if(!gross||gross<1||gross>15){toast('Enter score 1–15');return;}
+  if(isNaN(gross)||gross<0||gross>15){toast('Enter score 0–15');return;}
   const pid=TE.playerOrder[TE.currentPlayerIdx];
   if(!TE.scores[pid])TE.scores[pid]={};
   TE.scores[pid][TE.currentHole]=gross;
