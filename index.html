@@ -3382,7 +3382,7 @@ function renderTournamentDrawHtml(tourn){
   const activeMatch=tMatches.find(m=>isFourball?(m.team_a_p1_id==null||m.team_a_p2_id==null||m.team_b_p1_id==null||m.team_b_p2_id==null):(m.team_a_p1_id==null||m.team_b_p1_id==null))||null;
   const pickState=activeMatch?tmDrawPickState(activeMatch):null;
 
-  const myTurn=myTeam&&pickState&&(pickState===`${myTeam}_picks`||pickState===`${myTeam}_responds`);
+  const myTurn=myTeam&&pickState&&(pickState==='either_picks'||pickState===`${myTeam}_picks`||pickState===`${myTeam}_responds`);
   const needsCount=isFourball?2:1;
 
   const matchRows=tMatches.map(m=>{
@@ -3411,7 +3411,7 @@ function renderTournamentDrawHtml(tourn){
   const pickHtml=myTurn?`
     <div style="margin-top:1rem">
       <div style="font-size:0.8rem;color:rgba(255,255,255,0.5);margin-bottom:0.5rem">
-        ${pickState==='a_picks'||pickState==='b_picks'?'Pick your side for Match '+activeMatch.match_num:'Respond to their pick — select your side for Match '+activeMatch.match_num}
+        ${pickState==='either_picks'||pickState==='a_picks'||pickState==='b_picks'?'Pick your side for Match '+activeMatch.match_num:'Respond to their pick — select your side for Match '+activeMatch.match_num}
         ${isFourball?` (select 2)`:' (select 1)'}
       </div>
       <div id="tmBench">${bench(myBench,myTeam)}</div>
@@ -3488,7 +3488,7 @@ function tmDrawPickState(match){
   const fourball=match.round===1;
   const aFull=fourball?(match.team_a_p1_id!=null&&match.team_a_p2_id!=null):(match.team_a_p1_id!=null);
   const bFull=fourball?(match.team_b_p1_id!=null&&match.team_b_p2_id!=null):(match.team_b_p1_id!=null);
-  if(!aFull&&!bFull)return match.match_num%2===1?'a_picks':'b_picks';
+  if(!aFull&&!bFull)return'either_picks';
   if(aFull&&!bFull)return'b_responds';
   if(!aFull&&bFull)return'a_responds';
   return'complete';
