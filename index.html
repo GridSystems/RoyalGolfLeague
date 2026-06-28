@@ -3388,7 +3388,7 @@ function renderTournamentDrawHtml(tourn){
         ${isFourball?` (select 2)`:' (select 1)'}
       </div>
       <div id="tmBench">${bench(myBench,myTeam)}</div>
-      <button class="btn btn-primary btn-sm" id="tmConfirmPick" onclick="tmConfirmPick(${tourn.id},${activeMatch?.id},${isFourball})" disabled style="margin-top:0.75rem">Confirm Pick</button>
+      <button class="btn btn-primary btn-sm" id="tmConfirmPick" data-needs="${needsCount}" onclick="tmConfirmPick(${tourn.id},${activeMatch?.id},${isFourball})" disabled style="margin-top:0.75rem">Confirm Pick</button>
     </div>`:waitMsg||specMsg;
 
   return`<div>
@@ -3434,7 +3434,7 @@ function tmTogglePick(el){
   if(idx>=0){_tmSelectedPids.splice(idx,1);el.style.background='';el.style.borderColor='rgba(255,255,255,0.15)';}
   else{_tmSelectedPids.push(pid);el.style.background='rgba(255,255,255,0.12)';el.style.borderColor='rgba(255,255,255,0.4)';}
   const btn=document.getElementById('tmConfirmPick');
-  if(btn){btn.disabled=_tmSelectedPids.length===0;}
+  if(btn){btn.disabled=_tmSelectedPids.length<parseInt(btn.dataset.needs||'1');}
 }
 
 async function tmConfirmPick(tournId,matchId,isFourball){
