@@ -211,13 +211,13 @@ select option { background: #1a3a2a; }
   <div class="nav">
     <button class="nav-tab active" id="tabLeaderboard" onclick="showView('leaderboard',this)">Leaderboards</button>
     <button class="nav-tab" onclick="showView('log',this)">Log Round</button>
+    <button class="nav-tab" id="tabTournament" style="display:none" onclick="showView('tournament',this)">🏆 Tournament</button>
     <button class="nav-tab" onclick="showView('signup',this)">Sign Up</button>
     <button class="nav-tab" onclick="showView('teesheet',this)">Tee Sheet</button>
     <button class="nav-tab" id="tabHistory" onclick="showView('history',this)">My Rounds</button>
     <button class="nav-tab" id="tabPlayers" onclick="showView('players',this)">Players</button>
     <button class="nav-tab" onclick="showView('rules',this)">Rules</button>
     <button class="nav-tab" id="tabTrack" onclick="openTrackTab()" style="display:none">📍 Track</button>
-    <button class="nav-tab" id="tabTournament" style="display:none" onclick="showView('tournament',this)">🏆 Tournament</button>
     <button class="nav-tab" id="adminTab" style="display:none" onclick="requireAdminPin(this)">⚙ Admin</button>
   </div>
 
