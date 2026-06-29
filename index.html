@@ -912,16 +912,34 @@ function tmPlayingHcp(player,tee,date){
   const courseHcp=Math.round(idx*tee.slope/113+(tee.rating-COURSE_PAR));
   return Math.round(courseHcp*0.90);
 }
+// How many strokes a player with playingHcp receives on a hole with given SI
+function strokesOnHole(playingHcp,si){
+  let s=0;
+  if(si<=playingHcp)s++;
+  if(playingHcp>18&&si<=(playingHcp-18))s++;
+  return s;
+}
 
 // Returns {receivingTeam:'a'|'b', diff, strokeHoles:[0-indexed hole indices], phA1,phA2,phB1,phB2}
 // Works for both fourball (p2 ids set) and singles (p2 ids null)
 function tmMatchHcpInfo(match,date){
   const getP=id=>players.find(p=>p.id===id)||{hcp_history:[],handicap:0};
   const tee=tees.find(t=>t.id===match._teeId)||{slope:113,rating:COURSE_PAR,id:match._teeId};
-  const phA1=match.team_a_p1_id?tmPlayingHcp(getP(match.team_a_p1_id),tee,date):0;
-  const phA2=match.team_a_p2_id?tmPlayingHcp(getP(match.team_a_p2_id),tee,date):0;
-  const phB1=match.team_b_p1_id?tmPlayingHcp(getP(match.team_b_p1_id),tee,date):0;
-  const phB2=match.team_b_p2_id?tmPlayingHcp(getP(match.team_b_p2_id),tee,date):0;
+  let phA1=match.team_a_p1_id?tmPlayingHcp(getP(match.team_a_p1_id),tee,date):0;
+  let phA2=match.team_a_p2_id?tmPlayingHcp(getP(match.team_a_p2_id),tee,date):0;
+  let phB1=match.team_b_p1_id?tmPlayingHcp(getP(match.team_b_p1_id),tee,date):0;
+  let phB2=match.team_b_p2_id?tmPlayingHcp(getP(match.team_b_p2_id),tee,date):0;
+  if(match.round===1){
+    // Fourball: lowest HCP across all four players becomes 0; others get the difference
+    const vals=[phA1,phB1];
+    if(match.team_a_p2_id)vals.push(phA2);
+    if(match.team_b_p2_id)vals.push(phB2);
+    const lo=Math.min(...vals);
+    phA1-=lo;
+    if(match.team_a_p2_id)phA2-=lo;
+    phB1-=lo;
+    if(match.team_b_p2_id)phB2-=lo;
+  }
   const combA=phA1+phA2,combB=phB1+phB2;
   const diff=Math.abs(combA-combB);
   const receivingTeam=combA>=combB?'a':'b';
@@ -938,11 +956,26 @@ function tmPlayerPts(gross,par,hasStroke){
 // holeIdx is 0-based. Returns {aScore,bScore,result:'a'|'b'|'half'|null, ptsA1,ptsA2,ptsB1,ptsB2}
 function tmHoleResult(holeIdx,match,hcpInfo,grossByPid){
   const par=HOLE_PARS[holeIdx];
-  const isStroke=hcpInfo.strokeHoles.includes(holeIdx);
-  const ptsA1=tmPlayerPts(grossByPid[match.team_a_p1_id],par,isStroke&&hcpInfo.receivingTeam==='a');
-  const ptsA2=match.team_a_p2_id!=null?tmPlayerPts(grossByPid[match.team_a_p2_id],par,isStroke&&hcpInfo.receivingTeam==='a'):null;
-  const ptsB1=tmPlayerPts(grossByPid[match.team_b_p1_id],par,isStroke&&hcpInfo.receivingTeam==='b');
-  const ptsB2=match.team_b_p2_id!=null?tmPlayerPts(grossByPid[match.team_b_p2_id],par,isStroke&&hcpInfo.receivingTeam==='b'):null;
+  const si=HOLE_HCP[holeIdx];
+  let sA1,sA2,sB1,sB2;
+  if(match.round===1){
+    // Fourball: each player gets individual strokes at 90% of their HCP
+    sA1=strokesOnHole(hcpInfo.phA1,si);
+    sA2=match.team_a_p2_id!=null?strokesOnHole(hcpInfo.phA2,si):0;
+    sB1=strokesOnHole(hcpInfo.phB1,si);
+    sB2=match.team_b_p2_id!=null?strokesOnHole(hcpInfo.phB2,si):0;
+  }else{
+    // Singles: receiving team gets the differential strokes
+    const isStroke=hcpInfo.strokeHoles.includes(holeIdx);
+    sA1=isStroke&&hcpInfo.receivingTeam==='a'?1:0;
+    sA2=0;
+    sB1=isStroke&&hcpInfo.receivingTeam==='b'?1:0;
+    sB2=0;
+  }
+  const ptsA1=tmPlayerPts(grossByPid[match.team_a_p1_id],par,sA1);
+  const ptsA2=match.team_a_p2_id!=null?tmPlayerPts(grossByPid[match.team_a_p2_id],par,sA2):null;
+  const ptsB1=tmPlayerPts(grossByPid[match.team_b_p1_id],par,sB1);
+  const ptsB2=match.team_b_p2_id!=null?tmPlayerPts(grossByPid[match.team_b_p2_id],par,sB2):null;
   const aScore=ptsA2!=null?Math.max(ptsA1??-1,ptsA2??-1):ptsA1;
   const bScore=ptsB2!=null?Math.max(ptsB1??-1,ptsB2??-1):ptsB1;
   if(aScore==null||bScore==null)return{aScore,bScore,result:null,ptsA1,ptsA2,ptsB1,ptsB2};
@@ -3614,21 +3647,31 @@ function renderMatchScoring(){
   const holeIdx=currentHole-1;
   const par=HOLE_PARS[holeIdx];
   const si=HOLE_HCP[holeIdx];
-  const isStroke=hcpInfo.strokeHoles.includes(holeIdx);
+  const isStroke=hcpInfo.strokeHoles.includes(holeIdx); // for singles
+  const isFourball=match.round===1;
   const currentPid=playerOrder[currentPlayerIdx];
   const currentP=players.find(p=>p.id===currentPid);
+  // pid→playingHcp map for fourball individual stroke display
+  const phcpByPid={};
+  if(isFourball){
+    if(match.team_a_p1_id)phcpByPid[match.team_a_p1_id]=hcpInfo.phA1;
+    if(match.team_a_p2_id)phcpByPid[match.team_a_p2_id]=hcpInfo.phA2;
+    if(match.team_b_p1_id)phcpByPid[match.team_b_p1_id]=hcpInfo.phB1;
+    if(match.team_b_p2_id)phcpByPid[match.team_b_p2_id]=hcpInfo.phB2;
+  }
 
   const pCard=(pid,teamLabel)=>{
     const p=players.find(x=>x.id===pid);if(!p)return'';
     const gross=scores[pid]?.[currentHole]??null;
     const isCurrent=pid===currentPid;
-    const onReceiving=hcpInfo.receivingTeam===(teamLabel==='A'?'a':'b');
-    const hasStroke=isStroke&&onReceiving;
-    const pts=gross!=null?tmPlayerPts(gross,par,hasStroke):null;
+    const strokes=isFourball
+      ?strokesOnHole(phcpByPid[pid]??0,si)
+      :(isStroke&&hcpInfo.receivingTeam===(teamLabel==='A'?'a':'b')?1:0);
+    const pts=gross!=null?tmPlayerPts(gross,par,strokes):null;
     return`<div style="display:flex;align-items:center;gap:0.5rem;padding:0.4rem;border-radius:6px;background:${isCurrent?'rgba(255,255,255,0.07)':'transparent'}">
       <span style="width:24px;height:24px;border-radius:50%;background:${clr(p)};display:inline-flex;align-items:center;justify-content:center;font-size:0.6rem;font-weight:700">${ini(p.name)}</span>
       <span style="flex:1;font-size:0.85rem${isCurrent?';font-weight:600':''}">${p.name.split(' ')[0]}</span>
-      ${hasStroke?'<span style="font-size:0.65rem;background:rgba(255,200,50,0.2);color:#f5c518;border-radius:4px;padding:1px 4px">+stroke</span>':''}
+      ${strokes>0?`<span style="font-size:0.65rem;background:rgba(255,200,50,0.2);color:#f5c518;border-radius:4px;padding:1px 4px">${strokes>1?'+2':'+1'}</span>`:''}
       <span style="font-size:1.1rem;font-weight:700;min-width:28px;text-align:center">${gross===0?'P':gross??'—'}</span>
       <span style="font-size:0.85rem;color:rgba(255,255,255,0.5);min-width:30px;text-align:center">${pts==null?'—':pts<0?'0 pts':pts+'pts'}</span>
     </div>`;
@@ -3671,8 +3714,18 @@ function renderMatchScoring(){
   }).join('');
 
   // HCP banner
-  const recv=hcpInfo.receivingTeam==='a'?tournament.team_a_name:tournament.team_b_name;
-  const hcpBanner=hcpInfo.diff>0?`<div style="font-size:0.75rem;color:rgba(255,255,255,0.45);margin-bottom:0.75rem;padding:0.4rem 0.5rem;background:rgba(255,255,255,0.04);border-radius:6px">${recv} receive ${hcpInfo.diff} stroke${hcpInfo.diff>1?'s':''} · SI 1–${hcpInfo.diff}</div>`:'';
+  const pnm=id=>players.find(x=>x.id===id)?.name.split(' ')[0]||'?';
+  const hcpBanner=isFourball
+    ?`<div style="font-size:0.72rem;color:rgba(255,255,255,0.45);margin-bottom:0.75rem;padding:0.4rem 0.5rem;background:rgba(255,255,255,0.04);border-radius:6px">
+        <span style="color:#4a9e6b">${pnm(match.team_a_p1_id)} ${hcpInfo.phA1}${match.team_a_p2_id?` · ${pnm(match.team_a_p2_id)} ${hcpInfo.phA2}`:''}</span>
+        <span style="color:rgba(255,255,255,0.25)"> vs </span>
+        <span style="color:#d4a017">${pnm(match.team_b_p1_id)} ${hcpInfo.phB1}${match.team_b_p2_id?` · ${pnm(match.team_b_p2_id)} ${hcpInfo.phB2}`:''}</span>
+        <span style="color:rgba(255,255,255,0.25)"> — 90% hcp</span>
+      </div>`
+    :hcpInfo.diff>0
+      ?(()=>{const recv=hcpInfo.receivingTeam==='a'?tournament.team_a_name:tournament.team_b_name;
+        return`<div style="font-size:0.75rem;color:rgba(255,255,255,0.45);margin-bottom:0.75rem;padding:0.4rem 0.5rem;background:rgba(255,255,255,0.04);border-radius:6px">${recv} receive ${hcpInfo.diff} stroke${hcpInfo.diff>1?'s':''} · SI 1–${hcpInfo.diff}</div>`;})()
+      :'';
 
   // Team A p2 and Team B p2 sections
   const aP2html=match.team_a_p2_id?pCard(match.team_a_p2_id,'A'):'';
