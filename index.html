@@ -3233,6 +3233,7 @@ async function toggleSaturdaySignup(date){
 function renderTournament(){
   const el=document.getElementById('tournamentContent');
   if(!el)return;
+  if(TE.matchId)return; // scoring screen active — don't overwrite it
   if(tournaments.length===0){el.innerHTML='<p style="padding:1rem;color:rgba(255,255,255,0.5)">No tournaments yet.</p>';return;}
 
   // Selector if multiple
