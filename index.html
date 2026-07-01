@@ -3640,7 +3640,6 @@ function renderMatchScoring(){
   const isFourball=match.round===1;
   const currentPid=playerOrder[currentPlayerIdx];
   const currentP=players.find(p=>p.id===currentPid);
-  const isFourball=match.round===1;
   const phcpByPid={};
   if(isFourball){
     if(match.team_a_p1_id)phcpByPid[match.team_a_p1_id]=hcpInfo.phA1;
