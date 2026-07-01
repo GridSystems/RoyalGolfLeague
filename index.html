@@ -1021,8 +1021,8 @@ function tmResultLabel(match,hcpInfo,scores){
     return holesRemaining>0?`${up}&${holesRemaining}`:`${up}UP`;
   }
   if(match.status==='in_progress'){
-    if(matchStatus===0)return`A/S H${holesPlayed+1}`;
-    return`${Math.abs(matchStatus)}UP H${holesPlayed+1}`;
+    if(matchStatus===0)return holesPlayed>0?`A/S H${holesPlayed}`:'A/S';
+    return`${Math.abs(matchStatus)}UP${holesPlayed>0?` H${holesPlayed}`:''}`;
   }
   return'—';
 }
