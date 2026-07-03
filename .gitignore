@@ -1,2 +1,8 @@
 .claude/worktrees/
 .superpowers/
+
+# Local Claude Code settings (personal, not shared)
+.claude/settings.local.json
+
+# Supabase CLI local cache
+supabase/.temp/
