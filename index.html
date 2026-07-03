@@ -3239,6 +3239,12 @@ function renderTournament(){
 
   // Draw phase — show draw screen for captains, read-only for others
   if(tourn.status==='fourball_draw'||tourn.status==='singles_draw'){
+    // Self-heal: a tournament that auto-advanced to singles_draw before its match rows existed
+    if(tourn.status==='singles_draw'&&isAdmin()&&!tournamentMatches.some(m=>m.tournament_id===tourn.id&&m.round===2)){
+      el.innerHTML=selectorHtml+`<div style="text-align:center;padding:2rem 1rem;color:rgba(255,255,255,0.45)">Setting up singles matches…</div>`;
+      ensureRoundMatches(tourn.id,2,8).then(()=>renderTournament()).catch(e=>alert('Error: '+e.message));
+      return;
+    }
     el.innerHTML=selectorHtml+renderTournamentDrawHtml(tourn);
     wireTournamentDrawEvents(tourn);
     return;
@@ -3887,6 +3893,7 @@ async function checkTournamentStatusAdvance(tourn){
   if(tourn.status==='round_1'){
     const r1Done=tMatches.filter(m=>m.round===1&&m.status==='complete').length===4;
     if(r1Done){
+      await ensureRoundMatches(tourn.id,2,8); // create the 8 singles matches before opening the draw
       await sbUpdate('tournaments',tourn.id,{status:'singles_draw'});
       tourn.status='singles_draw';
       const idx=tournaments.findIndex(t=>t.id===tourn.id);
@@ -4027,24 +4034,35 @@ async function setTournamentCaptain(tournId,team,playerId){
     renderAdminTournament();
   }catch(e){alert('Error: '+e.message);}
 }
+// Idempotently create `count` pending match rows for a tournament round.
+// Safe to call from any transition path — returns early if the round already has matches.
+let _seedingRounds=new Set();
+async function ensureRoundMatches(tournId,round,count){
+  const existing=tournamentMatches.filter(m=>m.tournament_id===tournId&&m.round===round);
+  if(existing.length>0)return existing;
+  const key=tournId+'-'+round;
+  if(_seedingRounds.has(key))return existing;
+  _seedingRounds.add(key);
+  try{
+    const t=tournaments.find(x=>x.id===tournId);
+    const newMatches=[];
+    for(let i=1;i<=count;i++)newMatches.push({id:Date.now()+Math.floor(Math.random()*999999)+i,tournament_id:tournId,round,match_num:i,status:'pending'});
+    const saved=await sbInsert('tournament_matches',newMatches.length===1?newMatches[0]:newMatches);
+    const insertedRows=Array.isArray(saved)?saved:saved?[saved]:newMatches;
+    insertedRows.forEach(m=>{if(t)m._teeId=t.tee_id;tournamentMatches.push(m);});
+    return insertedRows;
+  }finally{
+    _seedingRounds.delete(key);
+  }
+}
 async function advanceTournamentStatus(tournId){
   const t=tournaments.find(x=>x.id===tournId);if(!t)return;
   const transitions={setup:'fourball_draw',round_1:'singles_draw'};
   const next=transitions[t.status];if(!next)return;
   try{
-    const newMatches=[];
-    if(next==='fourball_draw'){
-      for(let i=1;i<=4;i++)newMatches.push({id:Date.now()+Math.floor(Math.random()*999999)+i,tournament_id:tournId,round:1,match_num:i,status:'pending'});
-    }
-    if(next==='singles_draw'){
-      for(let i=1;i<=8;i++)newMatches.push({id:Date.now()+Math.floor(Math.random()*999999)+i,tournament_id:tournId,round:2,match_num:i,status:'pending'});
-    }
-    // Insert all match rows before updating status — avoids partial state if insert fails
-    if(newMatches.length>0){
-      const saved=await sbInsert('tournament_matches',newMatches.length===1?newMatches[0]:newMatches);
-      const insertedRows=Array.isArray(saved)?saved:saved?[saved]:newMatches;
-      insertedRows.forEach(m=>{m._teeId=t.tee_id;tournamentMatches.push(m);});
-    }
+    // Seed match rows before updating status — avoids partial state if insert fails
+    if(next==='fourball_draw')await ensureRoundMatches(tournId,1,4);
+    if(next==='singles_draw')await ensureRoundMatches(tournId,2,8);
     await sbUpdate('tournaments',tournId,{status:next});
     t.status=next;
     toast('Tournament advanced ✅');
