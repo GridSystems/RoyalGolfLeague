@@ -3671,7 +3671,7 @@ function renderMatchScoring(){
       strokes=isStroke&&onReceiving?1:0;
     }
     const nett=gross!=null?tmPlayerNett(gross,strokes):null;
-    return`<div style="display:flex;align-items:center;gap:0.5rem;padding:0.4rem;border-radius:6px;background:${isCurrent?'rgba(255,255,255,0.07)':'transparent'}">
+    return`<div onclick="teSelectPlayer(${pid})" style="display:flex;align-items:center;gap:0.5rem;padding:0.4rem;border-radius:6px;cursor:pointer;background:${isCurrent?'rgba(255,255,255,0.07)':'transparent'}">
       <span style="width:24px;height:24px;border-radius:50%;background:${clr(p)};display:inline-flex;align-items:center;justify-content:center;font-size:0.6rem;font-weight:700">${ini(p.name)}</span>
       <span style="flex:1;font-size:0.85rem${isCurrent?';font-weight:600':''}">${p.name.split(' ')[0]}</span>
       ${strokes>0?`<span style="font-size:0.65rem;background:rgba(255,200,50,0.2);color:#f5c518;border-radius:4px;padding:1px 4px">${strokes===1?'+stroke':'+'+strokes+' strokes'}</span>`:''}
@@ -3805,6 +3805,7 @@ function teKey(d){
   renderMatchScoring();
 }
 function teBack_key(){_teBuffer='';renderMatchScoring();}
+function teSelectPlayer(pid){const idx=TE.playerOrder.indexOf(pid);if(idx<0)return;TE.currentPlayerIdx=idx;_teBuffer='';renderMatchScoring();}
 function teGoPrevHole(){if(TE.currentHole<=1)return;TE.currentHole--;TE.currentPlayerIdx=0;_teBuffer='';renderMatchScoring();}
 function teGoNextHole(){
   const far=TE.furthestHole||TE.currentHole;
@@ -3820,6 +3821,8 @@ async function tePickup(){_teBuffer='0';await teEnter();}
 async function teEnter(){
   const gross=parseInt(_teBuffer);
   if(isNaN(gross)||gross<0||gross>15){toast('Enter score 0–15');return;}
+  // Editing mode: the hole was already fully scored before this entry
+  const wasComplete=TE.playerOrder.every(p=>TE.scores[p]?.[TE.currentHole]!=null);
   const pid=TE.playerOrder[TE.currentPlayerIdx];
   if(!TE.scores[pid])TE.scores[pid]={};
   TE.scores[pid][TE.currentHole]=gross;
@@ -3839,6 +3842,8 @@ async function teEnter(){
     toast('Save error — score kept locally',3000);
   }
 
+  // Editing an already-complete hole: save in place, don't step through players or advance the hole
+  if(wasComplete){renderMatchScoring();return;}
   // Advance player
   TE.currentPlayerIdx++;
   if(TE.currentPlayerIdx>=TE.playerOrder.length){
