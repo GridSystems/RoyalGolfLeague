@@ -3274,7 +3274,7 @@ function renderTournamentLeaderboardHtml(tourn){
   const resetBtn=isAdmin()&&tourn.status!=='setup'?`<button class="btn btn-ghost btn-sm" onclick="resetTournament(${tourn.id})" style="float:right;font-size:0.75rem;color:rgba(220,80,80,0.8)">🗑 Reset</button>`:'';
   const finesBtn=`<button class="btn btn-ghost btn-sm" onclick="showAddFine()" style="float:right;font-size:0.75rem;margin-right:0.4rem">🚨 Fine</button>`;
   const isCap=activeId===tourn.team_a_captain_id||activeId===tourn.team_b_captain_id;
-  const editBtn=(label,fn)=>isCap?`<button onclick="${fn}" style="background:none;border:none;color:rgba(255,255,255,0.3);cursor:pointer;font-size:0.75rem;padding:0 0 0 4px" title="Edit">✏</button>`:'';
+  const editBtn=(label,fn)=>(isCap||isAdmin())?`<button onclick="${fn}" style="background:none;border:none;color:rgba(255,255,255,0.3);cursor:pointer;font-size:0.75rem;padding:0 0 0 4px" title="Edit">✏</button>`:'';
 
   // Determine active round tab
   const activeRound=tourn.status==='round_2'||tourn.status==='singles_draw'||tourn.status==='complete'?2:1;
@@ -3466,10 +3466,13 @@ function renderTournamentDrawHtml(tourn){
 </div>`:'';
 
   const isCap=!!myTeam;
-  const eBtn=fn=>isCap?`<button onclick="${fn}" style="background:none;border:none;color:rgba(255,255,255,0.3);cursor:pointer;font-size:0.75rem;padding:0 0 0 4px" title="Edit">✏</button>`:'';
+  const eBtn=fn=>(isCap||isAdmin())?`<button onclick="${fn}" style="background:none;border:none;color:rgba(255,255,255,0.3);cursor:pointer;font-size:0.75rem;padding:0 0 0 4px" title="Edit">✏</button>`:'';
   const ef=(f,v)=>`tmEditField(${tourn.id},'${f}','${v.replace(/'/g,"\\'")}')`;
+  const resetBtn=isAdmin()?`<button class="btn btn-ghost btn-sm" onclick="resetTournament(${tourn.id})" style="float:right;font-size:0.75rem;color:rgba(220,80,80,0.8)">🗑 Reset</button>`:'';
+  const finesBtn=`<button class="btn btn-ghost btn-sm" onclick="showAddFine()" style="float:right;font-size:0.75rem;margin-right:0.4rem">🚨 Fine</button>`;
   return`<div>
     <div style="margin-bottom:0.75rem">
+      ${resetBtn}${finesBtn}
       <h2 style="font-family:'Playfair Display',serif;font-size:1.3rem;margin:0 0 0.2rem">${tourn.name}${eBtn(ef('name',tourn.name))}</h2>
       <div style="display:flex;gap:0.5rem;align-items:center;font-size:0.85rem;font-weight:600">
         <span style="color:#4a9e6b">${tourn.team_a_name}${eBtn(ef('team_a_name',tourn.team_a_name))}</span>
