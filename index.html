@@ -3253,6 +3253,20 @@ async function confirmSignup(date){
   const earlyReq=document.getElementById(`earlyChk_${date}`)?.checked||false;
   const earlyReason=document.getElementById(`earlyReason_${date}`)?.value.trim()||null;
   try{
+    // (player_id,date) is UNIQUE — a blind insert throws 23505 whenever this tab's cache is
+    // stale (signed up on another device, or an admin added them). Ask the DB first.
+    const[existing]=await sbGet('saturday_signups',`player_id=eq.${activeId}&date=eq.${date}`);
+    if(existing){
+      const i=saturdaySignups.findIndex(s=>s.id===existing.id);
+      if(i>=0)saturdaySignups[i]=existing;else saturdaySignups.push(existing);
+      if(existing.early_tee_request!==earlyReq||(existing.early_tee_reason||null)!==(earlyReason||null)){
+        await sbUpdate('saturday_signups',existing.id,{early_tee_request:earlyReq,early_tee_reason:earlyReason||null});
+        existing.early_tee_request=earlyReq;existing.early_tee_reason=earlyReason||null;
+      }
+      satSignupForm=null;
+      toast('Already signed up for that Saturday ✓');
+      renderSaturdayView();renderSaturdayAdmin();renderTeeSheet();return;
+    }
     const payload={id:Date.now()+Math.floor(Math.random()*9999),player_id:activeId,date,early_tee_request:earlyReq,early_tee_reason:earlyReason||null};
     const[saved]=await sbInsert('saturday_signups',payload);
     saturdaySignups.push(saved||payload);
@@ -4288,7 +4302,7 @@ function renderSaturdayAdmin(){
             ?`<button class="btn btn-primary btn-sm" onclick="toggleSatCancel('${date}')" style="font-size:0.75rem">✅ Restore Saturday</button>`
             :`<button class="btn btn-ghost btn-sm" onclick="toggleSatLock('${date}')" style="font-size:0.75rem">${locked?'🔓 Unlock':'🔒 Lock sign-ups'}</button>
           <button class="btn btn-ghost btn-sm" onclick="saveTeeTimesOnly('${date}')" style="font-size:0.75rem">💾 Times</button>
-          ${n?`<button class="btn btn-primary btn-sm" onclick="generateDraw('${date}')" style="font-size:0.75rem">🎲 Randomise</button>`:''}
+          ${n?`<button class="btn ${hasAlloc?'btn-ghost':'btn-primary'} btn-sm" onclick="generateDraw('${date}')" style="font-size:0.75rem">🎲 ${hasAlloc?'Re-randomise':'Randomise'}</button>`:''}
           ${hasAlloc?`<button class="btn btn-warn btn-sm" onclick="saveDraw('${date}')" style="font-size:0.75rem">💾 Save Draw</button>`:''}
           <button class="btn btn-ghost btn-sm" onclick="toggleSatCancel('${date}')" style="font-size:0.75rem;color:rgba(220,80,80,0.8)">⛔ Cancel Saturday</button>`}
         </div>
@@ -4321,21 +4335,29 @@ function renderSaturdayAdmin(){
 async function adminAddSaturdayPlayer(date){
   const sel=document.getElementById(`satAddPlayer_${date}`);
   const pid=parseInt(sel?.value);if(!pid){return;}
-  const already=saturdaySignups.find(s=>s.player_id===pid&&s.date===date);
-  if(already){
-    if(teeTime&&!already.tee_time){await adminMoveTeeTime(already.id,date,teeTime);const s2=document.getElementById(`satAddPlayer_${date}`);if(s2)s2.value='';return;}
-    toast('Player already signed up');return;
-  }
   const ttSel=document.getElementById(`satAddTeeTime_${date}`);
   const teeTime=ttSel?.value||null;
   const event=saturdayEvents.find(e=>e.date===date);
   const teeTimes=(event?.tee_times||['08:30','08:40','08:50']).slice().sort();
   const groupNum=teeTime?(teeTimes.indexOf(teeTime)+1||1):null;
+  const clearSel=()=>{const s2=document.getElementById(`satAddPlayer_${date}`);if(s2)s2.value='';};
   try{
+    // (player_id,date) is UNIQUE in the DB. In-memory saturdaySignups can be stale — the
+    // member, another admin, or the friday-draw function may have inserted since page load —
+    // so ask the DB, not the cache, before deciding insert vs update.
+    const[existing]=await sbGet('saturday_signups',`player_id=eq.${pid}&date=eq.${date}`);
+    if(existing){
+      const i=saturdaySignups.findIndex(s=>s.id===existing.id);
+      if(i>=0)saturdaySignups[i]=existing;else saturdaySignups.push(existing);
+      if(teeTime&&existing.tee_time!==teeTime){await adminMoveTeeTime(existing.id,date,teeTime);clearSel();toast(`Player added · ${teeTime} ✓`);return;}
+      toast(existing.tee_time?`Already in the ${existing.tee_time} group`:'Player already signed up');
+      clearSel();renderSaturdayAdmin();renderSaturdayView();renderTeeSheet();return;
+    }
     const payload={id:Date.now()+Math.floor(Math.random()*9999),player_id:pid,date,
       ...(teeTime?{tee_time:teeTime,group_num:groupNum}:{})};
     const[saved]=await sbInsert('saturday_signups',payload);
     saturdaySignups.push(saved||payload);
+    clearSel();
     toast('Player added'+(teeTime?` · ${teeTime}`:'')+' ✓');
     renderSaturdayAdmin();renderSaturdayView();renderTeeSheet();
   }catch(e){alert('Error: '+e.message);}
@@ -4481,8 +4503,9 @@ async function saveTeeTimesOnly(date){
   }catch(e){alert('Error: '+e.message);}
 }
 async function saveDraw(date){
-  if(!pendingDraw[date]){alert('Randomise first.');return;}
   const signups=saturdaySignups.filter(s=>s.date===date);
+  // An existing allocation counts as a draw — only block when there is nothing to save
+  if(!pendingDraw[date]&&!signups.some(s=>s.tee_time)){alert('Randomise first — no draw to save.');return;}
   const ttInput=document.getElementById(`satTT_${date}`);
   const teeTimes=(ttInput?.value||'08:30,08:40,08:50').split(',').map(t=>t.trim()).filter(Boolean).sort();
   let event=saturdayEvents.find(e=>e.date===date);
