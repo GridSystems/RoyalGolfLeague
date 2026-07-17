@@ -4463,6 +4463,9 @@ function validateSaturdayDate(inp){
   if(!inp.value)return;
   const d=new Date(inp.value+'T00:00:00');
   if(d.getDay()!==6){
+    // Admins may log any date — midweek corrections, and testing the resume flow, which keys
+    // off today() and so can only be exercised from a non-Saturday on an admin device.
+    if(isAdmin()){toast('Non-Saturday date — admin only');return;}
     alert('Rounds must be on a Saturday — please select a Saturday.');
     inp.value='';
   }
