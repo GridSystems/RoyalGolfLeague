@@ -309,7 +309,7 @@ select option { background: #1a3a2a; }
         <div class="pb">
           <div id="resumeRoundInfo" style="margin-bottom:1.2rem"></div>
           <div class="fgi" style="margin-bottom:1.2rem">
-            <label>Also scoring for other players? <span style="font-size:0.72rem;color:rgba(255,255,255,0.35)">(optional)</span></label>
+            <label>Also scoring for <span style="font-size:0.72rem;color:rgba(255,255,255,0.35)">(tap to remove anyone you're not scoring)</span></label>
             <div id="resumePlayerCheckboxes" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px"></div>
           </div>
           <div class="fa" style="margin-top:0">
@@ -3051,11 +3051,13 @@ function resumeRound(roundId){
 
   // Store resuming context and show step 1b
   resumingRound={r,p};
-  resumeGroupPlayerIds=[];
   resumePlayerTees={};
+  // Default to scoring for the whole group — you were already scoring for them, so having to
+  // re-tick everyone to carry on is a step backwards. Untick to drop someone.
+  resumeGroupPlayerIds=resumeCandidateRounds().map(ar=>ar.player_id);
 
-  const scored=r.holes.filter(h=>h&&h.score!=null).length;
-  const nextHole=r.holes.find(h=>h&&h.score==null);
+  const scored=r.holes.filter(h=>h&&(h.score!=null||h.pickup)).length;
+  const nextHole=r.holes.find(h=>h&&h.score==null&&!h.pickup);
   const nextHoleNum=nextHole?nextHole.hole:1;
   document.getElementById('resumeRoundInfo').innerHTML=`
     <div style="background:rgba(201,168,76,0.07);border:1px solid rgba(201,168,76,0.2);border-radius:8px;padding:10px 14px;font-size:0.85rem">
@@ -3072,27 +3074,34 @@ function resumeRound(roundId){
   document.getElementById('logStep1b').style.display='block';
 }
 
-function buildResumePlayerCheckboxes(){
-  const wrap=document.getElementById('resumePlayerCheckboxes');if(!wrap)return;
+// Other players in this group with an unfinished round today. Single source of truth for both
+// the default selection and the checkbox list, so they can never disagree.
+function resumeCandidateRounds(){
   const td=today();
   const myTeeTime=resumingRound?.r?.tee_time||null;
   // One entry per player — match tee time if set, take most recent partial round today
   const seen=new Set();
-  const otherRounds=allRounds.filter(ar=>{
+  return allRounds.filter(ar=>{
     if(ar.date!==td||ar.player_id===activeId||seen.has(ar.player_id))return false;
     if(myTeeTime&&ar.tee_time&&ar.tee_time!==myTeeTime)return false;
-    const scored=ar.holes.filter(h=>h&&h.score!=null).length;
+    // A pickup is played, not pending — counting it as unscored keeps finished rounds on offer
+    const done=ar.holes.filter(h=>h&&(h.score!=null||h.pickup)).length;
     // Include partial rounds OR 0-scored rounds that were pre-created in the same tee time group
-    const isPartial=scored>0&&scored<18;
-    const isGrouped=scored===0&&myTeeTime&&ar.tee_time===myTeeTime;
+    const isPartial=done>0&&done<18;
+    const isGrouped=done===0&&myTeeTime&&ar.tee_time===myTeeTime;
     if(isPartial||isGrouped){seen.add(ar.player_id);return true;}
     return false;
   });
+}
+function buildResumePlayerCheckboxes(){
+  const wrap=document.getElementById('resumePlayerCheckboxes');if(!wrap)return;
+  const myTeeTime=resumingRound?.r?.tee_time||null;
+  const otherRounds=resumeCandidateRounds();
   if(!otherRounds.length){wrap.innerHTML=`<span style="font-size:0.8rem;color:rgba(255,255,255,0.35)">No other players have an unfinished round today${myTeeTime?' at '+myTeeTime:''}.</span>`;return;}
   wrap.innerHTML=otherRounds.map(ar=>{
     const p=players.find(x=>x.id===ar.player_id);if(!p)return'';
     const checked=resumeGroupPlayerIds.includes(p.id);
-    const scored=ar.holes.filter(h=>h&&h.score!=null).length;
+    const scored=ar.holes.filter(h=>h&&(h.score!=null||h.pickup)).length;
     return`<div onclick="toggleResumePlayer(${p.id})" style="display:flex;align-items:center;gap:7px;padding:7px 12px;border-radius:8px;cursor:pointer;border:1px solid ${checked?'rgba(201,168,76,0.5)':'rgba(255,255,255,0.12)'};background:${checked?'rgba(201,168,76,0.1)':'rgba(0,0,0,0.2)'};transition:all 0.15s;user-select:none;width:100%">
       <div style="width:18px;height:18px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.58rem;font-weight:600;color:#fff;flex-shrink:0">${ini(p.name)}</div>
       <div style="flex:1"><span style="font-size:0.83rem;font-weight:${checked?500:400};color:${checked?'var(--gold-l)':'var(--cream)'}">${p.name}</span><span style="font-size:0.72rem;color:rgba(255,255,255,0.4);margin-left:8px">${scored?`${scored}/18 holes · `:''}${ar.tee_name||'—'}</span></div>
