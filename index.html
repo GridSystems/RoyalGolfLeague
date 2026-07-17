@@ -2534,10 +2534,33 @@ function setStartHole(val){
 async function heInit(playerList,date,notes,startHole){
   startWeatherRefresh();
   const scores={},roundIds={},pickups={};
+  const adopted=[];
   setLoading(true,'Starting round…');
   try{
     for(const entry of playerList){
       const{p,index}=entry;
+      // Adopt an unfinished round for this player+date rather than minting a duplicate.
+      // Resume depends on device-local state, so it can't be trusted to have fired — without
+      // this the earlier round is orphaned and its scores look "dropped". A COMPLETE round is
+      // left alone, so a genuine second round of the day still gets its own row.
+      let existing=null;
+      try{
+        const rows=await sbGet('rounds',`player_id=eq.${p.id}&date=eq.${date}&order=created_at.asc`);
+        existing=rows.find(r=>Array.isArray(r.holes)&&r.holes.filter(h=>h&&(h.score!=null||h.pickup)).length<18)||null;
+      }catch(e){console.warn('existing-round lookup failed for',p.id,e);}
+      if(existing){
+        const eTee=getTee(existing.tee_id||entry.teeId||'platinum');
+        entry.teeId=existing.tee_id||entry.teeId;entry.tee=eTee;
+        entry.phcp=index!=null?calcPlayingHcp(index,eTee):null;
+        scores[p.id]=Array.from({length:18},(_,i)=>existing.holes[i]?existing.holes[i].score:null);
+        pickups[p.id]=Array.from({length:18},(_,i)=>existing.holes[i]?!!existing.holes[i].pickup:false);
+        roundIds[p.id]=existing.id;
+        const ai=allRounds.findIndex(x=>x.id===existing.id);
+        if(ai>=0)allRounds[ai]=existing;else allRounds.unshift(existing);
+        const done=existing.holes.filter(h=>h&&(h.score!=null||h.pickup)).length;
+        if(done>0)adopted.push(`${p.name.split(' ')[0]} (${done})`);
+        continue;
+      }
       const tee=getTee(entry.teeId||'platinum');
       entry.tee=tee;
       const courseHcp=index!=null?calcCourseHcp(index,tee):null;
@@ -2552,7 +2575,11 @@ async function heInit(playerList,date,notes,startHole){
     }
   }catch(e){alert('Error creating rounds: '+e.message);setLoading(false);return;}
   setLoading(false);
-  HE={playerList,scores,pickups,roundIds,currentHole:startHole,currentPidx:0,startHole,date,notes,teeTime:HE.teeTime||null};
+  if(adopted.length)toast(`Continuing today's round — ${adopted.join(', ')} holes already scored`);
+  // Open on the first hole anyone still needs (a pickup counts as played). For a fresh round
+  // every hole is unplayed, so this resolves to startHole — no special case needed.
+  const resumeAt=heOrderedHoles(startHole).find(h=>playerList.some(({p})=>scores[p.id][h-1]==null&&!pickups[p.id][h-1]));
+  HE={playerList,scores,pickups,roundIds,currentHole:resumeAt||startHole,currentPidx:0,startHole,date,notes,teeTime:HE.teeTime||null};
   saveActiveGroup();
   heRender();
 }
@@ -2678,7 +2705,26 @@ async function hePatchRound(pid){
     buildPlayerCheckboxes();
     return;
   }
-  const holes=HE.scores[pid].map((score,i)=>{const pu=HE.pickups&&HE.pickups[pid]&&HE.pickups[pid][i];return{hole:i+1,score:pu?null:score,par:HOLE_PARS[i],hcp:HOLE_HCP[i],...(pu?{pickup:true}:{})};});
+  const local=HE.scores[pid].map((score,i)=>{const pu=HE.pickups&&HE.pickups[pid]&&HE.pickups[pid][i];return{hole:i+1,score:pu?null:score,par:HOLE_PARS[i],hcp:HOLE_HCP[i],...(pu?{pickup:true}:{})};});
+  // This PATCH replaces all 18 holes, so a blind write blanks any hole another scorer has
+  // entered that this device hasn't seen. Two people may score the same group at once, so
+  // merge first: keep our value where we have one, take theirs where we don't. We never
+  // erase a hole we simply haven't seen.
+  let holes=local;
+  try{
+    const[cur]=await sbGet('rounds',`id=eq.${rid}&select=holes`);
+    if(cur&&Array.isArray(cur.holes)){
+      holes=local.map((mine,i)=>{
+        if(mine.score!=null||mine.pickup)return mine;
+        const theirs=cur.holes[i];
+        if(!theirs||(theirs.score==null&&!theirs.pickup))return mine;
+        return{hole:i+1,score:theirs.pickup?null:(theirs.score??null),par:HOLE_PARS[i],hcp:HOLE_HCP[i],...(theirs.pickup?{pickup:true}:{})};
+      });
+      // Reflect the other scorer's holes back into this device so the card shows them
+      HE.scores[pid]=holes.map(h=>h.pickup?null:(h.score??null));
+      if(HE.pickups&&HE.pickups[pid])HE.pickups[pid]=holes.map(h=>!!h.pickup);
+    }
+  }catch(e){console.warn('Merge read failed, writing local only for',pid,e);}
   try{
     await sbUpdate('rounds',rid,{holes});
     const r=allRounds.find(x=>x.id===rid);if(r)r.holes=holes;
@@ -2956,17 +3002,19 @@ function checkForResumableRounds(){
     }catch(e){localStorage.removeItem('sl_active_group');}
   }
   // Include rounds with 0 scores — they may have been pre-created when another group member started
+  // A picked-up hole is played, not pending — counting it as unscored offers finished rounds
+  // as "resumable" and points them at a hole that's already done.
+  const holesDone=r=>r.holes.filter(h=>h&&(h.score!=null||h.pickup)).length;
   const partial=allRounds.filter(r=>{
     if(r.date!==td||r.player_id!==activeId)return false;
-    const scored=r.holes.filter(h=>h&&h.score!=null).length;
-    return scored<18;
+    return holesDone(r)<18;
   });
   if(!partial.length){panel.style.display='none';return;}
 
   const items=partial.map(r=>{
     const p=players.find(x=>x.id===r.player_id)||pendingPlayers.find(x=>x.id===r.player_id);
-    const scored=r.holes.filter(h=>h&&h.score!=null).length;
-    const nextHole=r.holes.find(h=>h&&h.score==null);
+    const scored=holesDone(r);
+    const nextHole=r.holes.find(h=>h&&h.score==null&&!h.pickup);
     const nextHoleNum=nextHole?nextHole.hole:1;
     return{r,p,scored,nextHoleNum};
   }).filter(x=>x.p);
@@ -3073,26 +3121,32 @@ async function startResumeEntry(){
   const phcp=index!=null?calcPlayingHcp(index,tee):null;
   const playerList=[{p,phcp,index,tee,teeId:r.tee_id||'57'}];
   const scores={[p.id]:r.holes.map(h=>h?h.score:null)};
+  // pickups MUST be restored: hePatchRound rebuilds all 18 holes from HE and only writes
+  // pickup:true where HE.pickups says so — without this the next patch wipes every pickup.
+  const pickups={[p.id]:r.holes.map(h=>h?!!h.pickup:false)};
   const roundIds={[p.id]:r.id};
-  const firstUnscored=r.holes.find(h=>h&&h.score==null);
+  // A pickup is stored with score:null but is NOT unplayed — skip it or we resume on a hole
+  // that's already done.
+  const firstUnscored=r.holes.find(h=>h&&h.score==null&&!h.pickup);
   const startAtHole=firstUnscored?firstUnscored.hole:1;
 
   // Restore existing rounds for additional players — no new rounds created
   const td=today();
   for(const pid of resumeGroupPlayerIds){
     const ap=players.find(x=>x.id===pid);if(!ap)continue;
-    const apr=allRounds.find(ar=>ar.player_id===pid&&ar.date===td&&ar.holes.filter(h=>h&&h.score!=null).length<18);
+    const apr=allRounds.find(ar=>ar.player_id===pid&&ar.date===td&&ar.holes.filter(h=>h&&(h.score!=null||h.pickup)).length<18);
     if(!apr)continue;
     const aTee=getTee(apr.tee_id||'57');
     const aIndex=hcpOnDate(ap,apr.date);
     const aPhcp=aIndex!=null?calcPlayingHcp(aIndex,aTee):null;
     scores[ap.id]=apr.holes.map(h=>h?h.score:null);
+    pickups[ap.id]=apr.holes.map(h=>h?!!h.pickup:false);
     roundIds[ap.id]=apr.id;
     playerList.push({p:ap,phcp:aPhcp,index:aIndex,tee:aTee,teeId:apr.tee_id||'57'});
   }
 
   groupPlayerIds=playerList.map(x=>x.p.id);
-  HE={playerList,scores,roundIds,currentHole:startAtHole,currentPidx:0,startHole:startAtHole,date:r.date,notes:r.notes||''};
+  HE={playerList,scores,pickups,roundIds,currentHole:startAtHole,currentPidx:0,startHole:startAtHole,date:r.date,notes:r.notes||''};
   document.getElementById('logStep1b').style.display='none';
   document.getElementById('logStep2').style.display='block';
   resumingRound=null;resumeGroupPlayerIds=[];resumePlayerTees={};
