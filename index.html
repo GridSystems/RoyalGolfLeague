@@ -4167,7 +4167,7 @@ function computeTournamentPlayerStats(tourn){
   const tMatches=tournamentMatches.filter(m=>m.tournament_id===tourn.id);
   const stats={};
   tPlayers.forEach(tp=>{if(tp.player_id)stats[tp.player_id]={pid:tp.player_id,team:tp.team,winsContrib:0,lossContrib:0,halves:0,fineTotal:0,played:0};});
-  allFines.filter(f=>f.date===tourn.date).forEach(f=>{if(stats[f.player_id])stats[f.player_id].fineTotal+=(f.amount||0);});
+  allFines.filter(f=>f.date===tourn.date).forEach(f=>{if(stats[f.player_id])stats[f.player_id].fineTotal+=fineAmount(f);});
   tMatches.forEach(match=>{
     const hcpInfo=tmMatchHcpInfo(match,tourn.date);
     const mScores=tournamentScores.filter(s=>s.match_id===match.id);
@@ -4885,16 +4885,24 @@ function goToFines(){
   const finesBtn=[...document.querySelectorAll('#view-leaderboard .sub-tab')].find(b=>b.textContent.includes('Fines'));
   if(finesBtn)showLb('fines',finesBtn);
 }
+// What a fine actually cost. Prefer the amount snapshotted when it was issued; fall back to
+// the type's current amount only for rows predating add_fine_amount.sql. Never read
+// fine_types.amount directly for a total — that rewrites history when an amount changes.
+function fineAmount(f){
+  if(f&&f.amount!=null)return Number(f.amount);
+  const ft=fineTypes.find(x=>x.id===f?.fine_type_id);
+  return ft?.amount??10;
+}
 function renderFinesLb(){
   const season=document.getElementById('finesYear')?.value||new Date().getFullYear().toString();
   const sf=allFines.filter(f=>f.date&&f.date.startsWith(season));
   const potEl=document.getElementById('finesPot');
-  const total=sf.reduce((s,f)=>{const ft=fineTypes.find(x=>x.id===f.fine_type_id);return s+(ft?.amount||10);},0);
+  const total=sf.reduce((s,f)=>s+fineAmount(f),0);
   if(potEl)potEl.innerHTML=`<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;text-align:center"><div style="background:rgba(240,160,48,0.07);border:1px solid rgba(240,160,48,0.25);border-radius:10px;padding:0.85rem"><div style="font-size:0.6rem;text-transform:uppercase;letter-spacing:0.1em;color:rgba(240,160,48,0.5);margin-bottom:4px">Total Fines</div><div style="font-family:'DM Mono',monospace;font-size:1.2rem;color:#f0a030;font-weight:600">${sf.length}</div></div><div style="background:rgba(240,160,48,0.07);border:1px solid rgba(240,160,48,0.25);border-radius:10px;padding:0.85rem"><div style="font-size:0.6rem;text-transform:uppercase;letter-spacing:0.1em;color:rgba(240,160,48,0.5);margin-bottom:4px">Fine Pot</div><div style="font-family:'DM Mono',monospace;font-size:1.2rem;color:#f0a030;font-weight:600">DKK ${total}</div></div></div>`;
   if(!sf.length){document.getElementById('finesTable').innerHTML='<div class="empty">No fines issued in '+season+' 🎉</div>';return;}
   const byPlayer=players.map(p=>{
     const pf=sf.filter(f=>f.player_id===p.id);if(!pf.length)return null;
-    const total=pf.reduce((s,f)=>{const ft=fineTypes.find(x=>x.id===f.fine_type_id);return s+(ft?.amount||10);},0);
+    const total=pf.reduce((s,f)=>s+fineAmount(f),0);
     const breakdown=fineTypes.map(ft=>{const cnt=pf.filter(f=>f.fine_type_id===ft.id).length;return cnt?{ft,cnt}:null;}).filter(Boolean).sort((a,b)=>b.cnt-a.cnt);
     return{p,count:pf.length,total,breakdown};
   }).filter(Boolean).sort((a,b)=>b.count-a.count);
@@ -4917,7 +4925,9 @@ function showAddFine(hole=null,retroactive=false){
   document.getElementById('fineDate').value=HE?.date||today();
   document.getElementById('fineNotes').value='';
   document.getElementById('fineError').style.display='none';
-  const firstFt=fineTypes[0];
+  // Must track the dropdown, which lists active types only — fineTypes[0] may be inactive
+  // and unselectable, showing a cost that doesn't match the selected infraction.
+  const firstFt=activeFineTypes[0];
   document.getElementById('fineCostLabel').textContent=firstFt?.amount||10;
   tSel.onchange=()=>{const ft=fineTypes.find(x=>x.id==tSel.value);document.getElementById('fineCostLabel').textContent=ft?.amount||10;};
   document.getElementById('addFineModal').style.display='flex';
@@ -4933,7 +4943,9 @@ async function submitFine(){
   if(!date){err.textContent='Date is required.';err.style.display='block';return;}
   err.style.display='none';
   const round_id=HE?.roundIds?.[player_id]||null;
-  const payload={id:Date.now()+Math.floor(Math.random()*10000),player_id,fine_type_id,round_id,hole,date,issued_by:activeId,notes};
+  // Snapshot the amount at issue time so later edits to the fine type don't rewrite this fine
+  const amount=fineTypes.find(x=>x.id===fine_type_id)?.amount??10;
+  const payload={id:Date.now()+Math.floor(Math.random()*10000),player_id,fine_type_id,amount,round_id,hole,date,issued_by:activeId,notes};
   setLoading(true,'Issuing fine…');
   try{
     const[saved]=await sbInsert('fines',payload);
@@ -4952,7 +4964,7 @@ function renderAdminFines(){
     const p=players.find(x=>x.id===f.player_id);
     const ft=fineTypes.find(x=>x.id===f.fine_type_id);
     const ib=players.find(x=>x.id===f.issued_by);
-    return`<tr><td style="font-size:0.78rem;color:rgba(255,255,255,0.45)">${fd(f.date)}</td><td><div style="display:flex;align-items:center;gap:6px"><div class="av" style="background:${clr(p||{})};width:20px;height:20px;font-size:0.55rem">${ini(p?.name||'?')}</div>${p?.name||'—'}</div></td><td style="font-size:0.82rem">${ft?.name||'—'}</td><td style="font-family:'DM Mono',monospace;font-size:0.8rem">${f.hole||'—'}</td><td style="font-family:'DM Mono',monospace;color:#f0a030">DKK ${ft?.amount||10}</td><td style="font-size:0.78rem;color:rgba(255,255,255,0.4)">${ib?.name||'—'}</td><td style="font-size:0.78rem;color:rgba(255,255,255,0.4)">${f.notes||''}</td><td><button class="btn btn-danger btn-sm" onclick="deleteFine(${f.id})">✕</button></td></tr>`;
+    return`<tr><td style="font-size:0.78rem;color:rgba(255,255,255,0.45)">${fd(f.date)}</td><td><div style="display:flex;align-items:center;gap:6px"><div class="av" style="background:${clr(p||{})};width:20px;height:20px;font-size:0.55rem">${ini(p?.name||'?')}</div>${p?.name||'—'}</div></td><td style="font-size:0.82rem">${ft?.name||'—'}</td><td style="font-family:'DM Mono',monospace;font-size:0.8rem">${f.hole||'—'}</td><td style="font-family:'DM Mono',monospace;color:#f0a030">DKK ${fineAmount(f)}</td><td style="font-size:0.78rem;color:rgba(255,255,255,0.4)">${ib?.name||'—'}</td><td style="font-size:0.78rem;color:rgba(255,255,255,0.4)">${f.notes||''}</td><td><button class="btn btn-danger btn-sm" onclick="deleteFine(${f.id})">✕</button></td></tr>`;
   }).join('')}</tbody></table></div>`;
 }
 
@@ -4977,7 +4989,8 @@ function renderFineTypesList(){
       ?`<button class="btn btn-ghost btn-sm" onclick="reactivateFineType(${ft.id})" title="Reactivate">↩ On</button>`
       :`<button class="btn btn-ghost btn-sm" onclick="editFineType(${ft.id})" title="Edit">✏️</button><button class="btn btn-ghost btn-sm" onclick="deactivateFineType(${ft.id})" title="Deactivate" style="color:rgba(220,80,80,0.7)">Off</button>`;
     return`<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.06);${opacity}"><span style="flex:1;font-size:0.88rem">${ft.name}${inactive?' <em style="font-size:0.75rem">(inactive)</em>':''}</span><span style="font-family:'DM Mono',monospace;font-size:0.82rem;color:#f0a030">DKK ${ft.amount||10}</span>${actions}</div>`;
-  }).join('');
+  }).join('')
+  +`<div style="font-size:0.72rem;color:rgba(255,255,255,0.35);padding:0.6rem 0 0;line-height:1.45">Changing an amount applies to fines issued from now on. Fines already issued keep the amount they were charged at.</div>`;
 }
 
 async function addFineType(){
