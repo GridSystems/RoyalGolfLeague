@@ -11,6 +11,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON public.players          TO anon, authent
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.rounds           TO anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.fines            TO anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.fine_types       TO anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.fine_payments    TO anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.saturday_events  TO anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.saturday_signups TO anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.gps_shots        TO anon, authenticated;

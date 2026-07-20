@@ -270,6 +270,7 @@ select option { background: #1a3a2a; }
           <span style="margin-left:auto;font-size:0.8rem;color:rgba(255,255,255,0.3)">→</span>
         </a>
         <div id="finesPot" style="margin-bottom:1rem"></div>
+        <div id="finesToday" style="margin-bottom:1rem"></div>
         <div id="finesTable" style="margin-bottom:1.5rem"></div>
       </div>
     </div>
@@ -545,6 +546,7 @@ select option { background: #1a3a2a; }
         <span class="pt">Fines</span>
         <div style="display:flex;gap:8px;align-items:center">
           <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();document.getElementById('fineTypesModal').style.display='flex';renderFineTypesList()">Manage Fine Types</button>
+          <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();showRecordPayment()">💰 Record Payment</button>
           <button class="btn btn-warn btn-sm" onclick="event.stopPropagation();showAddFine(null,true)">🚨 Issue Fine</button>
           <span id="achev-fines" style="color:rgba(255,255,255,0.35);font-size:1.2rem;transition:transform 0.2s;display:inline-block;line-height:1">›</span>
         </div>
@@ -642,6 +644,27 @@ select option { background: #1a3a2a; }
   <div style="display:flex;gap:9px;justify-content:flex-end">
     <button class="btn btn-ghost btn-sm" onclick="closeModal('addFineModal')">Cancel</button>
     <button class="btn btn-warn btn-sm" onclick="submitFine()">Issue Fine DKK <span id="fineCostLabel">10</span></button>
+  </div>
+</div></div>
+
+<!-- Record Payment Modal -->
+<div class="modal-bg" id="payModal" style="display:none"><div class="modal modal-sm">
+  <h3>💰 Record Payment</h3>
+  <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:1rem">
+    <div class="fgi"><label>Player</label>
+      <select id="payPlayer" style="width:100%" onchange="renderPayOwes()"></select>
+    </div>
+    <div id="payOwes" style="font-size:0.78rem;color:rgba(255,255,255,0.5)"></div>
+    <div style="display:flex;gap:10px">
+      <div class="fgi" style="flex:1"><label>Amount DKK</label><input type="number" id="payAmount" min="1" step="1" placeholder="e.g. 50"></div>
+      <div class="fgi" style="flex:1"><label>Date</label><input type="date" id="payDate"></div>
+    </div>
+    <div class="fgi"><label>Note <span style="color:rgba(255,255,255,0.3);font-size:0.75rem">(optional)</span></label><input type="text" id="payNote" placeholder="e.g. MobilePay"></div>
+    <div id="payError" style="color:#f08080;font-size:0.78rem;display:none"></div>
+  </div>
+  <div style="display:flex;gap:9px;justify-content:flex-end">
+    <button class="btn btn-ghost btn-sm" onclick="closeModal('payModal')">Cancel</button>
+    <button class="btn btn-primary btn-sm" onclick="submitPayment()">Record Payment</button>
   </div>
 </div></div>
 
@@ -815,7 +838,7 @@ const GPS_WATCH_MAX_MS  = 6 * 60 * 60 * 1000; // 6 hours
 const GPS_OOB_THRESHOLD = 5;                   // consecutive out-of-bounds readings before stopping
 let currentWeather = null;
 let weatherInterval = null;
-let fineTypes=[],allFines=[];
+let fineTypes=[],allFines=[],finePayments=[];
 let editingFineTypeId=null;
 let saturdayEvents=[],saturdaySignups=[];
 let tournaments=[],tournamentPlayers=[],tournamentMatches=[],tournamentScores=[];
@@ -1028,7 +1051,7 @@ function calcHolePoints(round,player){const tee=getTee(round.tee_id||'platinum')
 
 // ── Storage ───────────────────────────────────────────────────────────────────
 let pendingPlayers=[];
-async function loadData(){let _teesFetchOk=false;try{tees=await sbGet('tees','order=archived.asc,name.asc');_teesFetchOk=true;}catch(e){console.warn('tees fetch failed:',e);tees=[];}if(_teesFetchOk&&tees.length===0)await seedTees();const all=await sbGet('players','order=created_at.asc');pendingPlayers=all.filter(p=>p.approved===false);players=all.filter(p=>p.approved!==false);allRounds=await sbGet('rounds','order=date.desc');fineTypes=await sbGet('fine_types','order=name.asc');allFines=await sbGet('fines','order=created_at.desc');try{saturdayEvents=await sbGet('saturday_events','order=date.asc');}catch(e){saturdayEvents=[];}try{saturdaySignups=await sbGet('saturday_signups','order=created_at.asc');}catch(e){saturdaySignups=[];}try{const pg=await sbGet('green_polygons','');greenPolygons={};pg.forEach(r=>{greenPolygons[r.hole]=r.vertices;});}catch(e){console.warn('green_polygons load failed:',e);}try{const fp=await sbGet('fairway_polygons','');fairwayPolygons={};fp.forEach(r=>{fairwayPolygons[r.hole]=r.polygons;});}catch(e){console.warn('fairway_polygons load failed:',e);}
+async function loadData(){let _teesFetchOk=false;try{tees=await sbGet('tees','order=archived.asc,name.asc');_teesFetchOk=true;}catch(e){console.warn('tees fetch failed:',e);tees=[];}if(_teesFetchOk&&tees.length===0)await seedTees();const all=await sbGet('players','order=created_at.asc');pendingPlayers=all.filter(p=>p.approved===false);players=all.filter(p=>p.approved!==false);allRounds=await sbGet('rounds','order=date.desc');fineTypes=await sbGet('fine_types','order=name.asc');allFines=await sbGet('fines','order=created_at.desc');try{finePayments=await sbGet('fine_payments','order=date.desc');}catch(e){console.warn('fine_payments load failed:',e);finePayments=[];}try{saturdayEvents=await sbGet('saturday_events','order=date.asc');}catch(e){saturdayEvents=[];}try{saturdaySignups=await sbGet('saturday_signups','order=created_at.asc');}catch(e){saturdaySignups=[];}try{const pg=await sbGet('green_polygons','');greenPolygons={};pg.forEach(r=>{greenPolygons[r.hole]=r.vertices;});}catch(e){console.warn('green_polygons load failed:',e);}try{const fp=await sbGet('fairway_polygons','');fairwayPolygons={};fp.forEach(r=>{fairwayPolygons[r.hole]=r.polygons;});}catch(e){console.warn('fairway_polygons load failed:',e);}
 try{tournaments=await sbGet('tournaments','order=created_at.desc');}catch(e){tournaments=[];}
 try{tournamentPlayers=await sbGet('tournament_players','order=id.asc');}catch(e){tournamentPlayers=[];}
 try{tournamentMatches=await sbGet('tournament_matches','order=round.asc,match_num.asc');}catch(e){tournamentMatches=[];}
@@ -4905,25 +4928,51 @@ function fineAmount(f){
   const ft=fineTypes.find(x=>x.id===f?.fine_type_id);
   return ft?.amount??10;
 }
+// Total a player has paid back, optionally restricted to a season (by payment date).
+function paidByPlayer(pid,season){
+  return finePayments.filter(pm=>pm.player_id===pid&&(!season||(pm.date&&pm.date.startsWith(season))))
+    .reduce((s,pm)=>s+Number(pm.amount||0),0);
+}
 function renderFinesLb(){
   const season=document.getElementById('finesYear')?.value||new Date().getFullYear().toString();
   const sf=allFines.filter(f=>f.date&&f.date.startsWith(season));
-  const potEl=document.getElementById('finesPot');
   const total=sf.reduce((s,f)=>s+fineAmount(f),0);
-  if(potEl)potEl.innerHTML=`<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;text-align:center"><div style="background:rgba(240,160,48,0.07);border:1px solid rgba(240,160,48,0.25);border-radius:10px;padding:0.85rem"><div style="font-size:0.6rem;text-transform:uppercase;letter-spacing:0.1em;color:rgba(240,160,48,0.5);margin-bottom:4px">Total Fines</div><div style="font-family:'DM Mono',monospace;font-size:1.2rem;color:#f0a030;font-weight:600">${sf.length}</div></div><div style="background:rgba(240,160,48,0.07);border:1px solid rgba(240,160,48,0.25);border-radius:10px;padding:0.85rem"><div style="font-size:0.6rem;text-transform:uppercase;letter-spacing:0.1em;color:rgba(240,160,48,0.5);margin-bottom:4px">Fine Pot</div><div style="font-family:'DM Mono',monospace;font-size:1.2rem;color:#f0a030;font-weight:600">DKK ${total}</div></div></div>`;
+  const paid=finePayments.filter(pm=>pm.date&&pm.date.startsWith(season)).reduce((s,pm)=>s+Number(pm.amount||0),0);
+  const outstanding=total-paid;
+  const potEl=document.getElementById('finesPot');
+  const card=(label,val,col)=>`<div style="background:rgba(240,160,48,0.07);border:1px solid rgba(240,160,48,0.25);border-radius:10px;padding:0.85rem"><div style="font-size:0.6rem;text-transform:uppercase;letter-spacing:0.1em;color:rgba(240,160,48,0.5);margin-bottom:4px">${label}</div><div style="font-family:'DM Mono',monospace;font-size:1.2rem;color:${col};font-weight:600">${val}</div></div>`;
+  if(potEl)potEl.innerHTML=`<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;text-align:center">${card('Fine Pot','DKK '+total,'#f0a030')}${card('Total Fines',sf.length,'#f0a030')}${card('Paid','DKK '+paid,'#7fcc9e')}${card('Outstanding','DKK '+outstanding,outstanding>0?'#f08080':'#7fcc9e')}</div>`;
+  renderFinesToday();
   if(!sf.length){document.getElementById('finesTable').innerHTML='<div class="empty">No fines issued in '+season+' 🎉</div>';return;}
   const byPlayer=players.map(p=>{
     const pf=sf.filter(f=>f.player_id===p.id);if(!pf.length)return null;
     const total=pf.reduce((s,f)=>s+fineAmount(f),0);
+    const pd=paidByPlayer(p.id,season);
     const breakdown=fineTypes.map(ft=>{const cnt=pf.filter(f=>f.fine_type_id===ft.id).length;return cnt?{ft,cnt}:null;}).filter(Boolean).sort((a,b)=>b.cnt-a.cnt);
-    return{p,count:pf.length,total,breakdown};
+    return{p,count:pf.length,total,paid:pd,owes:total-pd,breakdown};
   }).filter(Boolean).sort((a,b)=>b.count-a.count);
-  document.getElementById('finesTable').innerHTML=`<div class="rt-wrap"><table class="rt"><thead><tr><th></th><th>Player</th><th>Fines</th><th>DKK</th><th>Breakdown</th></tr></thead><tbody>${byPlayer.map((row,i)=>{
+  document.getElementById('finesTable').innerHTML=`<div class="rt-wrap"><table class="rt"><thead><tr><th></th><th>Player</th><th>Fines</th><th>DKK</th><th>Paid</th><th>Owes</th><th>Breakdown</th></tr></thead><tbody>${byPlayer.map((row,i)=>{
     const rc=i===0?'rank gold':i===1?'rank silver':i===2?'rank bronze':'rank';
     const medal=i===0?'1st':i===1?'2nd':i===2?'3rd':`${i+1}th`;
     const bd=row.breakdown.map(x=>`<span style="font-size:0.72rem;background:rgba(240,160,48,0.1);border:1px solid rgba(240,160,48,0.2);border-radius:10px;padding:2px 8px;white-space:nowrap">${x.ft.name} ×${x.cnt}</span>`).join(' ');
-    return`<tr><td class="${rc}">${medal}</td><td><div style="display:flex;align-items:center;gap:8px"><div class="av" style="background:${clr(row.p)}">${ini(row.p.name)}</div>${row.p.name}</div></td><td style="font-family:'DM Mono',monospace;font-weight:600;color:#f0a030;font-size:1rem">${row.count}</td><td style="font-family:'DM Mono',monospace;color:#f0a030">DKK ${row.total}</td><td style="max-width:200px"><div style="display:flex;flex-wrap:wrap;gap:4px">${bd}</div></td></tr>`;
+    const owesCol=row.owes>0?'#f08080':'#7fcc9e';
+    const owesTxt=row.owes>0?`DKK ${row.owes}`:'Settled ✓';
+    return`<tr><td class="${rc}">${medal}</td><td><div style="display:flex;align-items:center;gap:8px"><div class="av" style="background:${clr(row.p)}">${ini(row.p.name)}</div>${row.p.name}</div></td><td style="font-family:'DM Mono',monospace;font-weight:600;color:#f0a030;font-size:1rem">${row.count}</td><td style="font-family:'DM Mono',monospace;color:#f0a030">DKK ${row.total}</td><td style="font-family:'DM Mono',monospace;color:#7fcc9e">DKK ${row.paid}</td><td style="font-family:'DM Mono',monospace;color:${owesCol};font-weight:600">${owesTxt}</td><td style="max-width:200px"><div style="display:flex;flex-wrap:wrap;gap:4px">${bd}</div></td></tr>`;
   }).join('')}</tbody></table></div>`;
+}
+// Change 1 — fines awarded just today, own mini-leaderboard above the season table.
+function renderFinesToday(){
+  const el=document.getElementById('finesToday');if(!el)return;
+  const td=today();
+  const tf=allFines.filter(f=>f.date===td);
+  const head=`<div style="font-size:0.62rem;text-transform:uppercase;letter-spacing:0.1em;color:rgba(240,160,48,0.6);margin-bottom:6px">🚨 Today's Fines</div>`;
+  if(!tf.length){el.innerHTML=head+`<div style="font-size:0.8rem;color:rgba(255,255,255,0.35);padding:2px 0 4px">Clean sheet so far today 🎉</div>`;return;}
+  const totalToday=tf.reduce((s,f)=>s+fineAmount(f),0);
+  const byPlayer=players.map(p=>{
+    const pf=tf.filter(f=>f.player_id===p.id);if(!pf.length)return null;
+    return{p,count:pf.length,total:pf.reduce((s,f)=>s+fineAmount(f),0)};
+  }).filter(Boolean).sort((a,b)=>b.total-a.total||b.count-a.count);
+  el.innerHTML=head+`<div style="background:rgba(240,160,48,0.06);border:1px solid rgba(240,160,48,0.2);border-radius:10px;padding:0.6rem 0.75rem">${byPlayer.map(row=>`<div style="display:flex;align-items:center;gap:8px;padding:3px 0"><div class="av" style="background:${clr(row.p)};width:22px;height:22px;font-size:0.58rem">${ini(row.p.name)}</div><div style="flex:1;font-size:0.85rem">${row.p.name}</div><div style="font-size:0.72rem;color:rgba(255,255,255,0.4)">${row.count} fine${row.count>1?'s':''}</div><div style="font-family:'DM Mono',monospace;color:#f0a030;font-weight:600;min-width:56px;text-align:right">DKK ${row.total}</div></div>`).join('')}<div style="display:flex;justify-content:space-between;border-top:1px solid rgba(240,160,48,0.2);margin-top:6px;padding-top:6px;font-size:0.78rem"><span style="color:rgba(255,255,255,0.5)">Today's total</span><span style="font-family:'DM Mono',monospace;color:#f0a030;font-weight:600">DKK ${totalToday}</span></div></div>`;
 }
 
 function showAddFine(hole=null,retroactive=false){
@@ -4971,19 +5020,78 @@ async function submitFine(){
 
 function renderAdminFines(){
   const el=document.getElementById('adminFinesTable');if(!el)return;
-  if(!allFines.length){el.innerHTML='<div class="empty">No fines issued yet.</div>';return;}
-  el.innerHTML=`<div class="rt-wrap"><table class="rt"><thead><tr><th>Date</th><th>Player</th><th>Infraction</th><th>Hole</th><th>DKK</th><th>Issued By</th><th>Notes</th><th></th></tr></thead><tbody>${allFines.slice(0,50).map(f=>{
+  const finesHtml=!allFines.length?'<div class="empty">No fines issued yet.</div>'
+    :`<div class="rt-wrap"><table class="rt"><thead><tr><th>Date</th><th>Player</th><th>Infraction</th><th>Hole</th><th>DKK</th><th>Issued By</th><th>Notes</th><th></th></tr></thead><tbody>${allFines.slice(0,50).map(f=>{
     const p=players.find(x=>x.id===f.player_id);
     const ft=fineTypes.find(x=>x.id===f.fine_type_id);
     const ib=players.find(x=>x.id===f.issued_by);
     return`<tr><td style="font-size:0.78rem;color:rgba(255,255,255,0.45)">${fd(f.date)}</td><td><div style="display:flex;align-items:center;gap:6px"><div class="av" style="background:${clr(p||{})};width:20px;height:20px;font-size:0.55rem">${ini(p?.name||'?')}</div>${p?.name||'—'}</div></td><td style="font-size:0.82rem">${ft?.name||'—'}</td><td style="font-family:'DM Mono',monospace;font-size:0.8rem">${f.hole||'—'}</td><td style="font-family:'DM Mono',monospace;color:#f0a030">DKK ${fineAmount(f)}</td><td style="font-size:0.78rem;color:rgba(255,255,255,0.4)">${ib?.name||'—'}</td><td style="font-size:0.78rem;color:rgba(255,255,255,0.4)">${f.notes||''}</td><td><button class="btn btn-danger btn-sm" onclick="deleteFine(${f.id})">✕</button></td></tr>`;
   }).join('')}</tbody></table></div>`;
+  let payHtml='';
+  if(finePayments.length){
+    payHtml=`<div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.08em;color:rgba(127,204,158,0.7);margin:1.2rem 0 0.5rem">💰 Payments Received</div><div class="rt-wrap"><table class="rt"><thead><tr><th>Date</th><th>Player</th><th>DKK</th><th>Note</th><th>Recorded By</th><th></th></tr></thead><tbody>${finePayments.slice(0,50).map(pm=>{
+      const p=players.find(x=>x.id===pm.player_id);
+      const rb=players.find(x=>x.id===pm.recorded_by);
+      return`<tr><td style="font-size:0.78rem;color:rgba(255,255,255,0.45)">${fd(pm.date)}</td><td><div style="display:flex;align-items:center;gap:6px"><div class="av" style="background:${clr(p||{})};width:20px;height:20px;font-size:0.55rem">${ini(p?.name||'?')}</div>${p?.name||'—'}</div></td><td style="font-family:'DM Mono',monospace;color:#7fcc9e">DKK ${Number(pm.amount||0)}</td><td style="font-size:0.78rem;color:rgba(255,255,255,0.4)">${pm.note||''}</td><td style="font-size:0.78rem;color:rgba(255,255,255,0.4)">${rb?.name||'—'}</td><td><button class="btn btn-danger btn-sm" onclick="deletePayment(${pm.id})">✕</button></td></tr>`;
+    }).join('')}</tbody></table></div>`;
+  }
+  el.innerHTML=finesHtml+payHtml;
 }
 
 async function deleteFine(id){
   if(!confirm('Delete this fine?'))return;
   setLoading(true,'Deleting…');
   try{await sbDelete('fines',id);allFines=allFines.filter(f=>f.id!==id);toast('Fine removed');renderAdminFines();}
+  catch(e){alert('Error: '+e.message);}finally{setLoading(false);}
+}
+
+// ── Fine payments (lump-sum ledger) ─────────────────────────────────────────────
+function showRecordPayment(){
+  const sel=document.getElementById('payPlayer');
+  sel.innerHTML=players.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+  document.getElementById('payAmount').value='';
+  document.getElementById('payDate').value=today();
+  document.getElementById('payNote').value='';
+  document.getElementById('payError').style.display='none';
+  renderPayOwes();
+  document.getElementById('payModal').style.display='flex';
+}
+// Outstanding shown in the modal is all-time (real money owed), independent of the
+// leaderboard's season filter.
+function renderPayOwes(){
+  const el=document.getElementById('payOwes');if(!el)return;
+  const pid=parseInt(document.getElementById('payPlayer').value);
+  const fined=allFines.filter(f=>f.player_id===pid).reduce((s,f)=>s+fineAmount(f),0);
+  const owes=fined-paidByPlayer(pid);
+  el.innerHTML=owes>0
+    ?`Currently owes <strong style="color:#f08080;font-family:'DM Mono',monospace">DKK ${owes}</strong> <span style="color:rgba(255,255,255,0.3)">(all-time)</span>`
+    :`Settled up ✓ <span style="color:rgba(255,255,255,0.3)">(all-time)</span>`;
+}
+async function submitPayment(){
+  const player_id=parseInt(document.getElementById('payPlayer').value);
+  const amount=parseFloat(document.getElementById('payAmount').value);
+  const date=document.getElementById('payDate').value;
+  const note=document.getElementById('payNote').value.trim()||null;
+  const err=document.getElementById('payError');
+  if(!amount||amount<=0){err.textContent='Enter an amount greater than zero.';err.style.display='block';return;}
+  if(!date){err.textContent='Date is required.';err.style.display='block';return;}
+  err.style.display='none';
+  const payload={id:Date.now()+Math.floor(Math.random()*10000),player_id,amount,date,note,recorded_by:activeId};
+  setLoading(true,'Recording payment…');
+  try{
+    const[saved]=await sbInsert('fine_payments',payload);
+    finePayments.unshift(saved||payload);
+    toast('Payment recorded 💰');
+    closeModal('payModal');
+    renderAdminFines();
+    renderFinesLb();
+  }catch(e){err.textContent='Error: '+e.message;err.style.display='block';}
+  finally{setLoading(false);}
+}
+async function deletePayment(id){
+  if(!confirm('Delete this payment?'))return;
+  setLoading(true,'Deleting…');
+  try{await sbDelete('fine_payments',id);finePayments=finePayments.filter(pm=>pm.id!==id);toast('Payment removed');renderAdminFines();renderFinesLb();}
   catch(e){alert('Error: '+e.message);}finally{setLoading(false);}
 }
 
