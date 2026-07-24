@@ -34,9 +34,13 @@ No schema change.
 Placed next to `#myHcpModal` in the modal block. Same `modal modal-sm` shape as
 the existing `#editEmailModal`:
 
-- `Current Name` — readonly, dimmed
-- `New Name` — text input, `maxlength="40"`
+- Title — `Edit Name — <current name>`
+- `New Name` — text input, `maxlength="40"`, prefilled with the current name and
+  selected on open, so typing replaces it and Save-with-no-edit is a no-op
 - Cancel / Save
+
+No separate readonly "current name" field: the title already shows it and the
+input is prefilled with it, so a third copy earns nothing.
 
 ### `openEditName(id)`
 
@@ -51,12 +55,13 @@ unless that player is an admin.
 
 1. Trim the input.
 2. Reject empty.
-3. If another player already has that name (case-insensitive), `confirm()`
+3. Return early if the name is unchanged — no pointless PATCH.
+4. If another player already has that name (case-insensitive), `confirm()`
    rather than block. Duplicates are legal — it is a small trusted group and
    login is by email, so the name is display-only — but they make leaderboards
    ambiguous, so they are worth a nudge.
-4. `sbUpdate` → update `p.name` → toast → close modal.
-5. Re-render: `renderMyRounds()`, `renderGrid()`, and `renderAdmin()` when the
+5. `sbUpdate` → update `p.name` → toast → close modal.
+6. Re-render: `renderMyRounds()`, `renderGrid()`, and `renderAdmin()` when the
    admin panel is present. If the renamed player is the active player, also
    refresh `#playerName` and `#playerAvatar` (text and background), the same
    three lines `setPlayer()` uses.
@@ -78,7 +83,15 @@ initials everywhere their avatar appears. That is correct behaviour.
 ## Testing
 
 The repo has no test harness — it is a single static HTML file with no build
-step — so verification is manual, in the browser:
+step. Verified by driving a copy of `index.html` in headless Chrome with
+`sbUpdate` stubbed, so no production rows were touched: 28 assertions covering
+the save path (trimming, in-memory update, header name, avatar initials, modal
+close), the rejection paths (empty name, duplicate-name confirm, non-admin
+editing someone else), the admin path, the no-op rename, and the placement and
+show/hide of both entry points. All passed.
+
+Still worth a human pass against live data, since the stub proves the write is
+*issued* correctly but not that Supabase accepts it:
 
 1. Rename yourself → header name, avatar initials, Players grid, My Rounds title
    and leaderboards all show the new name.

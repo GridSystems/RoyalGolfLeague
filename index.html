@@ -360,6 +360,7 @@ select option { background: #1a3a2a; }
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             <button class="btn btn-ghost btn-sm" id="unitsBtn" onclick="toggleUnits()" style="font-weight:700;min-width:34px">m</button>
             <button class="btn btn-warn btn-sm" onclick="showMyHcp()" id="myHcpBtn" style="display:none">Update My HCP</button>
+            <button class="btn btn-ghost btn-sm" onclick="openEditName()" id="myNameBtn" style="display:none">Edit Name</button>
             <select id="sortSel" onchange="renderMyRounds()" style="background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.14);border-radius:6px;color:var(--cream);font-size:0.75rem;padding:4px 8px;outline:none">
               <option value="date-desc">Newest first</option><option value="date-asc">Oldest first</option>
               <option value="pts-desc">Best stableford</option><option value="score-asc">Best stroke</option>
@@ -598,6 +599,17 @@ select option { background: #1a3a2a; }
   <div style="display:flex;gap:9px;justify-content:flex-end">
     <button class="btn btn-ghost btn-sm" onclick="closeModal('myHcpModal')">Cancel</button>
     <button class="btn btn-primary btn-sm" onclick="saveMyHcp()">Save</button>
+  </div>
+</div></div>
+
+<div class="modal-bg" id="editNameModal" style="display:none"><div class="modal modal-sm">
+  <h3 id="editNameTitle">Edit Name</h3>
+  <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:1rem">
+    <div class="fgi"><label>New Name</label><input type="text" id="editNameVal" placeholder="e.g. Chris Nel" maxlength="40"></div>
+  </div>
+  <div style="display:flex;gap:9px;justify-content:flex-end">
+    <button class="btn btn-ghost btn-sm" onclick="closeModal('editNameModal')">Cancel</button>
+    <button class="btn btn-primary btn-sm" onclick="saveEditName()">Save</button>
   </div>
 </div></div>
 
@@ -1188,7 +1200,7 @@ function showView(id,btn){
   document.getElementById('view-'+id).classList.add('active');
   if(btn)btn.classList.add('active');
   if(id==='leaderboard'){renderTodayLb();populateYearSelects();renderSeasonLb();renderDreamCard();}
-  if(id==='history'){renderMyRounds();const b=document.getElementById('myHcpBtn');if(b)b.style.display=activeId?'inline-block':'none';showHistorySub('rounds',document.querySelector('#view-history .sub-tab'));}
+  if(id==='history'){renderMyRounds();['myHcpBtn','myNameBtn'].forEach(bid=>{const b=document.getElementById(bid);if(b)b.style.display=activeId?'inline-block':'none';});showHistorySub('rounds',document.querySelector('#view-history .sub-tab'));}
   if(id==='players'){renderGrid();}
   if(id==='log'){buildPlayerCheckboxes();checkForResumableRounds();applySaturdayDraw();}
   if(id==='admin'){renderPendingApprovals();renderAdmin();renderBulkEntry();renderAdminFines();renderSaturdayAdmin();renderAdminTournament();}
@@ -5375,6 +5387,35 @@ async function saveMyHcp(){
   catch(e){alert('Error: '+e.message);}finally{setLoading(false);}
 }
 
+// ── Edit name (self-service, admin can edit anyone) ───────────────────────────
+let editingNamePlayerId=null;
+function openEditName(id){
+  const pid=id||activeId;
+  if(!pid){alert('Select your player profile first.');return;}
+  if(pid!==activeId&&!isAdmin()){alert('You can only edit your own name.');return;}
+  const p=players.find(x=>x.id===pid);if(!p)return;
+  editingNamePlayerId=pid;
+  document.getElementById('editNameTitle').textContent='Edit Name — '+p.name;
+  document.getElementById('editNameVal').value=p.name;
+  document.getElementById('editNameModal').style.display='flex';
+  setTimeout(()=>{const el=document.getElementById('editNameVal');el.focus();el.select();},50);
+}
+async function saveEditName(){
+  const name=document.getElementById('editNameVal').value.trim();
+  const p=players.find(x=>x.id===editingNamePlayerId);if(!p)return;
+  if(!name){alert('Enter a name.');return;}
+  if(name===p.name){closeModal('editNameModal');return;}
+  if(players.some(x=>x.id!==p.id&&x.name.toLowerCase()===name.toLowerCase())&&!confirm('Another player is already called "'+name+'". Use it anyway?'))return;
+  setLoading(true,'Saving…');
+  try{
+    await sbUpdate('players',p.id,{name});
+    p.name=name;
+    if(p.id===activeId){document.getElementById('playerName').textContent=name;const av=document.getElementById('playerAvatar');av.textContent=ini(name);av.style.background=clr(p);}
+    toast('Name updated ✓');closeModal('editNameModal');
+    renderMyRounds();renderGrid();if(isAdmin())renderAdmin();
+  }catch(e){alert('Error: '+e.message);}finally{setLoading(false);}
+}
+
 let _editingTeeId=null,_addingTee=false;
 // ── Admin functions ───────────────────────────────────────────────────────────
 function getTeeDistFromInputs(){const vals=Array.from({length:18},(_,i)=>{const v=document.getElementById('teeDistEdit_'+i)?.value;return v!==''&&v!=null?parseInt(v,10):null;});return vals.every(v=>v===null)?null:vals;}
@@ -5466,7 +5507,7 @@ function toggleAdminSection(bodyId,chevId){const body=document.getElementById(bo
 function renderAdmin(){
   const panel=document.getElementById('adminHcpPanel');const ap=adminPlayer();
   if(!players.length){panel.innerHTML='<div class="empty">No players.</div>';return;}
-  panel.innerHTML=players.map(p=>{const hist=[...(p.hcp_history||[])].sort((a,b)=>b.date.localeCompare(a.date));return`<div style="margin-bottom:1.5rem;padding-bottom:1.5rem;border-bottom:1px solid rgba(255,255,255,0.06)"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.7rem;flex-wrap:wrap;gap:8px"><div style="display:flex;align-items:center;gap:10px"><div class="av" style="background:${clr(p)}">${ini(p.name)}</div><div><div style="font-weight:500">${p.name} ${p.is_admin?'<span class="tag tag-admin">Admin</span>':''}</div><div style="font-size:0.72rem;color:rgba(255,255,255,0.38)">Current: <strong style="color:var(--gold-l)">${currentHcp(p)!=null?currentHcp(p):'not set'}</strong></div></div></div><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn btn-warn btn-sm" onclick="openHcpEdit(${p.id})">+ Update Index</button><button class="btn btn-ghost btn-sm" onclick="openEditEmail(${p.id})">Edit Email</button><button class="btn btn-ghost btn-sm" onclick="resetPlayerPin(${p.id})">Reset PIN</button><button class="btn btn-ghost btn-sm" onclick="makeAdmin(${p.id})">${p.is_admin?'Remove Admin':'Make Admin'}</button></div></div>${hist.length?`<table class="hcp-hist"><thead><tr><th>Effective Date</th><th>HCP Index</th><th>Note</th><th></th></tr></thead><tbody>${hist.map((e,i)=>`<tr class="${i===0?'current-hcp':''}"><td style="font-family:'DM Mono',monospace;font-size:0.8rem">${fd(e.date)}</td><td style="font-family:'DM Mono',monospace;font-weight:${i===0?600:400};color:${i===0?'var(--gold-l)':'inherit'}">${e.value}</td><td style="color:rgba(255,255,255,0.4);font-size:0.78rem">${e.note||'—'}</td><td><button class="btn btn-danger btn-sm" onclick="deleteHcpEntry(${p.id},'${e.date}',${e.value})">✕</button></td></tr>`).join('')}</tbody></table></div>`:'<div style="font-size:0.8rem;color:rgba(255,255,255,0.3);padding:6px 0">No history.</div>'}</div>`;}).join('');
+  panel.innerHTML=players.map(p=>{const hist=[...(p.hcp_history||[])].sort((a,b)=>b.date.localeCompare(a.date));return`<div style="margin-bottom:1.5rem;padding-bottom:1.5rem;border-bottom:1px solid rgba(255,255,255,0.06)"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.7rem;flex-wrap:wrap;gap:8px"><div style="display:flex;align-items:center;gap:10px"><div class="av" style="background:${clr(p)}">${ini(p.name)}</div><div><div style="font-weight:500">${p.name} ${p.is_admin?'<span class="tag tag-admin">Admin</span>':''}</div><div style="font-size:0.72rem;color:rgba(255,255,255,0.38)">Current: <strong style="color:var(--gold-l)">${currentHcp(p)!=null?currentHcp(p):'not set'}</strong></div></div></div><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn btn-warn btn-sm" onclick="openHcpEdit(${p.id})">+ Update Index</button><button class="btn btn-ghost btn-sm" onclick="openEditName(${p.id})">Edit Name</button><button class="btn btn-ghost btn-sm" onclick="openEditEmail(${p.id})">Edit Email</button><button class="btn btn-ghost btn-sm" onclick="resetPlayerPin(${p.id})">Reset PIN</button><button class="btn btn-ghost btn-sm" onclick="makeAdmin(${p.id})">${p.is_admin?'Remove Admin':'Make Admin'}</button></div></div>${hist.length?`<table class="hcp-hist"><thead><tr><th>Effective Date</th><th>HCP Index</th><th>Note</th><th></th></tr></thead><tbody>${hist.map((e,i)=>`<tr class="${i===0?'current-hcp':''}"><td style="font-family:'DM Mono',monospace;font-size:0.8rem">${fd(e.date)}</td><td style="font-family:'DM Mono',monospace;font-weight:${i===0?600:400};color:${i===0?'var(--gold-l)':'inherit'}">${e.value}</td><td style="color:rgba(255,255,255,0.4);font-size:0.78rem">${e.note||'—'}</td><td><button class="btn btn-danger btn-sm" onclick="deleteHcpEntry(${p.id},'${e.date}',${e.value})">✕</button></td></tr>`).join('')}</tbody></table></div>`:'<div style="font-size:0.8rem;color:rgba(255,255,255,0.3);padding:6px 0">No history.</div>'}</div>`;}).join('');
   const rsel=document.getElementById('adminRoundPlayer');rsel.innerHTML=`<option value="all">All players</option>`+players.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
   renderAdminRounds();
   renderAdminTees();
