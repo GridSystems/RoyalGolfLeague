@@ -32,6 +32,8 @@ Key:  eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF2a
 id           bigint (Date.now() timestamp)
 name         text
 color        int (index into COLORS array)
+dgu_number   text (DGU membership number, "digits-digits" — variable length
+             either side, e.g. 900-1831 or 1-123456; stored exactly as typed)
 handicap     numeric (legacy, use hcp_history instead)
 hcp_history  jsonb  [{date, value, note}] — sorted ascending by date
 is_admin     boolean
@@ -99,8 +101,10 @@ Stableford   = max(0, 2 + par + strokes − gross)
 ### Navigation tabs
 1. **Leaderboards** — Today (live), Season (best 4 rounds), Eclectic (best nett per hole)
 2. **Log Round** — hole-by-hole group score entry, live-saves to Supabase
-3. **My Rounds** — personal stats, history, self-service HCP update
-4. **Players** — roster (admin-only add/remove)
+3. **My Rounds** — personal stats, round history, Dream Scorecard, GPS Stats
+4. **My Profile** — name, membership number, handicap, colour, My Bag, units,
+   GPS tracking mode. Owns all self-service identity and preference editing.
+5. **Players** — roster (admin-only add/remove)
 5. **⚙ Admin** — PIN-protected; bulk entry, HCP history, edit/delete rounds
 
 ### Key JS state variables
@@ -145,7 +149,11 @@ Admin bulk entry is **completely separate** from HE. One player at a time. Full 
 - **SQL to set up:** `ALTER TABLE players ADD COLUMN IF NOT EXISTS is_admin boolean DEFAULT false;` then set your row to `true` in Supabase Table Editor.
 - **Admin PIN:** stored in `localStorage` key `sl_admin_pin`. Default: `saturday`. Session auth in `sessionStorage` key `admin_auth`.
 - **Admin can:** add/remove players, edit any round, delete any round, manage HCP history for all players, bulk enter rounds, change PIN, reassign admin role.
-- **Players can:** log rounds, view leaderboards, update their own HCP.
+- **Players can:** log rounds, view leaderboards, update their own HCP, and set
+  their own name and DGU membership number (My Profile). An admin can edit any
+  player's DGU number — needed for players who predate the field.
+- **Sign-up requires a DGU number.** The column is nullable so existing players
+  stay saveable; "required" is enforced in the sign-up form only.
 
 ---
 

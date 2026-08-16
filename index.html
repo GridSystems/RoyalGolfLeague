@@ -177,6 +177,7 @@ select option { background: #1a3a2a; }
       <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:1rem;text-align:left">
         <div class="fgi"><label>Full Name</label><input type="text" id="signupName" placeholder="e.g. Anders Nielsen" maxlength="60"></div>
         <div class="fgi"><label>Email</label><input type="email" id="signupEmail" placeholder="your@email.com" maxlength="100"></div>
+        <div class="fgi"><label>DGU Number</label><input type="text" id="signupDgu" placeholder="e.g. 900-1831" maxlength="20"></div>
         <div class="fgi"><label>Handicap Index</label><input type="number" id="signupHcp" placeholder="e.g. 14.2" step="0.1" min="-10" max="54"></div>
         <div class="fgi"><label>Choose a 4-digit PIN</label><input type="password" id="signupPin" placeholder="••••" maxlength="4" inputmode="numeric" pattern="[0-9]*"></div>
         <div class="fgi"><label>Confirm PIN</label><input type="password" id="signupPinConfirm" placeholder="••••" maxlength="4" inputmode="numeric" pattern="[0-9]*"></div>
@@ -215,6 +216,7 @@ select option { background: #1a3a2a; }
     <button class="nav-tab" onclick="showView('signup',this)">Sign Up</button>
     <button class="nav-tab" onclick="showView('teesheet',this)">Tee Sheet</button>
     <button class="nav-tab" id="tabHistory" onclick="showView('history',this)">My Rounds</button>
+    <button class="nav-tab" id="tabProfile" onclick="showView('profile',this)">My Profile</button>
     <button class="nav-tab" id="tabPlayers" onclick="showView('players',this)">Players</button>
     <button class="nav-tab" onclick="showView('rules',this)">Rules</button>
     <button class="nav-tab" id="tabTrack" onclick="openTrackTab()" style="display:none">📍 Track</button>
@@ -358,9 +360,6 @@ select option { background: #1a3a2a; }
         <div class="ph">
           <span class="pt" id="myTitle">My Rounds</span>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-            <button class="btn btn-ghost btn-sm" id="unitsBtn" onclick="toggleUnits()" style="font-weight:700;min-width:34px">m</button>
-            <button class="btn btn-warn btn-sm" onclick="showMyHcp()" id="myHcpBtn" style="display:none">Update My HCP</button>
-            <button class="btn btn-ghost btn-sm" onclick="openEditName()" id="myNameBtn" style="display:none">Edit Name</button>
             <select id="sortSel" onchange="renderMyRounds()" style="background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.14);border-radius:6px;color:var(--cream);font-size:0.75rem;padding:4px 8px;outline:none">
               <option value="date-desc">Newest first</option><option value="date-asc">Oldest first</option>
               <option value="pts-desc">Best stableford</option><option value="score-asc">Best stroke</option>
@@ -376,17 +375,25 @@ select option { background: #1a3a2a; }
         </div>
         <div id="myDreamCardBody"></div>
       </div>
-      <div id="myGpsPrefWrap" data-open="0"></div>
     </div>
     <div class="lb-view" id="hsub-gpsstats">
       <div id="gpsStatsContent"></div>
     </div>
   </div>
 
+  <!-- PROFILE -->
+  <div class="view" id="view-profile">
+    <div class="panel">
+      <div class="ph"><span class="pt" id="profileTitle">My Profile</span></div>
+      <div class="pb" id="profileBody"></div>
+    </div>
+    <div id="myGpsPrefWrap" data-open="0"></div>
+  </div>
+
   <!-- PLAYERS -->
   <div class="view" id="view-players">
     <div class="panel">
-      <div class="ph"><span class="pt">Club Roster</span><div style="display:flex;gap:6px"><button class="btn btn-ghost btn-sm" id="myBagBtn" style="display:none" onclick="openBagModal()">🎒 My Bag</button><button class="btn btn-ghost btn-sm" id="addPlayerBtn" style="display:none" onclick="showAddPlayer()">+ Add Player</button></div></div>
+      <div class="ph"><span class="pt">Club Roster</span><div style="display:flex;gap:6px"><button class="btn btn-ghost btn-sm" id="addPlayerBtn" style="display:none" onclick="showAddPlayer()">+ Add Player</button></div></div>
       <div class="pb"><div class="player-grid" id="playerGrid"></div></div>
     </div>
   </div>
@@ -610,6 +617,18 @@ select option { background: #1a3a2a; }
   <div style="display:flex;gap:9px;justify-content:flex-end">
     <button class="btn btn-ghost btn-sm" onclick="closeModal('editNameModal')">Cancel</button>
     <button class="btn btn-primary btn-sm" onclick="saveEditName()">Save</button>
+  </div>
+</div></div>
+
+<div class="modal-bg" id="editDguModal" style="display:none"><div class="modal modal-sm">
+  <h3 id="editDguTitle">Membership Number</h3>
+  <div style="font-size:0.8rem;color:rgba(255,255,255,0.45);margin-bottom:1rem">Your DGU number — digits, a hyphen, then digits. For example 900-1831 or 1-123456.</div>
+  <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:1rem">
+    <div class="fgi"><label>DGU Number</label><input type="text" id="editDguVal" placeholder="e.g. 900-1831" maxlength="20"></div>
+  </div>
+  <div style="display:flex;gap:9px;justify-content:flex-end">
+    <button class="btn btn-ghost btn-sm" onclick="closeModal('editDguModal')">Cancel</button>
+    <button class="btn btn-primary btn-sm" onclick="saveDguNumber()">Save</button>
   </div>
 </div></div>
 
@@ -1054,6 +1073,9 @@ function tmResultLabel(match,hcpInfo,scores){
 // ── End tournament helpers ────────────────────────────────────────
 
 function currentHcp(player){const hist=player.hcp_history||[];if(!hist.length)return player.handicap;return[...hist].sort((a,b)=>b.date.localeCompare(a.date))[0].value;}
+// DGU membership number: digits, one hyphen, digits. Segments are variable-length
+// (900-1831, 1-123456), so the hyphen must be typed — it cannot be inferred.
+function isValidDgu(v){const s=(v||'').trim();return s.length<=20&&/^\d+-\d+$/.test(s);}
 function calcCourseHcp(index,tee){return Math.round(index*(tee.slope/113)+(tee.rating-COURSE_PAR));}
 function calcPlayingHcp(index,tee){return Math.round(calcCourseHcp(index,tee)*0.95);}
 function strokesOnHole(phcp,i){if(phcp<=0)return 0;let s=phcp>=18?1:(HOLE_HCP[i]<=phcp?1:0);if(phcp>18&&HOLE_HCP[i]<=(phcp-18))s++;return s;}
@@ -1132,7 +1154,7 @@ async function loginAs(p){
 
 // ── Sign-up ───────────────────────────────────────────────────────────────────
 function showLockLogin(){document.getElementById('lockLoginPanel').style.display='block';document.getElementById('lockSignupPanel').style.display='none';document.getElementById('lockPayPanel').style.display='none';setTimeout(()=>document.getElementById('appPwdInput').focus(),50);}
-function showLockSignup(){document.getElementById('lockLoginPanel').style.display='none';document.getElementById('lockSetPinPanel').style.display='none';document.getElementById('lockSignupPanel').style.display='block';document.getElementById('lockPayPanel').style.display='none';document.getElementById('signupName').value='';document.getElementById('signupEmail').value='';document.getElementById('signupHcp').value='';document.getElementById('signupPin').value='';document.getElementById('signupPinConfirm').value='';document.getElementById('signupError').style.display='none';setTimeout(()=>document.getElementById('signupName').focus(),50);}
+function showLockSignup(){document.getElementById('lockLoginPanel').style.display='none';document.getElementById('lockSetPinPanel').style.display='none';document.getElementById('lockSignupPanel').style.display='block';document.getElementById('lockPayPanel').style.display='none';document.getElementById('signupName').value='';document.getElementById('signupEmail').value='';document.getElementById('signupDgu').value='';document.getElementById('signupHcp').value='';document.getElementById('signupPin').value='';document.getElementById('signupPinConfirm').value='';document.getElementById('signupError').style.display='none';setTimeout(()=>document.getElementById('signupName').focus(),50);}
 function showSignup(){showLockSignup();}
 async function submitSignup(){
   const name=document.getElementById('signupName').value.trim();
@@ -1141,13 +1163,15 @@ async function submitSignup(){
   const pinConfirm=document.getElementById('signupPinConfirm').value.trim();
   const err=document.getElementById('signupError');
   const email=document.getElementById('signupEmail').value.trim().toLowerCase();
+  const dgu=document.getElementById('signupDgu').value.trim();
   if(!name){err.textContent='Please enter your name.';err.style.display='block';return;}
   if(!email||!email.includes('@')){err.textContent='Please enter a valid email.';err.style.display='block';return;}
+  if(!isValidDgu(dgu)){err.textContent='Enter your DGU number as digits, a hyphen, then digits — for example 900-1831.';err.style.display='block';return;}
   if(!pin||pin.length<4){err.textContent='PIN must be 4 digits.';err.style.display='block';return;}
   if(pin!==pinConfirm){err.textContent='PINs do not match.';err.style.display='block';return;}
   const hcpVal=hcpRaw?parseFloat(hcpRaw):null;
   const nextColor=Math.floor(Math.random()*COLORS.length);
-  const payload={id:Date.now(),name,email,color:nextColor,handicap:hcpVal,hcp_history:hcpVal!=null?[{date:today(),value:hcpVal,note:'Sign-up entry'}]:[],approved:false,pin};
+  const payload={id:Date.now(),name,email,dgu_number:dgu,color:nextColor,handicap:hcpVal,hcp_history:hcpVal!=null?[{date:today(),value:hcpVal,note:'Sign-up entry'}]:[],approved:false,pin};
   err.style.display='none';
   try{
     await sbInsert('players',payload);
@@ -1200,8 +1224,9 @@ function showView(id,btn){
   document.getElementById('view-'+id).classList.add('active');
   if(btn)btn.classList.add('active');
   if(id==='leaderboard'){renderTodayLb();populateYearSelects();renderSeasonLb();renderDreamCard();}
-  if(id==='history'){renderMyRounds();['myHcpBtn','myNameBtn'].forEach(bid=>{const b=document.getElementById(bid);if(b)b.style.display=activeId?'inline-block':'none';});showHistorySub('rounds',document.querySelector('#view-history .sub-tab'));}
+  if(id==='history'){renderMyRounds();showHistorySub('rounds',document.querySelector('#view-history .sub-tab'));}
   if(id==='players'){renderGrid();}
+  if(id==='profile'){renderProfile();}
   if(id==='log'){buildPlayerCheckboxes();checkForResumableRounds();applySaturdayDraw();}
   if(id==='admin'){renderPendingApprovals();renderAdmin();renderBulkEntry();renderAdminFines();renderSaturdayAdmin();renderAdminTournament();}
   if(id==='rules')renderRules();
@@ -5181,6 +5206,24 @@ function renderMyRounds(){
   const sort=document.getElementById('sortSel').value;const sorted=[...mr].sort((a,b)=>{if(sort==='date-desc')return b.date.localeCompare(a.date);if(sort==='date-asc')return a.date.localeCompare(b.date);if(sort==='pts-desc')return(calcRoundPoints(b,p)||0)-(calcRoundPoints(a,p)||0);return(tS(a.holes)-tP(a.holes))-(tS(b.holes)-tP(b.holes));});
   document.getElementById('myTable').innerHTML=`<div class="rt-wrap"><table class="rt"><thead><tr><th>Date</th><th>Tee Time</th><th>Tee</th><th>Index</th><th>Playing HCP</th><th>Points</th><th>Out</th><th>In</th><th>Total</th><th>vs Par</th></tr></thead><tbody>${sorted.map(r=>{const f=r.holes.slice(0,9),b=r.holes.slice(9);const tot=tS(r.holes),diff=tot-tP(r.holes);const rpts=calcRoundPoints(r,p);return`<tr><td style="color:rgba(255,255,255,0.45);font-size:0.78rem">${fd(r.date)}</td><td style="font-family:'DM Mono',monospace;font-size:0.78rem;color:rgba(255,255,255,0.45)">${r.tee_time||'—'}</td><td><span style="display:inline-flex;align-items:center;gap:4px;font-size:0.76rem"><span class="tee-dot" style="background:${r.tee_color||'#888'}"></span>${r.tee_name||'—'}</span></td><td style="font-family:'DM Mono',monospace;font-size:0.79rem;color:rgba(255,255,255,0.45)">${r.hcp_index!=null?r.hcp_index:'—'}</td><td style="font-family:'DM Mono',monospace;font-size:0.79rem;color:rgba(255,255,255,0.45)">${r.playing_hcp!=null?r.playing_hcp:'—'}</td><td style="font-family:'DM Mono',monospace;font-weight:600;font-size:1rem;color:#82aaf0">${rpts!=null?rpts:'—'}</td><td style="font-family:'DM Mono',monospace;font-size:0.84rem">${f.some(h=>h.score)?tS(f):'—'}<span style="font-size:0.67rem;color:rgba(255,255,255,0.27)">/p${tP(f)}</span></td><td style="font-family:'DM Mono',monospace;font-size:0.84rem">${b.some(h=>h.score)?tS(b):'—'}<span style="font-size:0.67rem;color:rgba(255,255,255,0.27)">/p${tP(b)}</span></td><td style="font-family:'DM Mono',monospace;font-weight:500">${tot}</td><td><span class="sp ${scC(diff)}">${ds(diff)}</span></td></tr>`;}).join('')}</tbody></table></div>`;
   renderMyDreamCard();
+}
+
+function renderProfile(){
+  const p=players.find(x=>x.id===activeId);
+  const body=document.getElementById('profileBody');
+  const title=document.getElementById('profileTitle');
+  if(!body||!title)return;
+  if(!p){title.textContent='My Profile';body.innerHTML='<div class="empty">Select your player profile (top right).</div>';return;}
+  title.textContent=p.name;
+  const row=(label,value,btn)=>`<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:0.65rem 0;border-bottom:1px solid rgba(255,255,255,0.06)"><div style="min-width:0"><div style="font-size:0.68rem;color:rgba(255,255,255,0.36);text-transform:uppercase;letter-spacing:0.06em">${label}</div><div style="font-size:0.95rem;margin-top:3px">${value}</div></div>${btn||''}</div>`;
+  const hcp=currentHcp(p);
+  body.innerHTML=
+    row('Name',p.name,`<button class="btn btn-ghost btn-sm" onclick="openEditName()">Edit</button>`)+
+    row('Membership Number',p.dgu_number||'—',`<button class="btn btn-ghost btn-sm" onclick="openEditDgu()">Edit</button>`)+
+    row('Handicap Index',hcp!=null?hcp:'—',`<button class="btn btn-warn btn-sm" onclick="showMyHcp()">Update</button>`)+
+    row('Colour',`<span style="display:inline-block;width:15px;height:15px;border-radius:50%;background:${clr(p)}"></span>`,'')+
+    row('My Bag','Clubs and carry distances',`<button class="btn btn-ghost btn-sm" onclick="openBagModal()">Edit</button>`)+
+    row('Units',getUnits()==='yd'?'Yards':'Metres',`<button class="btn btn-ghost btn-sm" onclick="toggleUnits();renderProfile()">Switch</button>`);
   renderGpsPreferencePanel();
 }
 
@@ -5287,9 +5330,7 @@ function setPlayer(id){
   activeId=id;const p=players.find(x=>x.id===id);
   if(p){document.getElementById('playerName').textContent=p.name;const av=document.getElementById('playerAvatar');av.textContent=ini(p.name);av.style.background=clr(p);}
   localStorage.setItem('sl_active_player',id);closeModal('pickerModal');updateAdminUI();applyPendingUI();
-  const hb=document.getElementById('myHcpBtn');if(hb)hb.style.display='inline-block';
-  const bb=document.getElementById('myBagBtn');if(bb)bb.style.display='inline-block';
-  updateUnitsBtn();
+  updateUnitsBtn();renderProfile();
 }
 function showAddPlayer(){
   if(!isAdmin()){alert('Only the admin can add players.');return;}
@@ -5326,7 +5367,7 @@ function renderGrid(){
           ${p.is_admin?'<span class="tag tag-admin" style="font-size:0.6rem;padding:1px 6px">Admin</span>':''}
           ${p.is_social?'<span class="tag tag-social" style="font-size:0.6rem;padding:1px 6px">Social</span>':''}
         </div>
-        <div style="font-size:0.7rem;color:rgba(255,255,255,0.36)">${currentHcp(p)!=null?'HCP '+currentHcp(p)+' · ':''}${allRounds.filter(r=>r.player_id===p.id).length} rounds</div>
+        <div style="font-size:0.7rem;color:rgba(255,255,255,0.36)">${currentHcp(p)!=null?'HCP '+currentHcp(p)+' · ':''}${allRounds.filter(r=>r.player_id===p.id).length} rounds${p.dgu_number?' · DGU '+p.dgu_number:''}</div>
       </div>
       <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
         ${p.id!==ap?.id&&admin?`<button class="btn btn-warn btn-sm" onclick="event.stopPropagation();makeAdmin(${p.id})">★ Admin</button>`:''}
@@ -5383,7 +5424,7 @@ async function saveMyHcp(){
   const hist=[...(p.hcp_history||[])].filter(e=>e.date!==date);hist.push({date,value:val,note:'Player update'});
   p.hcp_history=hist;p.handicap=val;
   setLoading(true,'Saving…');
-  try{await sbUpdate('players',p.id,{hcp_history:hist,handicap:val});toast('Handicap updated ✓');closeModal('myHcpModal');renderMyRounds();renderGrid();}
+  try{await sbUpdate('players',p.id,{hcp_history:hist,handicap:val});toast('Handicap updated ✓');closeModal('myHcpModal');renderMyRounds();renderProfile();renderGrid();}
   catch(e){alert('Error: '+e.message);}finally{setLoading(false);}
 }
 
@@ -5412,7 +5453,34 @@ async function saveEditName(){
     p.name=name;
     if(p.id===activeId){document.getElementById('playerName').textContent=name;const av=document.getElementById('playerAvatar');av.textContent=ini(name);av.style.background=clr(p);}
     toast('Name updated ✓');closeModal('editNameModal');
-    renderMyRounds();renderGrid();if(isAdmin())renderAdmin();
+    renderMyRounds();renderProfile();renderGrid();if(isAdmin())renderAdmin();
+  }catch(e){alert('Error: '+e.message);}finally{setLoading(false);}
+}
+
+// ── DGU membership number (self-service, admin can edit anyone) ───────────────
+let editingDguPlayerId=null;
+function openEditDgu(id){
+  const pid=id||activeId;
+  if(!pid){alert('Select your player profile first.');return;}
+  if(pid!==activeId&&!isAdmin()){alert('You can only edit your own membership number.');return;}
+  const p=players.find(x=>x.id===pid);if(!p)return;
+  editingDguPlayerId=pid;
+  document.getElementById('editDguTitle').textContent='Membership Number — '+p.name;
+  document.getElementById('editDguVal').value=p.dgu_number||'';
+  document.getElementById('editDguModal').style.display='flex';
+  setTimeout(()=>{const el=document.getElementById('editDguVal');el.focus();el.select();},50);
+}
+async function saveDguNumber(){
+  const val=document.getElementById('editDguVal').value.trim();
+  const p=players.find(x=>x.id===editingDguPlayerId);if(!p)return;
+  if(!isValidDgu(val)){alert('Enter a DGU number as digits, a hyphen, then digits — for example 900-1831.');return;}
+  if(val===(p.dgu_number||'')){closeModal('editDguModal');return;}
+  setLoading(true,'Saving…');
+  try{
+    await sbUpdate('players',p.id,{dgu_number:val});
+    p.dgu_number=val;
+    toast('Membership number updated ✓');closeModal('editDguModal');
+    renderProfile();renderGrid();if(isAdmin())renderAdmin();
   }catch(e){alert('Error: '+e.message);}finally{setLoading(false);}
 }
 
@@ -5507,7 +5575,7 @@ function toggleAdminSection(bodyId,chevId){const body=document.getElementById(bo
 function renderAdmin(){
   const panel=document.getElementById('adminHcpPanel');const ap=adminPlayer();
   if(!players.length){panel.innerHTML='<div class="empty">No players.</div>';return;}
-  panel.innerHTML=players.map(p=>{const hist=[...(p.hcp_history||[])].sort((a,b)=>b.date.localeCompare(a.date));return`<div style="margin-bottom:1.5rem;padding-bottom:1.5rem;border-bottom:1px solid rgba(255,255,255,0.06)"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.7rem;flex-wrap:wrap;gap:8px"><div style="display:flex;align-items:center;gap:10px"><div class="av" style="background:${clr(p)}">${ini(p.name)}</div><div><div style="font-weight:500">${p.name} ${p.is_admin?'<span class="tag tag-admin">Admin</span>':''}</div><div style="font-size:0.72rem;color:rgba(255,255,255,0.38)">Current: <strong style="color:var(--gold-l)">${currentHcp(p)!=null?currentHcp(p):'not set'}</strong></div></div></div><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn btn-warn btn-sm" onclick="openHcpEdit(${p.id})">+ Update Index</button><button class="btn btn-ghost btn-sm" onclick="openEditName(${p.id})">Edit Name</button><button class="btn btn-ghost btn-sm" onclick="openEditEmail(${p.id})">Edit Email</button><button class="btn btn-ghost btn-sm" onclick="resetPlayerPin(${p.id})">Reset PIN</button><button class="btn btn-ghost btn-sm" onclick="makeAdmin(${p.id})">${p.is_admin?'Remove Admin':'Make Admin'}</button></div></div>${hist.length?`<table class="hcp-hist"><thead><tr><th>Effective Date</th><th>HCP Index</th><th>Note</th><th></th></tr></thead><tbody>${hist.map((e,i)=>`<tr class="${i===0?'current-hcp':''}"><td style="font-family:'DM Mono',monospace;font-size:0.8rem">${fd(e.date)}</td><td style="font-family:'DM Mono',monospace;font-weight:${i===0?600:400};color:${i===0?'var(--gold-l)':'inherit'}">${e.value}</td><td style="color:rgba(255,255,255,0.4);font-size:0.78rem">${e.note||'—'}</td><td><button class="btn btn-danger btn-sm" onclick="deleteHcpEntry(${p.id},'${e.date}',${e.value})">✕</button></td></tr>`).join('')}</tbody></table></div>`:'<div style="font-size:0.8rem;color:rgba(255,255,255,0.3);padding:6px 0">No history.</div>'}</div>`;}).join('');
+  panel.innerHTML=players.map(p=>{const hist=[...(p.hcp_history||[])].sort((a,b)=>b.date.localeCompare(a.date));return`<div style="margin-bottom:1.5rem;padding-bottom:1.5rem;border-bottom:1px solid rgba(255,255,255,0.06)"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.7rem;flex-wrap:wrap;gap:8px"><div style="display:flex;align-items:center;gap:10px"><div class="av" style="background:${clr(p)}">${ini(p.name)}</div><div><div style="font-weight:500">${p.name} ${p.is_admin?'<span class="tag tag-admin">Admin</span>':''}</div><div style="font-size:0.72rem;color:rgba(255,255,255,0.38)">Current: <strong style="color:var(--gold-l)">${currentHcp(p)!=null?currentHcp(p):'not set'}</strong> · DGU: <strong style="color:var(--gold-l)">${p.dgu_number||'—'}</strong></div></div></div><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn btn-warn btn-sm" onclick="openHcpEdit(${p.id})">+ Update Index</button><button class="btn btn-ghost btn-sm" onclick="openEditName(${p.id})">Edit Name</button><button class="btn btn-ghost btn-sm" onclick="openEditEmail(${p.id})">Edit Email</button><button class="btn btn-ghost btn-sm" onclick="openEditDgu(${p.id})">Edit DGU</button><button class="btn btn-ghost btn-sm" onclick="resetPlayerPin(${p.id})">Reset PIN</button><button class="btn btn-ghost btn-sm" onclick="makeAdmin(${p.id})">${p.is_admin?'Remove Admin':'Make Admin'}</button></div></div>${hist.length?`<table class="hcp-hist"><thead><tr><th>Effective Date</th><th>HCP Index</th><th>Note</th><th></th></tr></thead><tbody>${hist.map((e,i)=>`<tr class="${i===0?'current-hcp':''}"><td style="font-family:'DM Mono',monospace;font-size:0.8rem">${fd(e.date)}</td><td style="font-family:'DM Mono',monospace;font-weight:${i===0?600:400};color:${i===0?'var(--gold-l)':'inherit'}">${e.value}</td><td style="color:rgba(255,255,255,0.4);font-size:0.78rem">${e.note||'—'}</td><td><button class="btn btn-danger btn-sm" onclick="deleteHcpEntry(${p.id},'${e.date}',${e.value})">✕</button></td></tr>`).join('')}</tbody></table></div>`:'<div style="font-size:0.8rem;color:rgba(255,255,255,0.3);padding:6px 0">No history.</div>'}</div>`;}).join('');
   const rsel=document.getElementById('adminRoundPlayer');rsel.innerHTML=`<option value="all">All players</option>`+players.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
   renderAdminRounds();
   renderAdminTees();
@@ -5585,7 +5653,7 @@ async function init(){
   populateYearSelects();renderTodayLb();renderGrid();
   // Restore last selected player
   const savedId=localStorage.getItem('sl_active_player');
-  if(savedId){const saved=players.find(p=>p.id==savedId)||pendingPlayers.find(p=>p.id==savedId);if(saved){activeId=saved.id;document.getElementById('playerName').textContent=saved.name;const av=document.getElementById('playerAvatar');av.textContent=ini(saved.name);av.style.background=clr(saved);const hb=document.getElementById('myHcpBtn');if(hb)hb.style.display='inline-block';const bb=document.getElementById('myBagBtn');if(bb)bb.style.display='inline-block';updateUnitsBtn();}}
+  if(savedId){const saved=players.find(p=>p.id==savedId)||pendingPlayers.find(p=>p.id==savedId);if(saved){activeId=saved.id;document.getElementById('playerName').textContent=saved.name;const av=document.getElementById('playerAvatar');av.textContent=ini(saved.name);av.style.background=clr(saved);updateUnitsBtn();renderProfile();}}
   updateAdminUI();applyPendingUI();buildPlayerCheckboxes();checkForResumableRounds();
   document.getElementById('tabTournament').style.display=tournaments.length>0?'':'none';
 
