@@ -619,6 +619,18 @@ select option { background: #1a3a2a; }
   </div>
 </div></div>
 
+<div class="modal-bg" id="editDguModal" style="display:none"><div class="modal modal-sm">
+  <h3 id="editDguTitle">Membership Number</h3>
+  <div style="font-size:0.8rem;color:rgba(255,255,255,0.45);margin-bottom:1rem">Your DGU number — digits, a hyphen, then digits. For example 900-1831 or 1-123456.</div>
+  <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:1rem">
+    <div class="fgi"><label>DGU Number</label><input type="text" id="editDguVal" placeholder="e.g. 900-1831" maxlength="20"></div>
+  </div>
+  <div style="display:flex;gap:9px;justify-content:flex-end">
+    <button class="btn btn-ghost btn-sm" onclick="closeModal('editDguModal')">Cancel</button>
+    <button class="btn btn-primary btn-sm" onclick="saveDguNumber()">Save</button>
+  </div>
+</div></div>
+
 <div class="modal-bg" id="changePinModal" style="display:none"><div class="modal modal-sm">
   <h3>Change Admin PIN</h3>
   <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:1rem">
@@ -5204,6 +5216,7 @@ function renderProfile(){
   const hcp=currentHcp(p);
   body.innerHTML=
     row('Name',p.name,`<button class="btn btn-ghost btn-sm" onclick="openEditName()">Edit</button>`)+
+    row('Membership Number',p.dgu_number||'—',`<button class="btn btn-ghost btn-sm" onclick="openEditDgu()">Edit</button>`)+
     row('Handicap Index',hcp!=null?hcp:'—',`<button class="btn btn-warn btn-sm" onclick="showMyHcp()">Update</button>`)+
     row('Colour',`<span style="display:inline-block;width:15px;height:15px;border-radius:50%;background:${clr(p)}"></span>`,'')+
     row('My Bag','Clubs and carry distances',`<button class="btn btn-ghost btn-sm" onclick="openBagModal()">Edit</button>`)+
@@ -5441,6 +5454,33 @@ async function saveEditName(){
   }catch(e){alert('Error: '+e.message);}finally{setLoading(false);}
 }
 
+// ── DGU membership number (self-service, admin can edit anyone) ───────────────
+let editingDguPlayerId=null;
+function openEditDgu(id){
+  const pid=id||activeId;
+  if(!pid){alert('Select your player profile first.');return;}
+  if(pid!==activeId&&!isAdmin()){alert('You can only edit your own membership number.');return;}
+  const p=players.find(x=>x.id===pid);if(!p)return;
+  editingDguPlayerId=pid;
+  document.getElementById('editDguTitle').textContent='Membership Number — '+p.name;
+  document.getElementById('editDguVal').value=p.dgu_number||'';
+  document.getElementById('editDguModal').style.display='flex';
+  setTimeout(()=>{const el=document.getElementById('editDguVal');el.focus();el.select();},50);
+}
+async function saveDguNumber(){
+  const val=document.getElementById('editDguVal').value.trim();
+  const p=players.find(x=>x.id===editingDguPlayerId);if(!p)return;
+  if(!isValidDgu(val)){alert('Enter a DGU number as digits, a hyphen, then digits — for example 900-1831.');return;}
+  if(val===(p.dgu_number||'')){closeModal('editDguModal');return;}
+  setLoading(true,'Saving…');
+  try{
+    await sbUpdate('players',p.id,{dgu_number:val});
+    p.dgu_number=val;
+    toast('Membership number updated ✓');closeModal('editDguModal');
+    renderProfile();renderGrid();if(isAdmin())renderAdmin();
+  }catch(e){alert('Error: '+e.message);}finally{setLoading(false);}
+}
+
 let _editingTeeId=null,_addingTee=false;
 // ── Admin functions ───────────────────────────────────────────────────────────
 function getTeeDistFromInputs(){const vals=Array.from({length:18},(_,i)=>{const v=document.getElementById('teeDistEdit_'+i)?.value;return v!==''&&v!=null?parseInt(v,10):null;});return vals.every(v=>v===null)?null:vals;}
@@ -5532,7 +5572,7 @@ function toggleAdminSection(bodyId,chevId){const body=document.getElementById(bo
 function renderAdmin(){
   const panel=document.getElementById('adminHcpPanel');const ap=adminPlayer();
   if(!players.length){panel.innerHTML='<div class="empty">No players.</div>';return;}
-  panel.innerHTML=players.map(p=>{const hist=[...(p.hcp_history||[])].sort((a,b)=>b.date.localeCompare(a.date));return`<div style="margin-bottom:1.5rem;padding-bottom:1.5rem;border-bottom:1px solid rgba(255,255,255,0.06)"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.7rem;flex-wrap:wrap;gap:8px"><div style="display:flex;align-items:center;gap:10px"><div class="av" style="background:${clr(p)}">${ini(p.name)}</div><div><div style="font-weight:500">${p.name} ${p.is_admin?'<span class="tag tag-admin">Admin</span>':''}</div><div style="font-size:0.72rem;color:rgba(255,255,255,0.38)">Current: <strong style="color:var(--gold-l)">${currentHcp(p)!=null?currentHcp(p):'not set'}</strong></div></div></div><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn btn-warn btn-sm" onclick="openHcpEdit(${p.id})">+ Update Index</button><button class="btn btn-ghost btn-sm" onclick="openEditName(${p.id})">Edit Name</button><button class="btn btn-ghost btn-sm" onclick="openEditEmail(${p.id})">Edit Email</button><button class="btn btn-ghost btn-sm" onclick="resetPlayerPin(${p.id})">Reset PIN</button><button class="btn btn-ghost btn-sm" onclick="makeAdmin(${p.id})">${p.is_admin?'Remove Admin':'Make Admin'}</button></div></div>${hist.length?`<table class="hcp-hist"><thead><tr><th>Effective Date</th><th>HCP Index</th><th>Note</th><th></th></tr></thead><tbody>${hist.map((e,i)=>`<tr class="${i===0?'current-hcp':''}"><td style="font-family:'DM Mono',monospace;font-size:0.8rem">${fd(e.date)}</td><td style="font-family:'DM Mono',monospace;font-weight:${i===0?600:400};color:${i===0?'var(--gold-l)':'inherit'}">${e.value}</td><td style="color:rgba(255,255,255,0.4);font-size:0.78rem">${e.note||'—'}</td><td><button class="btn btn-danger btn-sm" onclick="deleteHcpEntry(${p.id},'${e.date}',${e.value})">✕</button></td></tr>`).join('')}</tbody></table></div>`:'<div style="font-size:0.8rem;color:rgba(255,255,255,0.3);padding:6px 0">No history.</div>'}</div>`;}).join('');
+  panel.innerHTML=players.map(p=>{const hist=[...(p.hcp_history||[])].sort((a,b)=>b.date.localeCompare(a.date));return`<div style="margin-bottom:1.5rem;padding-bottom:1.5rem;border-bottom:1px solid rgba(255,255,255,0.06)"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.7rem;flex-wrap:wrap;gap:8px"><div style="display:flex;align-items:center;gap:10px"><div class="av" style="background:${clr(p)}">${ini(p.name)}</div><div><div style="font-weight:500">${p.name} ${p.is_admin?'<span class="tag tag-admin">Admin</span>':''}</div><div style="font-size:0.72rem;color:rgba(255,255,255,0.38)">Current: <strong style="color:var(--gold-l)">${currentHcp(p)!=null?currentHcp(p):'not set'}</strong> · DGU: <strong style="color:var(--gold-l)">${p.dgu_number||'—'}</strong></div></div></div><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn btn-warn btn-sm" onclick="openHcpEdit(${p.id})">+ Update Index</button><button class="btn btn-ghost btn-sm" onclick="openEditName(${p.id})">Edit Name</button><button class="btn btn-ghost btn-sm" onclick="openEditEmail(${p.id})">Edit Email</button><button class="btn btn-ghost btn-sm" onclick="openEditDgu(${p.id})">Edit DGU</button><button class="btn btn-ghost btn-sm" onclick="resetPlayerPin(${p.id})">Reset PIN</button><button class="btn btn-ghost btn-sm" onclick="makeAdmin(${p.id})">${p.is_admin?'Remove Admin':'Make Admin'}</button></div></div>${hist.length?`<table class="hcp-hist"><thead><tr><th>Effective Date</th><th>HCP Index</th><th>Note</th><th></th></tr></thead><tbody>${hist.map((e,i)=>`<tr class="${i===0?'current-hcp':''}"><td style="font-family:'DM Mono',monospace;font-size:0.8rem">${fd(e.date)}</td><td style="font-family:'DM Mono',monospace;font-weight:${i===0?600:400};color:${i===0?'var(--gold-l)':'inherit'}">${e.value}</td><td style="color:rgba(255,255,255,0.4);font-size:0.78rem">${e.note||'—'}</td><td><button class="btn btn-danger btn-sm" onclick="deleteHcpEntry(${p.id},'${e.date}',${e.value})">✕</button></td></tr>`).join('')}</tbody></table></div>`:'<div style="font-size:0.8rem;color:rgba(255,255,255,0.3);padding:6px 0">No history.</div>'}</div>`;}).join('');
   const rsel=document.getElementById('adminRoundPlayer');rsel.innerHTML=`<option value="all">All players</option>`+players.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
   renderAdminRounds();
   renderAdminTees();
