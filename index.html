@@ -177,6 +177,7 @@ select option { background: #1a3a2a; }
       <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:1rem;text-align:left">
         <div class="fgi"><label>Full Name</label><input type="text" id="signupName" placeholder="e.g. Anders Nielsen" maxlength="60"></div>
         <div class="fgi"><label>Email</label><input type="email" id="signupEmail" placeholder="your@email.com" maxlength="100"></div>
+        <div class="fgi"><label>DGU Number</label><input type="text" id="signupDgu" placeholder="e.g. 900-1831" maxlength="20"></div>
         <div class="fgi"><label>Handicap Index</label><input type="number" id="signupHcp" placeholder="e.g. 14.2" step="0.1" min="-10" max="54"></div>
         <div class="fgi"><label>Choose a 4-digit PIN</label><input type="password" id="signupPin" placeholder="••••" maxlength="4" inputmode="numeric" pattern="[0-9]*"></div>
         <div class="fgi"><label>Confirm PIN</label><input type="password" id="signupPinConfirm" placeholder="••••" maxlength="4" inputmode="numeric" pattern="[0-9]*"></div>
@@ -1153,7 +1154,7 @@ async function loginAs(p){
 
 // ── Sign-up ───────────────────────────────────────────────────────────────────
 function showLockLogin(){document.getElementById('lockLoginPanel').style.display='block';document.getElementById('lockSignupPanel').style.display='none';document.getElementById('lockPayPanel').style.display='none';setTimeout(()=>document.getElementById('appPwdInput').focus(),50);}
-function showLockSignup(){document.getElementById('lockLoginPanel').style.display='none';document.getElementById('lockSetPinPanel').style.display='none';document.getElementById('lockSignupPanel').style.display='block';document.getElementById('lockPayPanel').style.display='none';document.getElementById('signupName').value='';document.getElementById('signupEmail').value='';document.getElementById('signupHcp').value='';document.getElementById('signupPin').value='';document.getElementById('signupPinConfirm').value='';document.getElementById('signupError').style.display='none';setTimeout(()=>document.getElementById('signupName').focus(),50);}
+function showLockSignup(){document.getElementById('lockLoginPanel').style.display='none';document.getElementById('lockSetPinPanel').style.display='none';document.getElementById('lockSignupPanel').style.display='block';document.getElementById('lockPayPanel').style.display='none';document.getElementById('signupName').value='';document.getElementById('signupEmail').value='';document.getElementById('signupDgu').value='';document.getElementById('signupHcp').value='';document.getElementById('signupPin').value='';document.getElementById('signupPinConfirm').value='';document.getElementById('signupError').style.display='none';setTimeout(()=>document.getElementById('signupName').focus(),50);}
 function showSignup(){showLockSignup();}
 async function submitSignup(){
   const name=document.getElementById('signupName').value.trim();
@@ -1162,13 +1163,15 @@ async function submitSignup(){
   const pinConfirm=document.getElementById('signupPinConfirm').value.trim();
   const err=document.getElementById('signupError');
   const email=document.getElementById('signupEmail').value.trim().toLowerCase();
+  const dgu=document.getElementById('signupDgu').value.trim();
   if(!name){err.textContent='Please enter your name.';err.style.display='block';return;}
   if(!email||!email.includes('@')){err.textContent='Please enter a valid email.';err.style.display='block';return;}
+  if(!isValidDgu(dgu)){err.textContent='Enter your DGU number as digits, a hyphen, then digits — for example 900-1831.';err.style.display='block';return;}
   if(!pin||pin.length<4){err.textContent='PIN must be 4 digits.';err.style.display='block';return;}
   if(pin!==pinConfirm){err.textContent='PINs do not match.';err.style.display='block';return;}
   const hcpVal=hcpRaw?parseFloat(hcpRaw):null;
   const nextColor=Math.floor(Math.random()*COLORS.length);
-  const payload={id:Date.now(),name,email,color:nextColor,handicap:hcpVal,hcp_history:hcpVal!=null?[{date:today(),value:hcpVal,note:'Sign-up entry'}]:[],approved:false,pin};
+  const payload={id:Date.now(),name,email,dgu_number:dgu,color:nextColor,handicap:hcpVal,hcp_history:hcpVal!=null?[{date:today(),value:hcpVal,note:'Sign-up entry'}]:[],approved:false,pin};
   err.style.display='none';
   try{
     await sbInsert('players',payload);
