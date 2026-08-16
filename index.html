@@ -4412,8 +4412,8 @@ async function adminAddSaturdayPlayer(date){
   const clearSel=()=>{const s2=document.getElementById(`satAddPlayer_${date}`);if(s2)s2.value='';};
   try{
     // (player_id,date) is UNIQUE in the DB. In-memory saturdaySignups can be stale — the
-    // member, another admin, or the friday-draw function may have inserted since page load —
-    // so ask the DB, not the cache, before deciding insert vs update.
+    // member or another admin may have inserted since page load — so ask the DB,
+    // not the cache, before deciding insert vs update.
     const[existing]=await sbGet('saturday_signups',`player_id=eq.${pid}&date=eq.${date}`);
     if(existing){
       const i=saturdaySignups.findIndex(s=>s.id===existing.id);
@@ -4528,6 +4528,12 @@ function lastSaturday(){
   d.setDate(d.getDate()-daysBack);
   return d.toISOString().split('T')[0];
 }
+function upcomingSaturday(){
+  const d=new Date();
+  const day=d.getDay(); // 0=Sun … 6=Sat
+  d.setDate(d.getDate()+(day===6?0:(6-day+7)%7));
+  return d.toISOString().split('T')[0];
+}
 function validateSaturdayDate(inp){
   if(!inp.value)return;
   const d=new Date(inp.value+'T00:00:00');
@@ -4540,38 +4546,153 @@ function validateSaturdayDate(inp){
   }
 }
 
-// Fisher-Yates. Must stay identical to shuffle() in supabase/functions/friday-draw
-// — the two draw paths have to agree. Do NOT use sort(()=>Math.random()-0.5):
-// that comparator is inconsistent, so V8's insertion sort leaves players biased
-// toward their original order, which put the same people together week after week.
+// ── The Saturday draw ────────────────────────────────────────────────────────
+// This is the ONLY draw implementation. It used to be duplicated in a Supabase
+// edge function (supabase/functions/friday-draw) on a Friday cron; the two copies
+// drifted, the cron died silently for five weeks, and nobody noticed. The
+// function is gone — see autoDrawIfDue() for what replaced it.
+
+// Fisher-Yates. Do NOT use sort(()=>Math.random()-0.5): that comparator is not a
+// consistent ordering, so V8's insertion sort leaves elements near where they
+// started. Measured at 8 players, the last signup stayed last 48% of the time
+// against an ideal of 12.5%, which repeatedly grouped the same people.
 function shuffleDraw(arr){
   const a=[...arr];
   for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}
   return a;
 }
-function generateDraw(date){
-  const signups=saturdaySignups.filter(s=>s.date===date);
-  const n=signups.length;if(!n){alert('No sign-ups to allocate.');return;}
-  const ttInput=document.getElementById(`satTT_${date}`);
-  const teeTimes=(ttInput?.value||'08:30,08:40,08:50').split(',').map(t=>t.trim()).filter(Boolean).sort();
+
+const DRAW_MEMORY_WEIGHTS=[8,4,2,1];  // most recent drawn Saturday first
+const DRAW_CANDIDATES=200;
+
+function pairKey(a,b){return String(a)<String(b)?a+'|'+b:b+'|'+a;}
+
+// Recency-weighted memory of who has played with whom, over the last 4 drawn
+// Saturdays before `beforeDate`. Counting drawn Saturdays rather than calendar
+// weeks keeps the memory intact across cancelled or skipped weeks.
+function drawPairWeights(beforeDate){
+  const dates=[...new Set(saturdaySignups.filter(s=>s.group_num&&s.date<beforeDate).map(s=>s.date))]
+    .sort().reverse().slice(0,DRAW_MEMORY_WEIGHTS.length);
+  const w=new Map();
+  dates.forEach((d,di)=>{
+    const weight=DRAW_MEMORY_WEIGHTS[di];
+    const byGroup={};
+    saturdaySignups.filter(s=>s.date===d&&s.group_num).forEach(s=>{
+      if(!byGroup[s.group_num])byGroup[s.group_num]=[];
+      byGroup[s.group_num].push(s.player_id);
+    });
+    Object.values(byGroup).forEach(ids=>{
+      for(let i=0;i<ids.length;i++)for(let j=i+1;j<ids.length;j++){
+        const k=pairKey(ids[i],ids[j]);
+        w.set(k,(w.get(k)||0)+weight);
+      }
+    });
+  });
+  return w;
+}
+
+function scoreGrouping(groups,weights){
+  let total=0;
+  groups.forEach(ids=>{
+    for(let i=0;i<ids.length;i++)for(let j=i+1;j<ids.length;j++)
+      total+=weights.get(pairKey(ids[i],ids[j]))||0;
+  });
+  return total;
+}
+
+// One candidate allocation. Early requesters are pinned to group 1 (first tee
+// time); everyone else is shuffled and spread evenly, group 1 topped up first.
+// Returns Map<signupId,{tee_time,group_num}> and mutates nothing.
+function buildDrawAssignment(signups,teeTimes){
+  const n=signups.length;
   const numGroups=n<=4?1:n<=8?2:3;
-  // Early requesters are always pinned to group 1 (first tee time); rest are shuffled
   const early=signups.filter(s=>s.early_tee_request);
   const pool=shuffleDraw(signups.filter(s=>!s.early_tee_request));
-  // Assign early requesters to group 1
-  early.forEach(s=>{s.tee_time=teeTimes[0]||'';s.group_num=1;});
-  // Fill groups evenly with remaining players (group 1 topped up first)
-  const baseSize=Math.floor(n/numGroups);const extra=n%numGroups;
+  const out=new Map();
+  early.forEach(s=>out.set(s.id,{tee_time:teeTimes[0]||'',group_num:1}));
+  const baseSize=Math.floor(n/numGroups),extra=n%numGroups;
   let pi=0;
   for(let gi=0;gi<numGroups;gi++){
     const target=baseSize+(gi<extra?1:0);
     const alreadyIn=gi===0?early.length:0;
-    for(let j=alreadyIn;j<target&&pi<pool.length;j++){const s=pool[pi++];s.tee_time=teeTimes[gi]||teeTimes[0];s.group_num=gi+1;}
+    for(let j=alreadyIn;j<target&&pi<pool.length;j++){
+      const s=pool[pi++];out.set(s.id,{tee_time:teeTimes[gi]||teeTimes[0],group_num:gi+1});
+    }
   }
-  // Any pool overflow (edge case: more early requesters than group 1 capacity)
-  while(pi<pool.length){const s=pool[pi++];s.tee_time=teeTimes[numGroups-1]||teeTimes[0];s.group_num=numGroups;}
+  // Overflow: more early requesters than group 1 can hold
+  while(pi<pool.length){
+    const s=pool[pi++];out.set(s.id,{tee_time:teeTimes[numGroups-1]||teeTimes[0],group_num:numGroups});
+  }
+  return out;
+}
+
+// Generate many candidate draws and keep the one that repeats the fewest recent
+// pairings. A small turnout can make repeats unavoidable — 8 players in 2 groups
+// puts any given pair together 42.9% of the time by chance — so this minimises
+// rather than forbids, and never fails to produce a draw.
+function chooseBestDraw(signups,teeTimes,beforeDate){
+  const weights=drawPairWeights(beforeDate);
+  let best=[],bestScore=Infinity;
+  for(let k=0;k<DRAW_CANDIDATES;k++){
+    const cand=buildDrawAssignment(signups,teeTimes);
+    const byGroup={};
+    signups.forEach(s=>{
+      const a=cand.get(s.id);if(!a)return;
+      if(!byGroup[a.group_num])byGroup[a.group_num]=[];
+      byGroup[a.group_num].push(s.player_id);
+    });
+    const score=scoreGrouping(Object.values(byGroup),weights);
+    if(score<bestScore){bestScore=score;best=[cand];}
+    else if(score===bestScore)best.push(cand);
+  }
+  // Pick at random among equally-good draws, so Re-randomise still varies.
+  return best[Math.floor(Math.random()*best.length)];
+}
+
+function generateDraw(date){
+  const signups=saturdaySignups.filter(s=>s.date===date);
+  if(!signups.length){alert('No sign-ups to allocate.');return;}
+  const ttInput=document.getElementById(`satTT_${date}`);
+  const teeTimes=(ttInput?.value||'08:30,08:40,08:50').split(',').map(t=>t.trim()).filter(Boolean).sort();
+  const alloc=chooseBestDraw(signups,teeTimes,date);
+  signups.forEach(s=>{const a=alloc.get(s.id);if(a){s.tee_time=a.tee_time;s.group_num=a.group_num;}});
   pendingDraw[date]={teeTimes};
   renderSaturdayAdmin();
+}
+// Replaces the Friday cron. There is no scheduler to die: whoever opens the app
+// first once the draw is due creates it — which is exactly when somebody wants to
+// know their tee time. If it is missed, the next page load produces it, so the
+// failure mode is "late", not "silently never".
+// Due from Friday noon (matching the old 10:00 UTC cron in Danish summer time)
+// through Saturday itself.
+async function autoDrawIfDue(){
+  const now=new Date(),day=now.getDay();
+  if(!(day===6||(day===5&&now.getHours()>=12)))return;
+  const date=upcomingSaturday();
+  const signups=saturdaySignups.filter(s=>s.date===date);
+  if(!signups.length)return;
+  if(signups.some(s=>s.group_num))return;                     // already drawn
+  const event=saturdayEvents.find(e=>e.date===date);
+  if(event&&(event.locked||event.cancelled))return;
+  const teeTimes=(Array.isArray(event?.tee_times)&&event.tee_times.length)
+    ? event.tee_times : ['08:30','08:40','08:50'];
+  try{
+    // Claim the draw by locking BEFORE allocating, so two people opening the app
+    // at the same moment do not both write one.
+    if(event){await sbUpdate('saturday_events',event.id,{locked:true});event.locked=true;}
+    else{
+      const payload={id:Date.now()+Math.floor(Math.random()*9999),date,locked:true,tee_times:teeTimes};
+      const[saved]=await sbInsert('saturday_events',payload);
+      saturdayEvents.push(saved||payload);
+    }
+    const alloc=chooseBestDraw(signups,teeTimes,date);
+    for(const s of signups){
+      const a=alloc.get(s.id);if(!a)continue;
+      s.tee_time=a.tee_time;s.group_num=a.group_num;
+      await sbUpdate('saturday_signups',s.id,{tee_time:a.tee_time,group_num:a.group_num});
+    }
+    renderSaturdayView();renderTeeSheet();renderSaturdayAdmin();
+  }catch(e){console.error('[auto-draw] failed',e);}
 }
 async function saveTeeTimesOnly(date){
   const ttInput=document.getElementById(`satTT_${date}`);
@@ -5665,6 +5786,7 @@ async function init(){
   if(savedId){const saved=players.find(p=>p.id==savedId)||pendingPlayers.find(p=>p.id==savedId);if(saved){activeId=saved.id;document.getElementById('playerName').textContent=saved.name;const av=document.getElementById('playerAvatar');av.textContent=ini(saved.name);av.style.background=clr(saved);updateUnitsBtn();renderProfile();}}
   updateAdminUI();applyPendingUI();buildPlayerCheckboxes();checkForResumableRounds();
   document.getElementById('tabTournament').style.display=tournaments.length>0?'':'none';
+  await autoDrawIfDue();
 
   setLoading(false);
   const _initView=new URLSearchParams(location.search).get('view');

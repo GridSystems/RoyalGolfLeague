@@ -185,6 +185,32 @@ Per-player best nett score per hole across the season. Ranked by total nett. "My
 
 ---
 
+## The Saturday draw
+
+One implementation, in `index.html`. There is **no** edge function and no cron —
+`supabase/functions/friday-draw` was deleted 2026-08-16.
+
+- `shuffleDraw()` — Fisher-Yates. **Never** `sort(()=>Math.random()-0.5)`: that
+  comparator is inconsistent, so V8 leaves players near their original order. It
+  measured 286% off uniform, with the last signup staying last 48% of the time.
+- `drawPairWeights(before)` — recency-weighted memory of who played with whom over
+  the last 4 *drawn* Saturdays (weights 8/4/2/1). Counting drawn Saturdays, not
+  calendar weeks, keeps the memory intact across cancelled weeks.
+- `chooseBestDraw()` — builds 200 candidates, keeps the lowest-scoring, picks at
+  random among ties so Re-randomise still varies.
+- `autoDrawIfDue()` — runs on `init()`. From Friday noon through Saturday, if the
+  upcoming Saturday has sign-ups and no draw, it locks the event and draws. The
+  first person to open the app creates the draw.
+
+**Repeats are not a bug.** At 8 players in 2 groups any pair shares a group 42.9%
+of the time by chance, and with two foursomes the minimum possible repeat count is
+4 pairs, not 0. The gate minimises; it cannot forbid.
+
+**Why the cron went:** it duplicated the algorithm, the two copies drifted (only
+one got the Fisher-Yates fix), and it died silently for five weeks — an unhandled
+`NOT NULL` on `saturday_events.id`, which it never supplied. Nobody noticed until
+pairings felt stale. A draw computed on demand has no scheduler to fail quietly.
+
 ## Key design decisions (don't change without reason)
 
 - **Single HTML file** — deliberate. No build complexity. Easy to deploy and share.
