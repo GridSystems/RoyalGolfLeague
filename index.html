@@ -1054,6 +1054,9 @@ function tmResultLabel(match,hcpInfo,scores){
 // ── End tournament helpers ────────────────────────────────────────
 
 function currentHcp(player){const hist=player.hcp_history||[];if(!hist.length)return player.handicap;return[...hist].sort((a,b)=>b.date.localeCompare(a.date))[0].value;}
+// DGU membership number: digits, one hyphen, digits. Segments are variable-length
+// (900-1831, 1-123456), so the hyphen must be typed — it cannot be inferred.
+function isValidDgu(v){const s=(v||'').trim();return s.length<=20&&/^\d+-\d+$/.test(s);}
 function calcCourseHcp(index,tee){return Math.round(index*(tee.slope/113)+(tee.rating-COURSE_PAR));}
 function calcPlayingHcp(index,tee){return Math.round(calcCourseHcp(index,tee)*0.95);}
 function strokesOnHole(phcp,i){if(phcp<=0)return 0;let s=phcp>=18?1:(HOLE_HCP[i]<=phcp?1:0);if(phcp>18&&HOLE_HCP[i]<=(phcp-18))s++;return s;}
