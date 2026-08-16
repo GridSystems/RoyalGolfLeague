@@ -5364,7 +5364,7 @@ function renderGrid(){
           ${p.is_admin?'<span class="tag tag-admin" style="font-size:0.6rem;padding:1px 6px">Admin</span>':''}
           ${p.is_social?'<span class="tag tag-social" style="font-size:0.6rem;padding:1px 6px">Social</span>':''}
         </div>
-        <div style="font-size:0.7rem;color:rgba(255,255,255,0.36)">${currentHcp(p)!=null?'HCP '+currentHcp(p)+' · ':''}${allRounds.filter(r=>r.player_id===p.id).length} rounds</div>
+        <div style="font-size:0.7rem;color:rgba(255,255,255,0.36)">${currentHcp(p)!=null?'HCP '+currentHcp(p)+' · ':''}${allRounds.filter(r=>r.player_id===p.id).length} rounds${p.dgu_number?' · DGU '+p.dgu_number:''}</div>
       </div>
       <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
         ${p.id!==ap?.id&&admin?`<button class="btn btn-warn btn-sm" onclick="event.stopPropagation();makeAdmin(${p.id})">★ Admin</button>`:''}
