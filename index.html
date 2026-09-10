@@ -2835,7 +2835,7 @@ function heRender(){
   const SEP=`border-left:1px solid rgba(255,255,255,0.12);`;
   const curBg=`background:rgba(130,170,240,0.13);`;
 
-  const hTH=h=>`<th style="${TH}${h===hole?'color:#82aaf0;'+curBg:''}">${h}</th>`;
+  const hTH=h=>`<th ${h===hole?'id="heCurCol" ':''}style="${TH}${h===hole?'color:#82aaf0;'+curBg:''}">${h}</th>`;
   const distTD=h=>`<td style="${TD}${h===hole?curBg:''}color:rgba(255,255,255,0.3);font-size:0.67rem">${firstTee.dist[h-1]}</td>`;
   const siTD=h=>`<td style="${TD}${h===hole?curBg:''}color:rgba(255,255,255,0.3);font-size:0.67rem">${HOLE_HCP[h-1]}</td>`;
   const parTD=h=>`<td style="${TD}${h===hole?curBg:''}font-weight:600;color:rgba(255,255,255,0.55)">${HOLE_PARS[h-1]}</td>`;
@@ -2897,7 +2897,7 @@ function heRender(){
         <button class="btn btn-primary" style="min-width:90px" onclick="heNext()">${nextLabel}</button>
       </div>
       <div style="display:flex;gap:4px;align-items:center;margin-bottom:1rem;flex-wrap:wrap">${dots}</div>
-      <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -4px">
+      <div id="heCardScroll" style="overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -4px">
         <table style="border-collapse:collapse;white-space:nowrap;width:100%">
           <thead><tr>
             <th style="${TH}text-align:left;min-width:80px;padding-left:8px;position:sticky;left:0;z-index:3;background:#1a3a2a">Hole</th>
@@ -2947,6 +2947,11 @@ function heRender(){
   </div>`;
 
   window.scrollTo(0,_scrollY);
+
+  // innerHTML rebuild resets the scorecard's horizontal scroll to 0, so centre
+  // the current hole's column in the strip after every render.
+  const _wrap=document.getElementById('heCardScroll'),_col=document.getElementById('heCurCol');
+  if(_wrap&&_col)_wrap.scrollLeft+=_col.getBoundingClientRect().left-_wrap.getBoundingClientRect().left-(_wrap.clientWidth-_col.offsetWidth)/2;
 }
 
 async function heEnter(pidx){
