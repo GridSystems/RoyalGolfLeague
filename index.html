@@ -76,6 +76,10 @@ select option { background: #1a3a2a; }
 .s-double { background: rgba(139,0,0,0.14); color: #f08080; border: 1px solid rgba(139,0,0,0.28); }
 /* Round tables — always wrapped in scrollable div */
 .rt-wrap { overflow-x: auto; }
+/* Long histories: bound the height and keep column labels in view while scrolling.
+   The sticky header needs an opaque fill — .rt th's rgba(0,0,0,0.15) over --gd. */
+.rt-tall { max-height: 60vh; overflow-y: auto; }
+.rt-tall .rt th { position: sticky; top: 0; z-index: 2; background: #163124; }
 .rt { width: 100%; border-collapse: collapse; font-size: 0.82rem; min-width: 460px; }
 .rt th { text-align: left; padding: 8px 12px; font-size: 0.6rem; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase; color: rgba(255,255,255,0.3); border-bottom: 1px solid var(--border); background: rgba(0,0,0,0.15); white-space: nowrap; }
 .rt td { padding: 9px 12px; border-bottom: 1px solid rgba(255,255,255,0.03); vertical-align: middle; }
@@ -5189,7 +5193,7 @@ async function submitFine(){
 function renderAdminFines(){
   const el=document.getElementById('adminFinesTable');if(!el)return;
   const finesHtml=!allFines.length?'<div class="empty">No fines issued yet.</div>'
-    :`<div class="rt-wrap"><table class="rt"><thead><tr><th>Date</th><th>Player</th><th>Infraction</th><th>Hole</th><th>DKK</th><th>Issued By</th><th>Notes</th><th></th></tr></thead><tbody>${allFines.slice(0,50).map(f=>{
+    :`<div class="rt-wrap rt-tall"><table class="rt"><thead><tr><th>Date</th><th>Player</th><th>Infraction</th><th>Hole</th><th>DKK</th><th>Issued By</th><th>Notes</th><th></th></tr></thead><tbody>${allFines.map(f=>{
     const p=players.find(x=>x.id===f.player_id);
     const ft=fineTypes.find(x=>x.id===f.fine_type_id);
     const ib=players.find(x=>x.id===f.issued_by);
@@ -5197,7 +5201,7 @@ function renderAdminFines(){
   }).join('')}</tbody></table></div>`;
   let payHtml='';
   if(finePayments.length){
-    payHtml=`<div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.08em;color:rgba(127,204,158,0.7);margin:1.2rem 0 0.5rem">💰 Payments Received</div><div class="rt-wrap"><table class="rt"><thead><tr><th>Date</th><th>Player</th><th>DKK</th><th>Note</th><th>Recorded By</th><th></th></tr></thead><tbody>${finePayments.slice(0,50).map(pm=>{
+    payHtml=`<div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.08em;color:rgba(127,204,158,0.7);margin:1.2rem 0 0.5rem">💰 Payments Received</div><div class="rt-wrap rt-tall"><table class="rt"><thead><tr><th>Date</th><th>Player</th><th>DKK</th><th>Note</th><th>Recorded By</th><th></th></tr></thead><tbody>${finePayments.map(pm=>{
       const p=players.find(x=>x.id===pm.player_id);
       const rb=players.find(x=>x.id===pm.recorded_by);
       return`<tr><td style="font-size:0.78rem;color:rgba(255,255,255,0.45)">${fd(pm.date)}</td><td><div style="display:flex;align-items:center;gap:6px"><div class="av" style="background:${clr(p||{})};width:20px;height:20px;font-size:0.55rem">${ini(p?.name||'?')}</div>${p?.name||'—'}</div></td><td style="font-family:'DM Mono',monospace;color:#7fcc9e">DKK ${Number(pm.amount||0)}</td><td style="font-size:0.78rem;color:rgba(255,255,255,0.4)">${pm.note||''}</td><td style="font-size:0.78rem;color:rgba(255,255,255,0.4)">${rb?.name||'—'}</td><td><button class="btn btn-danger btn-sm" onclick="deletePayment(${pm.id})">✕</button></td></tr>`;
@@ -5741,7 +5745,7 @@ function renderAdminRounds(){
   rounds=[...rounds].sort((a,b)=>b.date.localeCompare(a.date));
   const ct=document.getElementById('adminRoundsTable');
   if(!rounds.length){ct.innerHTML='<div class="empty">No rounds.</div>';return;}
-  ct.innerHTML=`<div style="overflow-x:auto"><table class="rt" style="min-width:600px"><thead><tr><th>Date</th><th>Player</th><th>Tee</th><th>HCP</th><th>Pts</th><th>Total</th><th>vs Par</th><th></th></tr></thead><tbody>${rounds.map(r=>{const p=players.find(x=>x.id===r.player_id);const tot=tS(r.holes),diff=tot-tP(r.holes);const rpts=p?calcRoundPoints(r,p):null;return`<tr><td style="color:rgba(255,255,255,0.45);font-size:0.78rem;white-space:nowrap">${fd(r.date)}</td><td><div style="display:flex;align-items:center;gap:6px">${p?`<div class="av" style="background:${clr(p)};width:22px;height:22px;font-size:0.6rem">${ini(p.name)}</div>${p.name}`:'Unknown'}</div></td><td><span style="display:inline-flex;align-items:center;gap:4px;font-size:0.76rem"><span class="tee-dot" style="background:${r.tee_color||'#888'}"></span>${r.tee_name||'—'}</span></td><td style="font-family:'DM Mono',monospace;font-size:0.79rem">${r.hcp_index!=null?r.hcp_index:'—'} / ${r.playing_hcp!=null?r.playing_hcp:'—'}</td><td style="font-family:'DM Mono',monospace;font-weight:600;color:#82aaf0">${rpts!=null?rpts:'—'}</td><td style="font-family:'DM Mono',monospace">${tot}</td><td><span class="sp ${scC(diff)}">${ds(diff)}</span></td><td style="white-space:nowrap"><button class="btn btn-warn btn-sm" onclick="openEditRound(${r.id})" style="margin-right:4px">Edit</button><button class="btn btn-danger btn-sm" onclick="deleteRoundDirect(${r.id})">✕</button></td></tr>`;}).join('')}</tbody></table></div>`;}
+  ct.innerHTML=`<div class="rt-wrap rt-tall"><table class="rt" style="min-width:600px"><thead><tr><th>Date</th><th>Player</th><th>Tee</th><th>HCP</th><th>Pts</th><th>Total</th><th>vs Par</th><th></th></tr></thead><tbody>${rounds.map(r=>{const p=players.find(x=>x.id===r.player_id);const tot=tS(r.holes),diff=tot-tP(r.holes);const rpts=p?calcRoundPoints(r,p):null;return`<tr><td style="color:rgba(255,255,255,0.45);font-size:0.78rem;white-space:nowrap">${fd(r.date)}</td><td><div style="display:flex;align-items:center;gap:6px">${p?`<div class="av" style="background:${clr(p)};width:22px;height:22px;font-size:0.6rem">${ini(p.name)}</div>${p.name}`:'Unknown'}</div></td><td><span style="display:inline-flex;align-items:center;gap:4px;font-size:0.76rem"><span class="tee-dot" style="background:${r.tee_color||'#888'}"></span>${r.tee_name||'—'}</span></td><td style="font-family:'DM Mono',monospace;font-size:0.79rem">${r.hcp_index!=null?r.hcp_index:'—'} / ${r.playing_hcp!=null?r.playing_hcp:'—'}</td><td style="font-family:'DM Mono',monospace;font-weight:600;color:#82aaf0">${rpts!=null?rpts:'—'}</td><td style="font-family:'DM Mono',monospace">${tot}</td><td><span class="sp ${scC(diff)}">${ds(diff)}</span></td><td style="white-space:nowrap"><button class="btn btn-warn btn-sm" onclick="openEditRound(${r.id})" style="margin-right:4px">Edit</button><button class="btn btn-danger btn-sm" onclick="deleteRoundDirect(${r.id})">✕</button></td></tr>`;}).join('')}</tbody></table></div>`;}
 
 async function deleteRoundDirect(id){
   const r=allRounds.find(x=>x.id===id);if(!r)return;
