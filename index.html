@@ -120,6 +120,9 @@ select option { background: #1a3a2a; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .toast { position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%); background: #1e3d2c; border: 1px solid rgba(201,168,76,0.35); color: var(--gold-l); padding: 10px 20px; border-radius: 10px; font-size: 0.85rem; z-index: 2000; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
 .toast.show { opacity: 1; }
+/* New-deploy notice. Sits under the sticky header (top set in JS from the
+   header's real height) so it never covers the hole-entry keypad. */
+.update-bar { position: fixed; left: 0; right: 0; z-index: 300; display: flex; align-items: center; justify-content: center; gap: 12px; background: #1e3d2c; border-bottom: 1px solid rgba(201,168,76,0.35); color: var(--gold-l); padding: 9px 14px; font-size: 0.83rem; }
 .db-status { font-size: 0.7rem; padding: 3px 9px; border-radius: 10px; font-weight: 500; }
 .db-ok { background: rgba(74,140,92,0.18); color: #7fcc9e; border: 1px solid rgba(74,140,92,0.26); }
 .db-err { background: rgba(224,112,112,0.14); color: #f08080; border: 1px solid rgba(224,112,112,0.26); }
@@ -5790,6 +5793,35 @@ async function init(){
   const _initView=new URLSearchParams(location.search).get('view');
   if(_initView==='track'){showView('track',document.getElementById('tabTrack'));history.replaceState(null,'',location.href.split('?')[0]);}
 }
+// ── Update check ───────────────────────────────────────────────────────
+// iOS tabs live for weeks, and sessionStorage keeps them signed in, so players
+// never re-fetch index.html and can sit on a months-old build. Compare the
+// deployed file's ETag whenever the tab comes back to the foreground and offer
+// a reload. Uses the ETag Pages already sends, so there is no version constant
+// to remember to bump. Detection lags up to the 600s max-age on index.html.
+let _deployTag=null,_lastUpdateCheck=0;
+async function checkForUpdate(){
+  if(Date.now()-_lastUpdateCheck<30000)return;
+  _lastUpdateCheck=Date.now();
+  try{
+    const r=await fetch(location.pathname,{method:'HEAD',cache:'no-store'});
+    const tag=r.headers.get('etag')||r.headers.get('last-modified');
+    if(!tag)return;
+    if(_deployTag===null){_deployTag=tag;return;}   // first call sets the baseline
+    if(tag!==_deployTag)showUpdateBar();
+  }catch(e){/* offline on the course — just try again next time */}
+}
+function showUpdateBar(){
+  if(document.getElementById('updateBar'))return;
+  const bar=document.createElement('div');
+  bar.id='updateBar';bar.className='update-bar';
+  bar.style.top=(document.querySelector('header')?.getBoundingClientRect().height||0)+'px';
+  bar.innerHTML=`<span>A newer version is available</span><button class="btn btn-primary btn-sm" onclick="location.reload()">Update</button>`;
+  document.body.appendChild(bar);
+}
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkForUpdate();});
+window.addEventListener('pageshow',checkForUpdate);   // also fires on iOS bfcache restore
+
 if(sessionStorage.getItem('sl_session_player')){document.getElementById('lockScreen').style.display='none';init();}else{setLoading(false);setTimeout(()=>document.getElementById('loginEmail').focus(),100);}
 </script>
 </body>
