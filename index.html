@@ -2836,7 +2836,6 @@ function heRender(){
   const curBg=`background:rgba(130,170,240,0.13);`;
 
   const hTH=h=>`<th ${h===hole?'id="heCurCol" ':''}style="${TH}${h===hole?'color:#82aaf0;'+curBg:''}">${h}</th>`;
-  const distTD=h=>`<td style="${TD}${h===hole?curBg:''}color:rgba(255,255,255,0.3);font-size:0.67rem">${firstTee.dist[h-1]}</td>`;
   const siTD=h=>`<td style="${TD}${h===hole?curBg:''}color:rgba(255,255,255,0.3);font-size:0.67rem">${HOLE_HCP[h-1]}</td>`;
   const parTD=h=>`<td style="${TD}${h===hole?curBg:''}font-weight:600;color:rgba(255,255,255,0.55)">${HOLE_PARS[h-1]}</td>`;
 
@@ -2903,12 +2902,6 @@ function heRender(){
             <th style="${TH}${SEP}position:sticky;right:0;z-index:3;background:#1a3a2a">Tot</th>
           </tr></thead>
           <tbody>
-            <tr>
-              <td style="${TD}text-align:left;padding-left:8px;color:rgba(255,255,255,0.3);font-size:0.67rem;position:sticky;left:0;z-index:1;background:#1a3a2a">Dist</td>
-              ${F.map(distTD).join('')}<td style="${TD}${SEP}color:rgba(255,255,255,0.2)">—</td>
-              ${B.map(distTD).join('')}<td style="${TD}${SEP}color:rgba(255,255,255,0.2)">—</td>
-              <td style="${TD}${SEP}color:rgba(255,255,255,0.2)">—</td>
-            </tr>
             <tr>
               <td style="${TD}text-align:left;padding-left:8px;color:rgba(255,255,255,0.3);font-size:0.67rem;position:sticky;left:0;z-index:1;background:#1a3a2a">SI</td>
               ${F.map(siTD).join('')}<td style="${TD}${SEP}color:rgba(255,255,255,0.2)">—</td>
