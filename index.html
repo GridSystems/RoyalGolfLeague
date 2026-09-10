@@ -328,10 +328,6 @@ select option { background: #1a3a2a; }
         <button class="btn btn-primary" onclick="saveGroupRound()">Save All Rounds</button>
       </div>
       <div id="holeEntryCard"></div>
-      <div class="fa" style="margin-top:0.5rem">
-        <button class="btn btn-ghost" onclick="backToSetup()">← Back</button>
-        <button class="btn btn-primary" onclick="saveGroupRound()">Save All Rounds</button>
-      </div>
     </div>
   </div>
 
@@ -2830,8 +2826,8 @@ function heRender(){
   const F=[1,2,3,4,5,6,7,8,9],B=[10,11,12,13,14,15,16,17,18];
   const outPar=F.reduce((a,h)=>a+HOLE_PARS[h-1],0);
   const inPar=B.reduce((a,h)=>a+HOLE_PARS[h-1],0);
-  const TH=`padding:5px 4px;font-size:0.7rem;font-weight:600;color:rgba(255,255,255,0.45);text-align:center;white-space:nowrap;`;
-  const TD=`padding:4px 4px;font-size:0.8rem;text-align:center;white-space:nowrap;`;
+  const TH=`padding:3px 4px;font-size:0.7rem;font-weight:600;color:rgba(255,255,255,0.45);text-align:center;white-space:nowrap;`;
+  const TD=`padding:2px 4px;font-size:0.8rem;text-align:center;white-space:nowrap;`;
   const SEP=`border-left:1px solid rgba(255,255,255,0.12);`;
   const curBg=`background:rgba(130,170,240,0.13);`;
 
@@ -2882,7 +2878,7 @@ function heRender(){
 
   const _scrollY=window.scrollY;
   card.innerHTML=`<div class="panel">
-    <div class="ph">
+    <div class="ph" style="padding:0.5rem 1rem">
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <span class="pt">Hole ${hole}</span>
         <span style="font-size:0.8rem;color:rgba(255,255,255,0.45)">Par ${HOLE_PARS[hi]} &nbsp;·&nbsp; SI ${HOLE_HCP[hi]} &nbsp;·&nbsp; ${firstTee.dist[hi]}m</span>
@@ -2890,13 +2886,8 @@ function heRender(){
       </div>
       <div style="font-size:0.72rem;color:rgba(255,255,255,0.3)">${pos+1} of 18</div>
     </div>
-    <div class="pb" style="padding:14px 12px">
-      <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-bottom:1rem">
-        <button class="btn btn-ghost" style="min-width:90px" onclick="hePrev()" ${!prevH?'disabled style="opacity:0.3;min-width:90px"':''}>← ${prevH?'Hole '+prevH:'Start'}</button>
-        <button class="btn btn-warn btn-sm" onclick="showAddFine(${hole})" style="font-size:0.8rem">🚨 Fine</button>
-        <button class="btn btn-primary" style="min-width:90px" onclick="heNext()">${nextLabel}</button>
-      </div>
-      <div style="display:flex;gap:4px;align-items:center;margin-bottom:1rem;flex-wrap:wrap">${dots}</div>
+    <div class="pb" style="padding:10px 12px">
+      <div style="display:flex;gap:4px;align-items:center;margin-bottom:0.55rem;flex-wrap:wrap">${dots}</div>
       <div id="heCardScroll" style="overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -4px">
         <table style="border-collapse:collapse;white-space:nowrap;width:100%">
           <thead><tr>
@@ -2930,17 +2921,22 @@ function heRender(){
           </tbody>
         </table>
       </div>
-      ${curPlayer?`<div style="margin-top:1.25rem">
-        <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:0.85rem;padding-bottom:0.75rem;border-bottom:1px solid rgba(255,255,255,0.06)">
-          <div style="width:26px;height:26px;border-radius:50%;background:${clr(curPlayer)};display:flex;align-items:center;justify-content:center;font-size:0.62rem;font-weight:700;color:#fff;flex-shrink:0">${ini(curPlayer.name)}</div>
-          <span style="font-size:1rem;font-weight:600;color:var(--cream)">${curPlayer.name.split(' ')[0]}</span>
+      <div id="heActions" style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:0.7rem">
+        <button class="btn btn-ghost" style="min-width:90px" onclick="hePrev()" ${!prevH?'disabled style="opacity:0.3;min-width:90px"':''}>← ${prevH?'Hole '+prevH:'Start'}</button>
+        <button class="btn btn-warn btn-sm" onclick="showAddFine(${hole})" style="font-size:0.8rem">🚨 Fine</button>
+        <button class="btn btn-primary" style="min-width:90px" onclick="heNext()">${nextLabel}</button>
+      </div>
+      ${curPlayer?`<div style="margin-top:0.7rem">
+        <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:0.45rem;padding-bottom:0.4rem;border-bottom:1px solid rgba(255,255,255,0.06)">
+          <div style="width:22px;height:22px;border-radius:50%;background:${clr(curPlayer)};display:flex;align-items:center;justify-content:center;font-size:0.58rem;font-weight:700;color:#fff;flex-shrink:0">${ini(curPlayer.name)}</div>
+          <span style="font-size:0.95rem;font-weight:600;color:var(--cream)">${curPlayer.name.split(' ')[0]}</span>
           ${curEntry.phcp!=null?`<span style="font-size:0.72rem;color:rgba(255,255,255,0.35)">(HCP ${curEntry.phcp})</span>`:''}
         </div>
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;max-width:320px;margin:0 auto;padding:0 4px">
-          ${[1,2,3,4,5,6,7,8,9].map(d=>`<button onclick="heKeypadDigit(${d})" style="font-family:'DM Mono',monospace;font-size:1.5rem;font-weight:600;color:var(--cream);background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:10px;padding:15px 0;touch-action:manipulation;cursor:pointer;-webkit-tap-highlight-color:transparent">${d}</button>`).join('')}
-          <button onclick="heKeypadPickup()" style="font-size:0.8rem;font-weight:700;color:#f0a030;background:rgba(240,160,48,0.08);border:1px solid rgba(240,160,48,0.3);border-radius:10px;padding:15px 0;touch-action:manipulation;cursor:pointer;-webkit-tap-highlight-color:transparent">Pickup</button>
-          <button onclick="heKeypadBackspace()" style="font-size:1.3rem;color:rgba(255,255,255,0.6);background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:15px 0;touch-action:manipulation;cursor:pointer;-webkit-tap-highlight-color:transparent">⌫</button>
-          <button onclick="heKeypadEnter()" style="font-size:0.9rem;font-weight:700;color:#fff;background:rgba(74,140,92,0.55);border:1px solid rgba(74,140,92,0.5);border-radius:10px;padding:15px 0;touch-action:manipulation;cursor:pointer;-webkit-tap-highlight-color:transparent">Enter →</button>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;max-width:320px;margin:0 auto;padding:0 4px">
+          ${[1,2,3,4,5,6,7,8,9].map(d=>`<button onclick="heKeypadDigit(${d})" style="font-family:'DM Mono',monospace;font-size:1.35rem;font-weight:600;color:var(--cream);background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:10px;padding:9px 0;touch-action:manipulation;cursor:pointer;-webkit-tap-highlight-color:transparent">${d}</button>`).join('')}
+          <button onclick="heKeypadPickup()" style="font-size:0.8rem;font-weight:700;color:#f0a030;background:rgba(240,160,48,0.08);border:1px solid rgba(240,160,48,0.3);border-radius:10px;padding:9px 0;touch-action:manipulation;cursor:pointer;-webkit-tap-highlight-color:transparent">Pickup</button>
+          <button onclick="heKeypadBackspace()" style="font-size:1.3rem;color:rgba(255,255,255,0.6);background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:9px 0;touch-action:manipulation;cursor:pointer;-webkit-tap-highlight-color:transparent">⌫</button>
+          <button onclick="heKeypadEnter()" style="font-size:0.9rem;font-weight:700;color:#fff;background:rgba(74,140,92,0.55);border:1px solid rgba(74,140,92,0.5);border-radius:10px;padding:9px 0;touch-action:manipulation;cursor:pointer;-webkit-tap-highlight-color:transparent">Enter →</button>
         </div>
       </div>`:''}
     </div>
