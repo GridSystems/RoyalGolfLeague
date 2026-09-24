@@ -820,8 +820,10 @@ const SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSI
 const H={'Content-Type':'application/json','apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY};
 // players.email and players.pin are not readable with the public key (supabase/phase0b_hide_credentials.sql),
 // so every players request names its columns — `select=*` would be refused. PINs are checked by sbRpc('login') etc.
-const PLAYER_COLS='id,name,color,handicap,hcp_history,created_at,is_admin,approved,is_social,bag,dgu_number';
+const PLAYER_COLS='id,name,color,handicap,hcp_history,created_at,is_admin,approved,is_social,bag,dgu_number,archived_at,legacy_id';
 const sbSel=t=>t==='players'?'select='+PLAYER_COLS:'';
+// Archived players (people who left) keep their history but are left out of every pick list.
+const activePlayers=()=>players.filter(p=>!p.archived_at);
 async function sbGet(t,p=''){const r=await fetch(`${SUPABASE_URL}/rest/v1/${t}?${[sbSel(t),p].filter(Boolean).join('&')}`,{headers:H});if(!r.ok)throw new Error(await r.text());return r.json();}
 async function sbInsert(t,b){const r=await fetch(`${SUPABASE_URL}/rest/v1/${t}?${sbSel(t)}`,{method:'POST',headers:{...H,'Prefer':'return=representation'},body:JSON.stringify(b)});if(!r.ok)throw new Error(await r.text());return r.json();}
 async function sbUpdate(t,id,b){const r=await fetch(`${SUPABASE_URL}/rest/v1/${t}?id=eq.${id}&${sbSel(t)}`,{method:'PATCH',headers:{...H,'Prefer':'return=representation'},body:JSON.stringify(b)});if(!r.ok)throw new Error(await r.text());return r.json();}
@@ -1221,6 +1223,9 @@ async function rejectPlayer(id){
   if(!confirm('Reject and delete this signup?'))return;
   setLoading(true,'Rejecting…');
   try{
+    // An applicant who never became a member leaves nothing behind (and the foreign keys
+    // refuse to delete a player who still has rows).
+    for(const t of ['saturday_signups','rounds','gps_shots','fines','fine_payments','tournament_players'])await sbDeleteWhere(t,`player_id=eq.${id}`);
     await sbDelete('players',id);
     pendingPlayers=pendingPlayers.filter(x=>x.id!==id);
     toast('Signup rejected');renderPendingApprovals();
@@ -4097,7 +4102,7 @@ function renderAdminTournament(){
   const tPlayers=tournamentPlayers.filter(tp=>tp.tournament_id===tourn.id);
   const teamA=tPlayers.filter(tp=>tp.team==='a').map(tp=>players.find(p=>p.id===tp.player_id)).filter(Boolean);
   const teamB=tPlayers.filter(tp=>tp.team==='b').map(tp=>players.find(p=>p.id===tp.player_id)).filter(Boolean);
-  const unassigned=players.filter(p=>!tPlayers.find(tp=>tp.player_id===p.id));
+  const unassigned=activePlayers().filter(p=>!tPlayers.find(tp=>tp.player_id===p.id));
 
   const pRow=(p,team)=>`<div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.3rem">
     <span style="width:22px;height:22px;border-radius:50%;background:${clr(p)};display:inline-flex;align-items:center;justify-content:center;font-size:0.6rem;font-weight:700">${ini(p.name)}</span>
@@ -4408,7 +4413,7 @@ function renderSaturdayAdmin(){
       <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;border-top:1px solid rgba(255,255,255,0.06);padding-top:0.65rem">
         <select id="satAddPlayer_${date}" style="flex:1;min-width:120px;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:var(--cream);font-size:0.8rem;padding:5px 8px;outline:none">
           <option value="">— Add player —</option>
-          ${(hasAlloc?allP.filter(p=>!signups.find(s=>s.player_id===p.id&&s.tee_time)):allP.filter(p=>!signups.find(s=>s.player_id===p.id))).map(p=>`<option value="${p.id}">${p.name}</option>`).join('')}
+          ${(hasAlloc?allP.filter(p=>!p.archived_at&&!signups.find(s=>s.player_id===p.id&&s.tee_time)):allP.filter(p=>!p.archived_at&&!signups.find(s=>s.player_id===p.id))).map(p=>`<option value="${p.id}">${p.name}</option>`).join('')}
         </select>
         ${hasAlloc?`<select id="satAddTeeTime_${date}" style="background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:var(--cream);font-size:0.8rem;padding:5px 8px;outline:none">
           ${teeTimes.map(tt=>`<option value="${tt}">${tt}</option>`).join('')}
@@ -4806,7 +4811,7 @@ function buildPlayerCheckboxes(){
   const activePlayer=players.find(x=>x.id===activeId)||pendingPlayers.find(x=>x.id===activeId);
   const isPending=activePlayer&&activePlayer.approved===false;
   if(isPending){groupPlayerIds=[activeId];}
-  const list=isPending?players.filter(p=>p.id===activeId):players;
+  const list=isPending?players.filter(p=>p.id===activeId):activePlayers();
   wrap.innerHTML=list.map(p=>{
     const checked=groupPlayerIds.includes(p.id);
     const ptee=playerTees[p.id]||selTeeId;
@@ -4909,7 +4914,7 @@ function renderBulkEntry(){
       <div class="fgi" style="margin-bottom:1.2rem">
         <label>Player</label>
         <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px">
-          ${players.map(p=>`
+          ${activePlayers().map(p=>`
             <div onclick="BE.playerId=${p.id};renderBulkEntry()" style="display:flex;align-items:center;gap:7px;padding:7px 12px;border-radius:8px;cursor:pointer;border:1px solid ${BE.playerId===p.id?'rgba(201,168,76,0.5)':'rgba(255,255,255,0.12)'};background:${BE.playerId===p.id?'rgba(201,168,76,0.1)':'rgba(0,0,0,0.2)'};transition:all 0.15s;user-select:none">
               <div style="width:18px;height:18px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.58rem;font-weight:600;color:#fff">${ini(p.name)}</div>
               <span style="font-size:0.83rem;font-weight:${BE.playerId===p.id?500:400};color:${BE.playerId===p.id?'var(--gold-l)':'var(--cream)'}">${p.name}</span>
@@ -5233,7 +5238,7 @@ function showAddFine(hole=null,retroactive=false){
   if(!activeFineTypes.length){alert('No active fine types. Add or reactivate them in Admin → Fines → Manage Fine Types.');return;}
   const pSel=document.getElementById('finePlayer');
   const tSel=document.getElementById('fineType');
-  pSel.innerHTML=players.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+  pSel.innerHTML=activePlayers().map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
   tSel.innerHTML=activeFineTypes.map(ft=>`<option value="${ft.id}">${ft.name} — DKK ${ft.amount||10}</option>`).join('');
   document.getElementById('fineHole').value=hole||'';
   document.getElementById('fineDate').value=HE?.date||today();
@@ -5301,7 +5306,7 @@ async function deleteFine(id){
 // ── Fine payments (lump-sum ledger) ─────────────────────────────────────────────
 function showRecordPayment(){
   const sel=document.getElementById('payPlayer');
-  sel.innerHTML=players.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+  sel.innerHTML=activePlayers().map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
   document.getElementById('payAmount').value='';
   document.getElementById('payDate').value=today();
   document.getElementById('payNote').value='';
@@ -5485,8 +5490,8 @@ function chooseGpsDetailMode(mode){
 // ── Players ───────────────────────────────────────────────────────────────────
 function showPicker(){
   const list=document.getElementById('pickerList');
-  if(!players.length){list.innerHTML='<div style="color:rgba(255,255,255,0.4);font-size:0.85rem">No players yet.</div>';}
-  else{list.innerHTML=players.map(p=>`<div onclick="requirePin(${p.id})" style="display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:10px;cursor:pointer;background:${p.id===activeId?'rgba(201,168,76,0.12)':'rgba(255,255,255,0.04)'};border:1px solid ${p.id===activeId?'rgba(201,168,76,0.4)':'rgba(255,255,255,0.08)'}"><div style="width:30px;height:30px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.72rem;font-weight:600;color:#fff">${ini(p.name)}</div><div style="flex:1"><div style="font-weight:500;font-size:0.88rem;display:flex;align-items:center;gap:6px">${p.name}${p.is_admin?'<span class="tag tag-admin">Admin</span>':''}${p.id===activeId?'<span class="tag tag-you">You</span>':''}</div><div style="font-size:0.7rem;color:rgba(255,255,255,0.36)">${currentHcp(p)!=null?'HCP '+currentHcp(p)+' · ':''}${allRounds.filter(r=>r.player_id===p.id).length} rounds</div></div></div>`).join('');}
+  if(!activePlayers().length){list.innerHTML='<div style="color:rgba(255,255,255,0.4);font-size:0.85rem">No players yet.</div>';}
+  else{list.innerHTML=activePlayers().map(p=>`<div onclick="requirePin(${p.id})" style="display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:10px;cursor:pointer;background:${p.id===activeId?'rgba(201,168,76,0.12)':'rgba(255,255,255,0.04)'};border:1px solid ${p.id===activeId?'rgba(201,168,76,0.4)':'rgba(255,255,255,0.08)'}"><div style="width:30px;height:30px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.72rem;font-weight:600;color:#fff">${ini(p.name)}</div><div style="flex:1"><div style="font-weight:500;font-size:0.88rem;display:flex;align-items:center;gap:6px">${p.name}${p.is_admin?'<span class="tag tag-admin">Admin</span>':''}${p.id===activeId?'<span class="tag tag-you">You</span>':''}</div><div style="font-size:0.7rem;color:rgba(255,255,255,0.36)">${currentHcp(p)!=null?'HCP '+currentHcp(p)+' · ':''}${allRounds.filter(r=>r.player_id===p.id).length} rounds</div></div></div>`).join('');}
   document.getElementById('pickerModal').style.display='flex';
 }
 let pendingPinId=null;
@@ -5562,18 +5567,27 @@ async function addPlayer(){
   try{const[saved]=await sbInsert('players',payload);players.push(saved);toast('Player added ✓');closeModal('addModal');renderGrid();updateAdminUI();}
   catch(e){alert('Error: '+e.message);}finally{setLoading(false);}
 }
-async function deletePlayer(id){
+async function archivePlayer(id){
   if(!isAdmin()){alert('Only admins can remove players.');return;}
-  const admins=players.filter(p=>p.is_admin);if(admins.length===1&&admins[0].id===id){alert('Cannot remove the only admin.');return;}
-  if(!confirm('Remove this player?'))return;
+  const admins=players.filter(p=>p.is_admin&&!p.archived_at);if(admins.length===1&&admins[0].id===id){alert('Cannot remove the only admin.');return;}
+  const p=players.find(x=>x.id===id);if(!p)return;
+  if(!confirm(`Remove ${p.name}? Their rounds and fines stay in the history, and you can restore them under Former members.`))return;
   setLoading(true,'Removing…');
-  try{await sbDelete('players',id);players=players.filter(p=>p.id!==id);if(activeId===id){activeId=null;document.getElementById('playerName').textContent='Select player';document.getElementById('playerAvatar').style.background='#555';document.getElementById('playerAvatar').textContent='';}toast('Player removed');renderGrid();}
+  try{const archived_at=new Date().toISOString();await sbUpdate('players',id,{archived_at});p.archived_at=archived_at;
+    if(activeId===id){activeId=null;document.getElementById('playerName').textContent='Select player';document.getElementById('playerAvatar').style.background='#555';document.getElementById('playerAvatar').textContent='';}
+    toast('Player removed');renderGrid();}
+  catch(e){alert('Error: '+e.message);}finally{setLoading(false);}
+}
+async function restorePlayer(id){
+  const p=players.find(x=>x.id===id);if(!p)return;
+  setLoading(true,'Restoring…');
+  try{await sbUpdate('players',id,{archived_at:null});p.archived_at=null;toast(p.name+' restored ✓');renderGrid();}
   catch(e){alert('Error: '+e.message);}finally{setLoading(false);}
 }
 function renderGrid(){
   const g=document.getElementById('playerGrid');const ap=adminPlayer();const admin=isAdmin();
   const ab=document.getElementById('addPlayerBtn');if(ab)ab.style.display=admin?'inline-block':'none';
-  g.innerHTML=players.map(p=>`
+  g.innerHTML=activePlayers().map(p=>`
     <div class="pc${p.id===activeId?' active-p':''}" onclick="setPlayer(${p.id})" style="${p.id!==activeId&&!admin?'cursor:default;opacity:0.75;':''}">
       <div class="av" style="background:${clr(p)}">${ini(p.name)}</div>
       <div style="flex:1;min-width:0">
@@ -5587,9 +5601,10 @@ function renderGrid(){
       <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
         ${p.id!==ap?.id&&admin?`<button class="btn btn-warn btn-sm" onclick="event.stopPropagation();makeAdmin(${p.id})">★ Admin</button>`:''}
         ${p.id!==ap?.id&&admin?`<button class="btn btn-sm" style="font-size:0.7rem;background:${p.is_social?'rgba(100,180,120,0.18)':'rgba(100,180,120,0.07)'};color:#7ecf9e;border:1px solid rgba(100,180,120,0.28)" onclick="event.stopPropagation();makeSocial(${p.id})">${p.is_social?'✓ Social':'Social'}</button>`:''}
-        ${p.id!==ap?.id&&admin?`<button style="background:transparent;border:none;color:rgba(255,255,255,0.2);cursor:pointer;font-size:1rem;padding:2px" onclick="event.stopPropagation();deletePlayer(${p.id})">✕</button>`:''}
+        ${p.id!==ap?.id&&admin?`<button style="background:transparent;border:none;color:rgba(255,255,255,0.2);cursor:pointer;font-size:1rem;padding:2px" onclick="event.stopPropagation();archivePlayer(${p.id})">✕</button>`:''}
       </div>
-    </div>`).join('')+(admin?`<div class="pc add-pc" onclick="showAddPlayer()"><span style="font-size:1.1rem">+</span> Add player</div>`:'');
+    </div>`).join('')+(admin?`<div class="pc add-pc" onclick="showAddPlayer()"><span style="font-size:1.1rem">+</span> Add player</div>`:'')
+    +(admin&&players.some(p=>p.archived_at)?`<div style="grid-column:1/-1;margin-top:1rem;font-size:0.7rem;text-transform:uppercase;letter-spacing:0.08em;color:rgba(255,255,255,0.35)">Former members</div>`+players.filter(p=>p.archived_at).map(p=>`<div class="pc" style="opacity:0.6;cursor:default"><div class="av" style="background:${clr(p)}">${ini(p.name)}</div><div style="flex:1;min-width:0;font-size:0.88rem">${p.name}</div><button class="btn btn-ghost btn-sm" onclick="restorePlayer(${p.id})">Restore</button></div>`).join(''):'');
 }
 async function makeAdmin(id){
   const p=players.find(x=>x.id===id);if(!p)return;
@@ -5790,7 +5805,7 @@ function toggleAdminSection(bodyId,chevId){const body=document.getElementById(bo
 function renderAdmin(){
   const panel=document.getElementById('adminHcpPanel');const ap=adminPlayer();
   if(!players.length){panel.innerHTML='<div class="empty">No players.</div>';return;}
-  panel.innerHTML=players.map(p=>{const hist=[...(p.hcp_history||[])].sort((a,b)=>b.date.localeCompare(a.date));return`<div style="margin-bottom:1.5rem;padding-bottom:1.5rem;border-bottom:1px solid rgba(255,255,255,0.06)"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.7rem;flex-wrap:wrap;gap:8px"><div style="display:flex;align-items:center;gap:10px"><div class="av" style="background:${clr(p)}">${ini(p.name)}</div><div><div style="font-weight:500">${p.name} ${p.is_admin?'<span class="tag tag-admin">Admin</span>':''}</div><div style="font-size:0.72rem;color:rgba(255,255,255,0.38)">Current: <strong style="color:var(--gold-l)">${currentHcp(p)!=null?currentHcp(p):'not set'}</strong> · DGU: <strong style="color:var(--gold-l)">${p.dgu_number||'—'}</strong></div></div></div><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn btn-warn btn-sm" onclick="openHcpEdit(${p.id})">+ Update Index</button><button class="btn btn-ghost btn-sm" onclick="openEditName(${p.id})">Edit Name</button><button class="btn btn-ghost btn-sm" onclick="openEditEmail(${p.id})">Edit Email</button><button class="btn btn-ghost btn-sm" onclick="openEditDgu(${p.id})">Edit DGU</button><button class="btn btn-ghost btn-sm" onclick="resetPlayerPin(${p.id})">Reset PIN</button><button class="btn btn-ghost btn-sm" onclick="makeAdmin(${p.id})">${p.is_admin?'Remove Admin':'Make Admin'}</button></div></div>${hist.length?`<table class="hcp-hist"><thead><tr><th>Effective Date</th><th>HCP Index</th><th>Note</th><th></th></tr></thead><tbody>${hist.map((e,i)=>`<tr class="${i===0?'current-hcp':''}"><td style="font-family:'DM Mono',monospace;font-size:0.8rem">${fd(e.date)}</td><td style="font-family:'DM Mono',monospace;font-weight:${i===0?600:400};color:${i===0?'var(--gold-l)':'inherit'}">${e.value}</td><td style="color:rgba(255,255,255,0.4);font-size:0.78rem">${e.note||'—'}</td><td><button class="btn btn-danger btn-sm" onclick="deleteHcpEntry(${p.id},'${e.date}',${e.value})">✕</button></td></tr>`).join('')}</tbody></table></div>`:'<div style="font-size:0.8rem;color:rgba(255,255,255,0.3);padding:6px 0">No history.</div>'}</div>`;}).join('');
+  panel.innerHTML=activePlayers().map(p=>{const hist=[...(p.hcp_history||[])].sort((a,b)=>b.date.localeCompare(a.date));return`<div style="margin-bottom:1.5rem;padding-bottom:1.5rem;border-bottom:1px solid rgba(255,255,255,0.06)"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.7rem;flex-wrap:wrap;gap:8px"><div style="display:flex;align-items:center;gap:10px"><div class="av" style="background:${clr(p)}">${ini(p.name)}</div><div><div style="font-weight:500">${p.name} ${p.is_admin?'<span class="tag tag-admin">Admin</span>':''}</div><div style="font-size:0.72rem;color:rgba(255,255,255,0.38)">Current: <strong style="color:var(--gold-l)">${currentHcp(p)!=null?currentHcp(p):'not set'}</strong> · DGU: <strong style="color:var(--gold-l)">${p.dgu_number||'—'}</strong></div></div></div><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn btn-warn btn-sm" onclick="openHcpEdit(${p.id})">+ Update Index</button><button class="btn btn-ghost btn-sm" onclick="openEditName(${p.id})">Edit Name</button><button class="btn btn-ghost btn-sm" onclick="openEditEmail(${p.id})">Edit Email</button><button class="btn btn-ghost btn-sm" onclick="openEditDgu(${p.id})">Edit DGU</button><button class="btn btn-ghost btn-sm" onclick="resetPlayerPin(${p.id})">Reset PIN</button><button class="btn btn-ghost btn-sm" onclick="makeAdmin(${p.id})">${p.is_admin?'Remove Admin':'Make Admin'}</button></div></div>${hist.length?`<table class="hcp-hist"><thead><tr><th>Effective Date</th><th>HCP Index</th><th>Note</th><th></th></tr></thead><tbody>${hist.map((e,i)=>`<tr class="${i===0?'current-hcp':''}"><td style="font-family:'DM Mono',monospace;font-size:0.8rem">${fd(e.date)}</td><td style="font-family:'DM Mono',monospace;font-weight:${i===0?600:400};color:${i===0?'var(--gold-l)':'inherit'}">${e.value}</td><td style="color:rgba(255,255,255,0.4);font-size:0.78rem">${e.note||'—'}</td><td><button class="btn btn-danger btn-sm" onclick="deleteHcpEntry(${p.id},'${e.date}',${e.value})">✕</button></td></tr>`).join('')}</tbody></table></div>`:'<div style="font-size:0.8rem;color:rgba(255,255,255,0.3);padding:6px 0">No history.</div>'}</div>`;}).join('');
   const rsel=document.getElementById('adminRoundPlayer');rsel.innerHTML=`<option value="all">All players</option>`+players.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
   renderAdminRounds();
   renderAdminTees();

@@ -45,6 +45,40 @@ setTimeout(async function(){
     await submitSignup();
     const su=calls.find(c=>c.method==='POST'&&c.url.includes('/players'));
     T('sign-up sends no id',su&&!('id' in su.body),JSON.stringify(su?.body));
+    // ── Task 6: archive instead of delete ──
+    T('PLAYER_COLS reads archived_at and legacy_id',/(^|,)archived_at(,|$)/.test(PLAYER_COLS)&&/(^|,)legacy_id(,|$)/.test(PLAYER_COLS),PLAYER_COLS);
+    players=[{id:1,name:'Ann',is_admin:true,color:0,hcp_history:[]},{id:2,name:'Bo',color:1,hcp_history:[]},{id:3,name:'Gone',color:2,hcp_history:[],archived_at:'2026-09-01T00:00:00Z'}];
+    activeId=1; // isAdmin() is "the active player has is_admin"
+    allRounds=[{id:1,player_id:3,date:'2026-06-01',tee_id:'57',holes:Array.from({length:18},(_,i)=>({hole:i+1,par:HOLE_PARS[i],score:HOLE_PARS[i]}))}];
+    T('activePlayers() leaves archived out',activePlayers().map(p=>p.id).join()==='1,2',activePlayers().map(p=>p.id).join());
+    stubFetch(()=>[{}]);
+    await archivePlayer(2);
+    const ar=calls.find(c=>c.method==='PATCH');
+    T('archivePlayer PATCHes archived_at, never DELETEs',ar&&ar.url.includes('id=eq.2')&&typeof ar.body.archived_at==='string'&&!calls.some(c=>c.method==='DELETE'),JSON.stringify(calls));
+    T('archived player stays in players (history)',players.some(p=>p.id===2&&p.archived_at),JSON.stringify(players));
+    stubFetch(()=>[{}]);
+    await restorePlayer(2);
+    const rs=calls.find(c=>c.method==='PATCH');
+    T('restorePlayer clears archived_at',rs&&rs.body.archived_at===null&&!players.find(p=>p.id===2).archived_at,JSON.stringify(rs?.body));
+    players.find(p=>p.id===2).archived_at=null;
+    window.__alert=null;stubFetch(()=>[{}]);
+    await archivePlayer(1);
+    T('cannot archive the only admin',/only admin/i.test(window.__alert||'')&&!calls.length,String(window.__alert));
+    // pick lists
+    showPicker();T('picker hides archived',!/Gone/.test(document.getElementById('pickerList').textContent));
+    showAddFine();T('issue-fine list hides archived',![...document.getElementById('finePlayer').options].some(o=>o.textContent==='Gone'));
+    showRecordPayment();T('payment list hides archived',![...document.getElementById('payPlayer').options].some(o=>o.textContent==='Gone'));
+    buildPlayerCheckboxes();T('Log Round group hides archived',!/Gone/.test(document.getElementById('playerCheckboxes').textContent));
+    renderGrid();
+    const grid=document.getElementById('playerGrid').innerHTML;
+    T('roster hides archived from the active list',(grid.split('Former members')[0]||'').indexOf('Gone')<0,grid.slice(0,200));
+    T('admin roster lists former members with Restore',/Former members/.test(grid)&&/restorePlayer\(3\)/.test(grid));
+    T('season standings keep archived history',seasonStandings('Summer 2026').some(s=>s.p.id===3));
+    // rejecting a pending applicant removes their rows first, then the player
+    pendingPlayers=[{id:9,name:'Applicant',approved:false}];stubFetch(()=>undefined);
+    await rejectPlayer(9);
+    const dels=calls.filter(c=>c.method==='DELETE').map(c=>c.url.replace(/^.*\/rest\/v1\//,''));
+    T('rejectPlayer deletes the applicant\'s rows before the player',dels.length>1&&dels[dels.length-1].startsWith('players?id=eq.9')&&dels.slice(0,-1).every(u=>/player_id=eq\.9/.test(u)),JSON.stringify(dels));
     // ── end ──
   }catch(e){out.push('FAIL EXCEPTION :: '+e.stack);}
   await new Promise(r=>setTimeout(r,150));
