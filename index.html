@@ -1190,7 +1190,7 @@ async function submitSignup(){
   if(pin!==pinConfirm){err.textContent='PINs do not match.';err.style.display='block';return;}
   const hcpVal=hcpRaw?parseFloat(hcpRaw):null;
   const nextColor=Math.floor(Math.random()*COLORS.length);
-  const payload={id:Date.now(),name,email,dgu_number:dgu,color:nextColor,handicap:hcpVal,hcp_history:hcpVal!=null?[{date:today(),value:hcpVal,note:'Sign-up entry'}]:[],approved:false,pin};
+  const payload={name,email,dgu_number:dgu,color:nextColor,handicap:hcpVal,hcp_history:hcpVal!=null?[{date:today(),value:hcpVal,note:'Sign-up entry'}]:[],approved:false,pin};
   err.style.display='none';
   try{
     await sbInsert('players',payload);
@@ -2646,9 +2646,9 @@ async function heInit(playerList,date,notes,startHole){
       entry.phcp=index!=null?calcPlayingHcp(index,tee):null;
       scores[p.id]=Array(18).fill(null);pickups[p.id]=Array(18).fill(false);
       const holes=Array.from({length:18},(_,i)=>({hole:i+1,score:null,par:HOLE_PARS[i],hcp:HOLE_HCP[i]}));
-      const payload={id:Date.now()+Math.floor(Math.random()*100000),player_id:p.id,course:'Royal Golf Club, Copenhagen',date,tee_time:HE.teeTime||null,tee_id:entry.teeId,tee_name:tee.name,tee_color:tee.color,rating:tee.rating,slope:tee.slope,hcp_index:index,course_hcp:courseHcp,playing_hcp:entry.phcp,notes,holes};
+      const payload={player_id:p.id,course:'Royal Golf Club, Copenhagen',date,tee_time:HE.teeTime||null,tee_id:entry.teeId,tee_name:tee.name,tee_color:tee.color,rating:tee.rating,slope:tee.slope,hcp_index:index,course_hcp:courseHcp,playing_hcp:entry.phcp,notes,holes};
       const[saved]=await sbInsert('rounds',payload);
-      const rec=saved||payload;
+      const rec=saved;
       roundIds[p.id]=rec.id;
       allRounds.unshift(rec);
     }
@@ -3353,9 +3353,9 @@ async function confirmSignup(date){
       toast('Already signed up for that Saturday ✓');
       renderSaturdayView();renderSaturdayAdmin();renderTeeSheet();return;
     }
-    const payload={id:Date.now()+Math.floor(Math.random()*9999),player_id:activeId,date,early_tee_request:earlyReq,early_tee_reason:earlyReason||null};
+    const payload={player_id:activeId,date,early_tee_request:earlyReq,early_tee_reason:earlyReason||null};
     const[saved]=await sbInsert('saturday_signups',payload);
-    saturdaySignups.push(saved||payload);
+    saturdaySignups.push(saved);
     satSignupForm=null;
     toast('Signed up for '+new Date(date+'T00:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'})+(earlyReq?' ⏰':'')+' ✓');
     renderSaturdayView();renderSaturdayAdmin();
@@ -3983,12 +3983,12 @@ async function teEnter(){
   _teBuffer='';
 
   // Save to Supabase (delete existing + insert)
-  const _payload={id:Date.now()+Math.floor(Math.random()*9999),match_id:TE.matchId,hole:TE.currentHole,player_id:pid,gross};
+  const _payload={match_id:TE.matchId,hole:TE.currentHole,player_id:pid,gross};
   try{
     await sbDeleteWhere('tournament_scores',`match_id=eq.${TE.matchId}&hole=eq.${TE.currentHole}&player_id=eq.${pid}`);
     const[saved]=await sbInsert('tournament_scores',_payload);
     tournamentScores=tournamentScores.filter(s=>!(s.match_id===TE.matchId&&s.hole===TE.currentHole&&s.player_id===pid));
-    tournamentScores.push(saved||_payload);
+    tournamentScores.push(saved);
   }catch(e){
     // Keep in-memory consistent so auto-close and display stay correct
     tournamentScores=tournamentScores.filter(s=>!(s.match_id===TE.matchId&&s.hole===TE.currentHole&&s.player_id===pid));
@@ -4146,11 +4146,11 @@ async function createTournament(){
   const teamAName=document.getElementById('tmNewTeamA').value.trim()||'Team A';
   const teamBName=document.getElementById('tmNewTeamB').value.trim()||'Team B';
   if(!name||!date||!teeId){if(createBtn)createBtn.disabled=false;alert('Name, date and tee required');return;}
-  const payload={id:Date.now()+Math.floor(Math.random()*9999),name,date,tee_id:teeId,status:'setup',team_a_name:teamAName,team_b_name:teamBName};
+  const payload={name,date,tee_id:teeId,status:'setup',team_a_name:teamAName,team_b_name:teamBName};
   try{
     const[saved]=await sbInsert('tournaments',payload);
-    tournaments.unshift(saved||payload);
-    activeTournamentId=(saved||payload).id;
+    tournaments.unshift(saved);
+    activeTournamentId=saved.id;
     document.getElementById('tabTournament').style.display='';
     toast('Tournament created ✅');
     renderAdminTournament();
@@ -4160,10 +4160,10 @@ async function createTournament(){
 }
 async function assignTournamentPlayer(tournId,team,playerId){
   if(tournamentPlayers.find(tp=>tp.tournament_id===tournId&&tp.player_id===playerId))return;
-  const payload={id:Date.now()+Math.floor(Math.random()*9999),tournament_id:tournId,player_id:playerId,team};
+  const payload={tournament_id:tournId,player_id:playerId,team};
   try{
     const[saved]=await sbInsert('tournament_players',payload);
-    tournamentPlayers.push(saved||payload);
+    tournamentPlayers.push(saved);
     renderAdminTournament();
   }catch(e){alert('Error: '+e.message);}
 }
@@ -4206,9 +4206,9 @@ async function ensureRoundMatches(tournId,round,count){
   try{
     const t=tournaments.find(x=>x.id===tournId);
     const newMatches=[];
-    for(let i=1;i<=count;i++)newMatches.push({id:Date.now()+Math.floor(Math.random()*999999)+i,tournament_id:tournId,round,match_num:i,status:'pending'});
+    for(let i=1;i<=count;i++)newMatches.push({tournament_id:tournId,round,match_num:i,status:'pending'});
     const saved=await sbInsert('tournament_matches',newMatches.length===1?newMatches[0]:newMatches);
-    const insertedRows=Array.isArray(saved)?saved:saved?[saved]:newMatches;
+    const insertedRows=Array.isArray(saved)?saved:[saved];
     insertedRows.forEach(m=>{if(t)m._teeId=t.tee_id;tournamentMatches.push(m);});
     return insertedRows;
   }finally{
@@ -4439,10 +4439,10 @@ async function adminAddSaturdayPlayer(date){
       toast(existing.tee_time?`Already in the ${existing.tee_time} group`:'Player already signed up');
       clearSel();renderSaturdayAdmin();renderSaturdayView();renderTeeSheet();return;
     }
-    const payload={id:Date.now()+Math.floor(Math.random()*9999),player_id:pid,date,
+    const payload={player_id:pid,date,
       ...(teeTime?{tee_time:teeTime,group_num:groupNum}:{})};
     const[saved]=await sbInsert('saturday_signups',payload);
-    saturdaySignups.push(saved||payload);
+    saturdaySignups.push(saved);
     clearSel();
     toast('Player added'+(teeTime?` · ${teeTime}`:'')+' ✓');
     renderSaturdayAdmin();renderSaturdayView();renderTeeSheet();
@@ -4698,9 +4698,9 @@ async function autoDrawIfDue(){
     // at the same moment do not both write one.
     if(event){await sbUpdate('saturday_events',event.id,{locked:true});event.locked=true;}
     else{
-      const payload={id:Date.now()+Math.floor(Math.random()*9999),date,locked:true,tee_times:teeTimes};
+      const payload={date,locked:true,tee_times:teeTimes};
       const[saved]=await sbInsert('saturday_events',payload);
-      saturdayEvents.push(saved||payload);
+      saturdayEvents.push(saved);
     }
     const alloc=chooseBestDraw(signups,teeTimes,date);
     for(const s of signups){
@@ -4716,7 +4716,7 @@ async function saveTeeTimesOnly(date){
   const teeTimes=(ttInput?.value||'08:30,08:40,08:50').split(',').map(t=>t.trim()).filter(Boolean).sort();
   let event=saturdayEvents.find(e=>e.date===date);
   try{
-    if(!event){const payload={id:Date.now()+Math.floor(Math.random()*9999),date,locked:false,tee_times:teeTimes};const[saved]=await sbInsert('saturday_events',payload);saturdayEvents.push(event=saved||payload);}
+    if(!event){const payload={date,locked:false,tee_times:teeTimes};const[saved]=await sbInsert('saturday_events',payload);saturdayEvents.push(event=saved);}
     else{await sbUpdate('saturday_events',event.id,{tee_times:teeTimes});event.tee_times=teeTimes;}
     toast('Tee times saved ✓');renderSaturdayAdmin();renderSaturdayView();renderTeeSheet();
   }catch(e){alert('Error: '+e.message);}
@@ -4730,7 +4730,7 @@ async function saveDraw(date){
   let event=saturdayEvents.find(e=>e.date===date);
   setLoading(true,'Saving draw…');
   try{
-    if(!event){const payload={id:Date.now()+Math.floor(Math.random()*9999),date,locked:false,tee_times:teeTimes};const[saved]=await sbInsert('saturday_events',payload);saturdayEvents.push(event=saved||payload);}
+    if(!event){const payload={date,locked:false,tee_times:teeTimes};const[saved]=await sbInsert('saturday_events',payload);saturdayEvents.push(event=saved);}
     else{await sbUpdate('saturday_events',event.id,{tee_times:teeTimes});event.tee_times=teeTimes;}
     // Always derive group_num from tee_time position — never trust stale group_num in memory
     await Promise.all(signups.map(s=>{
@@ -4748,7 +4748,7 @@ async function toggleSatLock(date){
   let event=saturdayEvents.find(e=>e.date===date);
   const newLocked=!event?.locked;
   try{
-    if(!event){const payload={id:Date.now()+Math.floor(Math.random()*9999),date,locked:newLocked,tee_times:teeTimes};const[saved]=await sbInsert('saturday_events',payload);saturdayEvents.push(saved||payload);}
+    if(!event){const payload={date,locked:newLocked,tee_times:teeTimes};const[saved]=await sbInsert('saturday_events',payload);saturdayEvents.push(saved);}
     else{await sbUpdate('saturday_events',event.id,{locked:newLocked,tee_times:teeTimes});event.locked=newLocked;}
     toast(newLocked?'Sign-ups locked 🔒':'Sign-ups unlocked 🔓');renderSaturdayAdmin();renderSaturdayView();
   }catch(e){alert('Error: '+e.message);}
@@ -4759,7 +4759,7 @@ async function toggleSatCancel(date){
   const msg=newVal?'Cancel this Saturday? It will be hidden from members.':'Restore this Saturday? It will reappear for members.';
   if(!confirm(msg))return;
   try{
-    if(!event){const payload={id:Date.now()+Math.floor(Math.random()*9999),date,locked:false,cancelled:newVal,tee_times:['08:30','08:40','08:50']};const[saved]=await sbInsert('saturday_events',payload);saturdayEvents.push(saved||payload);}
+    if(!event){const payload={date,locked:false,cancelled:newVal,tee_times:['08:30','08:40','08:50']};const[saved]=await sbInsert('saturday_events',payload);saturdayEvents.push(saved);}
     else{await sbUpdate('saturday_events',event.id,{cancelled:newVal});event.cancelled=newVal;}
     toast(newVal?'Saturday cancelled ⛔':'Saturday restored ✅');renderSaturdayAdmin();renderSaturdayView();
   }catch(e){alert('Error: '+e.message);}
@@ -4979,7 +4979,6 @@ async function saveBulkScorecard(){
   const courseHcp = index!=null ? calcCourseHcp(index,tee) : null;
   const playingHcp = index!=null ? calcPlayingHcp(index,tee) : null;
   const payload = {
-    id: Date.now()+Math.floor(Math.random()*100000),
     player_id: p.id, course:'Royal Golf Club, Copenhagen',
     date: BE.date, tee_id: BE.teeId, tee_name: tee.name, tee_color: tee.color,
     rating: tee.rating, slope: tee.slope,
@@ -4989,7 +4988,7 @@ async function saveBulkScorecard(){
   setLoading(true, 'Saving…');
   try{
     const [saved] = await sbInsert('rounds', payload);
-    allRounds.unshift(saved||payload);
+    allRounds.unshift(saved);
     toast(`${p.name}'s round saved ✓`);
     // Reset for next player, keep date/tee/notes
     BE.playerId = null;
@@ -5260,11 +5259,11 @@ async function submitFine(){
   const round_id=HE?.roundIds?.[player_id]||null;
   // Snapshot the amount at issue time so later edits to the fine type don't rewrite this fine
   const amount=fineTypes.find(x=>x.id===fine_type_id)?.amount??10;
-  const payload={id:Date.now()+Math.floor(Math.random()*10000),player_id,fine_type_id,amount,round_id,hole,date,issued_by:activeId,notes};
+  const payload={player_id,fine_type_id,amount,round_id,hole,date,issued_by:activeId,notes};
   setLoading(true,'Issuing fine…');
   try{
     const[saved]=await sbInsert('fines',payload);
-    allFines.unshift(saved||payload);
+    allFines.unshift(saved);
     toast('Fine issued 🚨');
     closeModal('addFineModal');
     renderAdminFines();
@@ -5330,11 +5329,11 @@ async function submitPayment(){
   if(!amount||amount<=0){err.textContent='Enter an amount greater than zero.';err.style.display='block';return;}
   if(!date){err.textContent='Date is required.';err.style.display='block';return;}
   err.style.display='none';
-  const payload={id:Date.now()+Math.floor(Math.random()*10000),player_id,amount,date,note,recorded_by:activeId};
+  const payload={player_id,amount,date,note,recorded_by:activeId};
   setLoading(true,'Recording payment…');
   try{
     const[saved]=await sbInsert('fine_payments',payload);
-    finePayments.unshift(saved||payload);
+    finePayments.unshift(saved);
     toast('Payment recorded 💰');
     closeModal('payModal');
     renderAdminFines();
@@ -5371,9 +5370,9 @@ async function addFineType(){
   const name=document.getElementById('newFineTypeName').value.trim();
   const amount=parseFloat(document.getElementById('newFineTypeAmount').value)||10;
   if(!name){alert('Enter a name.');return;}
-  const payload={id:Date.now()+Math.floor(Math.random()*10000),name,amount};
+  const payload={name,amount};
   setLoading(true,'Saving…');
-  try{const[saved]=await sbInsert('fine_types',payload);fineTypes.push(saved||payload);fineTypes.sort((a,b)=>a.name.localeCompare(b.name));toast('Fine type added ✓');document.getElementById('newFineTypeName').value='';renderFineTypesList();}
+  try{const[saved]=await sbInsert('fine_types',payload);fineTypes.push(saved);fineTypes.sort((a,b)=>a.name.localeCompare(b.name));toast('Fine type added ✓');document.getElementById('newFineTypeName').value='';renderFineTypesList();}
   catch(e){alert('Error: '+e.message);}finally{setLoading(false);}
 }
 
@@ -5558,9 +5557,9 @@ function pickColor(i){selColor=i;COLORS.forEach((_,j)=>{const el=document.getEle
 async function addPlayer(){
   const name=document.getElementById('newName').value.trim();if(!name){alert('Enter a name.');return;}
   const hcp=document.getElementById('newHcp').value;const td=today();const hcpVal=hcp?parseFloat(hcp):null;
-  const payload={id:Date.now(),name,color:selColor,handicap:hcpVal,hcp_history:hcpVal!=null?[{date:td,value:hcpVal,note:'Initial entry'}]:[]};
+  const payload={name,color:selColor,handicap:hcpVal,hcp_history:hcpVal!=null?[{date:td,value:hcpVal,note:'Initial entry'}]:[]};
   setLoading(true,'Saving player…');
-  try{await sbInsert('players',payload);players.push(payload);toast('Player added ✓');closeModal('addModal');renderGrid();updateAdminUI();}
+  try{const[saved]=await sbInsert('players',payload);players.push(saved);toast('Player added ✓');closeModal('addModal');renderGrid();updateAdminUI();}
   catch(e){alert('Error: '+e.message);}finally{setLoading(false);}
 }
 async function deletePlayer(id){
