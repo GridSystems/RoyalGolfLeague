@@ -35,6 +35,34 @@ setTimeout(async function(){
     T('pay screen shows the entry season buy-in',/DKK 175/.test(payHtml())&&/Winter 2027/.test(payHtml())&&!/DKK 250/.test(payHtml()));
     today=()=>'2026-11-01';renderRules();
     T('Rules page names best 3 for Winter',[...document.querySelectorAll('.rulesBestN')].every(e=>e.textContent==='3'));
+    // ── Task 3: entries decide the prizes ──
+    today=()=>'2026-11-01';
+    players=[P(1,'Ann'),P(2,'Bo'),P(3,'Cy',{is_social:true}),P(4,'Di')];
+    allRounds=[round(1,1,'2026-10-10',5),round(2,2,'2026-10-10',4),round(3,3,'2026-10-10',3),round(4,4,'2026-10-10',6)];
+    seasonEntries=[{id:1,season:'Winter 2027',player_id:1,paid_at:'2026-10-01T10:00:00Z',amount:175},{id:2,season:'Winter 2027',player_id:4,paid_at:null,amount:null}];
+    T('inPrizes: entered and not social',inPrizes(players[0],'Winter 2027')&&inPrizes(players[3],'Winter 2027')&&!inPrizes(players[1],'Winter 2027')&&!inPrizes(players[2],'Winter 2027'));
+    T('Winter eclectic lists entrants only',JSON.stringify(eclecticStandings('Winter 2027').map(e=>e.p.id).sort())==='[1,4]');
+    T('Winter standings list entrants only',JSON.stringify(seasonStandings('Winter 2027').map(s=>s.p.id).sort())==='[1,4]');
+    allRounds.push(round(5,2,'2026-10-05',4));seasonEntries.push({id:3,season:'Winter 2027',player_id:2,paid_at:null,amount:null,entered_at:'2026-11-01T09:00:00Z'});
+    T('a late entry counts rounds from before entering',seasonStandings('Winter 2027').find(s=>s.p.id===2)?.rounds===2);
+    document.getElementById('seasonYear').innerHTML='<option>Winter 2027</option>';document.getElementById('seasonYear').value='Winter 2027';renderSeasonLb();
+    T('unpaid entrants are tagged unpaid in the Season table',(document.getElementById('seasonTable').innerHTML.match(/>unpaid</g)||[]).length===2);
+    allRounds=[round(1,1,'2026-05-10',5),round(2,2,'2026-05-10',4)];
+    T('Summer ignores entries: every non-social member is in',seasonStandings('Summer 2026').length===2&&inPrizes(players[1],'Summer 2026'));
+    T('Summer eclectic still lists everyone, social included',eclecticStandings('Summer 2026').length===2);
+    today=()=>'2026-11-01';renderRules();
+    T('Winter pot counts paid entries only',/DKK 175/.test(document.getElementById('rulesPot').innerHTML)&&/1 paid entry/.test(document.getElementById('rulesPot').innerHTML));
+    today=()=>'2026-09-20';renderRules();
+    T('Summer pot is still players × DKK 250',/DKK 250 × 3 players = DKK 750/.test(document.getElementById('rulesPot').innerHTML));
+    // Bo (2) has not entered; Ann (1) has.
+    seasonEntries=[{id:1,season:'Winter 2027',player_id:1,paid_at:'2026-10-01T10:00:00Z',amount:175}];
+    allRounds=[round(1,2,'2026-11-01',4),round(2,1,'2026-11-01',5)];today=()=>'2026-11-01';renderTodayLb();
+    T('Today: a non-entrant gets no prize place',/1st/.test(document.getElementById('todayTable').innerHTML)&&!/2nd/.test(document.getElementById('todayTable').innerHTML));
+    // tees non-empty so loadData doesn't try to seed them; everything else empty; season_entries fails.
+    reset(u=>u.includes('/season_entries')?{__status:500,message:'boom'}:u.includes('/tees')?[{id:'platinum',name:'Royal Platinum',color:'#b0a0c0',rating:77.6,slope:153,dist:[]}]:[]);
+    seasonEntries=[{id:9}];
+    try{await loadData();}catch(e){out.push('FAIL loadData threw :: '+e.message);}
+    T('load failure: season_entries failing leaves an empty list, not a crash',Array.isArray(seasonEntries)&&seasonEntries.length===0);
     // ── end ──
   }catch(e){out.push('FAIL EXCEPTION :: '+e.stack);}
   await new Promise(r=>setTimeout(r,150));
