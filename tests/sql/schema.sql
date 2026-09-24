@@ -35,4 +35,9 @@ CREATE TABLE public.tournament_matches (id bigint PRIMARY KEY, tournament_id big
   status text NOT NULL DEFAULT 'pending', result text, created_at timestamptz DEFAULT now(), tee_id text);
 CREATE TABLE public.tournament_scores (id bigint PRIMARY KEY, match_id bigint NOT NULL REFERENCES public.tournament_matches(id),
   hole int NOT NULL, player_id bigint NOT NULL, gross int NOT NULL);
+-- Course tables (mirroring production) that later Phase 2a tasks need.
+CREATE TABLE public.tees (id text PRIMARY KEY, name text NOT NULL, color text NOT NULL, rating numeric NOT NULL,
+  slope integer NOT NULL, dist jsonb, archived boolean NOT NULL DEFAULT false);
+CREATE TABLE public.green_polygons (hole int PRIMARY KEY, vertices jsonb, recorded_at timestamptz DEFAULT now());
+CREATE TABLE public.fairway_polygons (hole int PRIMARY KEY, polygons jsonb, recorded_at timestamptz DEFAULT now());
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO anon, authenticated;
