@@ -41,6 +41,62 @@ setTimeout(async function(){
     T('lock screen hidden only after start-up',document.getElementById('lockScreen').style.display==='none');
     T('the active player is the signed-in player',activeId===2,String(activeId));
     window.renderGrid=origRenderGrid;
+
+    // ── Task 6 fix round 1: a failed load must not render "nobody" ──
+    const dbFailRespond=u=>u.includes('/players?')?{__status:500}:[];
+    const origShowLockPanel=showLockPanel;
+
+    // old PIN route, players fetch fails: no render, lock screen stays up, message shown
+    localStorage.clear();sessionStorage.clear();
+    sessionStorage.setItem('sl_session_player','2');
+    authState.session=null;
+    reset(dbFailRespond);
+    document.getElementById('lockScreen').style.display='flex';
+    document.getElementById('loginError').style.display='none';document.getElementById('loginError').textContent='';
+    const renderedFail1=[];window.renderGrid=()=>{renderedFail1.push(true);};
+    await boot();
+    window.renderGrid=origRenderGrid;
+    T('old PIN route: failed load does not render',renderedFail1.length===0,JSON.stringify(renderedFail1));
+    T('old PIN route: failed load keeps the lock screen up',document.getElementById('lockScreen').style.display!=='none',document.getElementById('lockScreen').style.display);
+    T('old PIN route: failed load shows a database message',document.getElementById('loginError').style.display==='block'&&/database/i.test(document.getElementById('loginError').textContent),document.getElementById('loginError').textContent);
+
+    // new login, players fetch fails: database message, not the unlinked panel
+    localStorage.clear();sessionStorage.clear();
+    authState.session=sessionFor('u-3');
+    reset(dbFailRespond);
+    document.getElementById('lockScreen').style.display='flex';
+    document.getElementById('loginError').style.display='none';document.getElementById('loginError').textContent='';
+    const panelCalls1=[];window.showLockPanel=id=>{panelCalls1.push(id);origShowLockPanel(id);};
+    const renderedFail2=[];window.renderGrid=()=>{renderedFail2.push(true);};
+    await boot();
+    window.showLockPanel=origShowLockPanel;window.renderGrid=origRenderGrid;
+    T('new login: failed load does not render',renderedFail2.length===0,JSON.stringify(renderedFail2));
+    T('new login: failed load shows the database message, not the unlinked panel',!panelCalls1.includes('lockUnlinkedPanel')&&panelCalls1.includes('lockLoginPanel'),JSON.stringify(panelCalls1));
+    T('new login: failed load database message visible',document.getElementById('loginError').style.display==='block'&&/database/i.test(document.getElementById('loginError').textContent));
+
+    // new login, data loads but no linked player: unlinked panel (existing behaviour kept)
+    localStorage.clear();sessionStorage.clear();
+    authState.session=sessionFor('u-4');
+    reset(u=>u.includes('/players?')?[{id:2,name:'Bo',user_id:'u-2',color:0,hcp_history:[],approved:true}]:[]);
+    document.getElementById('lockScreen').style.display='flex';
+    const panelCalls2=[];window.showLockPanel=id=>{panelCalls2.push(id);origShowLockPanel(id);};
+    await boot();
+    window.showLockPanel=origShowLockPanel;
+    T('new login: unresolved player still shows the unlinked panel',panelCalls2.includes('lockUnlinkedPanel'),JSON.stringify(panelCalls2));
+    T('new login: unresolved player keeps the lock screen up',document.getElementById('lockScreen').style.display!=='none');
+
+    // old PIN route happy path: renders once as the remembered player
+    localStorage.clear();sessionStorage.clear();
+    sessionStorage.setItem('sl_session_player','2');localStorage.setItem('sl_active_player','2');
+    authState.session=null;
+    reset(u=>u.includes('/players?')?[{id:2,name:'Bo',user_id:'u-2',color:0,hcp_history:[],approved:true}]:[]);
+    document.getElementById('lockScreen').style.display='flex';
+    const renderedHappy=[];window.renderGrid=()=>{renderedHappy.push(document.getElementById('playerName').textContent);};
+    await boot();
+    window.renderGrid=origRenderGrid;
+    T('old PIN route happy path renders once as the remembered player',renderedHappy.length>0&&renderedHappy.every(n=>n==='Bo'),JSON.stringify(renderedHappy));
+    T('old PIN route happy path hides the lock screen',document.getElementById('lockScreen').style.display==='none');
+    T('old PIN route happy path sets the active player',activeId===2,String(activeId));
     // ── end ──
   }catch(e){out.push('FAIL EXCEPTION :: '+e.stack);}
   await new Promise(r=>setTimeout(r,150));

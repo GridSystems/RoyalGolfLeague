@@ -1159,6 +1159,13 @@ function showLockPanel(id){
   });
   if(id==='lockLoginPanel')setTimeout(()=>document.getElementById('loginEmail')?.focus(),50);
 }
+// The initial data load failed (bad signal, DB unreachable) — say so on the login panel
+// rather than rendering with no player data. Reloading is the retry.
+function showLockDbError(){
+  showLockPanel('lockLoginPanel');
+  const err=document.getElementById('loginError');
+  if(err){err.textContent="Can't reach the league database — check your signal and reload.";err.style.display='block';}
+}
 function showLockLogin(){lockLoginPlayer=null;document.getElementById('lockLoginPanel').style.display='block';document.getElementById('lockSetPinPanel').style.display='none';document.getElementById('lockSignupPanel').style.display='none';document.getElementById('lockPayPanel').style.display='none';document.getElementById('loginError').style.display='none';setTimeout(()=>document.getElementById('loginEmail').focus(),50);}
 async function submitEmailPin(){
   const email=document.getElementById('loginEmail').value.trim().toLowerCase();
@@ -5936,11 +5943,16 @@ function resolveSignedInPlayer(){
 }
 async function init(){
   document.getElementById('roundDate').value=lastSaturday();
+  let dataOk=false;
   try{
     await loadData();
     buildTeeSelectorEl('teeSelector',selTeeId,'selTeeId');
     document.getElementById('dbStatus').textContent='● Supabase';document.getElementById('dbStatus').className='db-status db-ok';
+    dataOk=true;
   }catch(e){document.getElementById('dbStatus').textContent='✕ DB Error';document.getElementById('dbStatus').className='db-status db-err';console.error(e);}
+  // A failed initial load must not render "nobody" — leave the lock screen up with a
+  // message rather than guessing at a player from data we don't have.
+  if(!dataOk){setLoading(false);showLockDbError();return;}
   if(reconcileStoredPlayer()){location.reload();return;}
   if(!resolveSignedInPlayer())return;
   // Restore last selected player
