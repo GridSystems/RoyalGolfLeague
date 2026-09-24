@@ -1187,7 +1187,7 @@ function tmMatchHcpInfo(match,date){
   let phA2=match.team_a_p2_id?tmPlayingHcp(getP(match.team_a_p2_id),tee,date):0;
   let phB1=match.team_b_p1_id?tmPlayingHcp(getP(match.team_b_p1_id),tee,date):0;
   let phB2=match.team_b_p2_id?tmPlayingHcp(getP(match.team_b_p2_id),tee,date):0;
-  if(match.round===1){
+  if(tmIsFourball(match)){
     // Fourball: lowest HCP across all four players becomes 0; others get the difference
     const vals=[phA1,phB1];
     if(match.team_a_p2_id)vals.push(phA2);
@@ -1213,18 +1213,19 @@ function tmPlayerNett(gross,strokes){
 // Returns {aScore,bScore,result:'a'|'b'|'half'|null, nettA1,nettA2,nettB1,nettB2} where a/bScore = team best (lowest) nett.
 function tmHoleResult(holeIdx,match,hcpInfo,grossByPid){
   let sA1,sA2,sB1,sB2;
-  if(match.round===1){
+  if(tmIsFourball(match)){
     // Fourball: each player gets individual strokes based on their adjusted HCP
     sA1=strokesOnHole(hcpInfo.phA1,holeIdx);
     sA2=match.team_a_p2_id!=null?strokesOnHole(hcpInfo.phA2,holeIdx):0;
     sB1=strokesOnHole(hcpInfo.phB1,holeIdx);
     sB2=match.team_b_p2_id!=null?strokesOnHole(hcpInfo.phB2,holeIdx):0;
   }else{
-    // Singles: team differential — weaker team receives strokes on lowest SI holes
-    const isStroke=hcpInfo.strokeHoles.includes(holeIdx);
-    sA1=isStroke&&hcpInfo.receivingTeam==='a'?1:0;
+    // Singles: the lower player plays off 0; the other receives the difference — one stroke on
+    // SI 1…diff, a second where diff > 18 (the same as strokeHoles whenever diff ≤ 18).
+    const s=strokesOnHole(hcpInfo.diff,holeIdx);
+    sA1=hcpInfo.receivingTeam==='a'?s:0;
     sA2=0; sB2=0;
-    sB1=isStroke&&hcpInfo.receivingTeam==='b'?1:0;
+    sB1=hcpInfo.receivingTeam==='b'?s:0;
   }
   const nettA1=tmPlayerNett(grossByPid[match.team_a_p1_id],sA1);
   const nettA2=match.team_a_p2_id!=null?tmPlayerNett(grossByPid[match.team_a_p2_id],sA2):null;
@@ -1283,6 +1284,53 @@ function tmResultLabel(match,hcpInfo,scores){
   return'—';
 }
 // ── End tournament helpers ────────────────────────────────────────
+
+// ── Matchplay league (tournaments.format='league') ────────────────────────────
+// Spec: docs/superpowers/specs/2026-09-25-matchplay-league-design.md. The league reuses the
+// tournament tables, the scoring screen and the stroke logic above; these are its pure rules.
+const ML_ROUND_KEYS=['group_1','group_2','group_3','semi','final'];   // match.round 1–5 → its deadline
+const ML_BRACKETS=['Winners','Runners-up','Thirds','Fourths'];       // bracket 1–4 → places 1–4 … 13–16
+// Team day's round 1 is fourballs; league matches are always singles, whatever their round.
+const tmIsFourball=m=>m.round===1&&!m.stage;
+// Handicap date: team day plays on the tournament date, a league match on the day it was played.
+const tmMatchDate=(m,t)=>m.stage?(m.played_on||today()):t.date;
+// Play order: 1–18, or 10–18 then 1–9 for a match that started on the 10th.
+const mlPlayOrder=m=>(m.start_hole||1)===10?[10,11,12,13,14,15,16,17,18,1,2,3,4,5,6,7,8,9]:[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18];
+// 0-based course hole for a hole number. Sudden death is stored as holes 19, 20 … and replays the
+// course from the start hole at the same strokes: from the 1st, 19 is hole 1; from the 10th, hole 10.
+function tmHoleIdx(m,hole){return hole<=18?hole-1:((m.start_hole||1)-1+(hole-19))%18;}
+function mlNextHole(m,h){if(h>=19)return h+1;const o=mlPlayOrder(m),i=o.indexOf(h);return i<17?o[i+1]:m.stage==='group'?h:19;}
+function mlPrevHole(m,h){if(h>19)return h-1;const o=mlPlayOrder(m);if(h===19)return o[17];const i=o.indexOf(h);return i>0?o[i-1]:h;}
+const mlLiveLabel=(up,thru)=>!thru?'—':up===0?`A/S thru ${thru}`:`${Math.abs(up)}UP thru ${thru}`;
+// A league match's decision, derived every time from its scores and admin outcome — never trusted
+// from the stored status/result, so a corrected score re-opens or re-decides it. Walks the play order
+// and stops at the hole that decides it (holes after that were never needed). A group match level
+// after 18 is halved; a playoff goes on to sudden death (holes 19+) until a hole is won.
+// winner: 'a' | 'b' | 'half' | null (group double forfeit: nobody). started: any score or an outcome.
+function mlDecide(m,hcp,scores){
+  const o=m.outcome||'played',playoff=m.stage!=='group';
+  const base={decided:false,winner:null,holes:{a:0,b:0},up:0,thru:0,extra:0,started:scores.length>0||o!=='played',label:'—'};
+  if(o==='walkover')return{...base,decided:true,winner:m.result,label:'W/O'};
+  if(o==='halve_decision')return{...base,decided:true,winner:'half',label:'Halved by decision'};
+  if(o==='double_forfeit')return{...base,decided:true,winner:playoff?m.result:null,label:'Double forfeit'};
+  const g={};for(const s of scores)(g[s.hole]||(g[s.hole]={}))[s.player_id]=s.gross;
+  const a=m.team_a_p1_id,b=m.team_b_p1_id;
+  const res=h=>{const x=g[h];return x&&x[a]!=null&&x[b]!=null?tmHoleResult(tmHoleIdx(m,h),m,hcp,x).result:null;};
+  const holes={a:0,b:0};let up=0,thru=0;
+  for(const h of mlPlayOrder(m)){
+    const r=res(h);if(r==null)return{...base,holes,up,thru,label:mlLiveLabel(up,thru)};
+    if(r!=='half')holes[r]++;up=holes.a-holes.b;thru++;
+    const left=18-thru;
+    if(Math.abs(up)>left)return{...base,decided:true,winner:up>0?'a':'b',holes,up,thru,label:left?`${Math.abs(up)}&${left}`:`${Math.abs(up)}UP`};
+  }
+  if(!playoff)return{...base,decided:true,winner:'half',holes,up,thru,label:'Halved'};
+  for(let h=19;h<19+54;h++){
+    const r=res(h);
+    if(r==null)return{...base,holes,up,thru,extra:h-19,label:`A/S after 18 · sudden death${h>19?` (${h-19} played)`:''}`};
+    if(r!=='half')return{...base,decided:true,winner:r,holes,up,thru,extra:h-18,label:`won at the ${ordinal(h)}`};
+  }
+  return{...base,holes,up,thru,extra:54,label:'A/S after 18 · sudden death'};
+}
 
 function currentHcp(player){const hist=player.hcp_history||[];if(!hist.length)return player.handicap;return[...hist].sort((a,b)=>b.date.localeCompare(a.date))[0].value;}
 // DGU membership number: digits, one hyphen, digits. Segments are variable-length
