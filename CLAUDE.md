@@ -61,7 +61,13 @@ holes        jsonb  [{hole, score, par, hcp}] × 18
 created_at   timestamptz
 ```
 
-**RLS:** Public read/write on both tables (app has no auth layer — admin is PIN-protected at UI level only).
+**RLS:** Phase 2 release A (2026-09-24, `supabase/phase2a_auth.sql`) added real
+permission rules for logged-in members — `p2_*` policies `TO authenticated`, e.g.
+members read/write their own rounds and sign-ups, admins (admin mode) everything,
+pending sign-ups only their own row. See **Supabase Auth** under Admin system for
+how a request becomes `authenticated`. The old PIN route's `anon_all` allow-all
+policy still exists `TO anon` on every table and keeps working until release B,
+which happens once the Admin tab's move-over list is empty (see below).
 
 **Credentials are hidden (Phase 0, 2026-09-24):** the public key cannot read
 `players.email`, `players.pin` or the lockout columns (`pin_failures`,
@@ -72,8 +78,6 @@ wrong PINs lock an account for 15 minutes.
 **Adding a column to `players`?** Add it to `PLAYER_COLS` in `index.html` *and* to the
 column grants in `supabase/grants.sql` / `phase0b_hide_credentials.sql`, or the app
 can't read it. Never grant SELECT on `players` table-wide.
-Still open until Phase 2 (real login): tables are publicly writable, and the session
-is just a player id in `sessionStorage`.
 
 ---
 
@@ -161,8 +165,8 @@ Admin bulk entry is **completely separate** from HE. One player at a time. Full 
 
 - **Admin player:** determined by `is_admin=true` flag in DB. Falls back to `players[0]` if none set.
 - **SQL to set up:** `ALTER TABLE players ADD COLUMN IF NOT EXISTS is_admin boolean DEFAULT false;` then set your row to `true` in Supabase Table Editor.
-- **Admin PIN:** stored in `localStorage` key `sl_admin_pin`. Default: `saturday`. Session auth in `sessionStorage` key `admin_auth`.
-- **Admin can:** add/remove players, edit any round, delete any round, manage HCP history for all players, bulk enter rounds, change PIN, reassign admin role.
+- **Admin PIN (old route only):** stored in `localStorage` key `sl_admin_pin`. Default: `saturday`. Session auth in `sessionStorage` key `admin_auth`. Only reached when there's no Supabase Auth session (`_session` is null, i.e. the player hasn't moved to the new login yet); removed in release B. See **Supabase Auth** in Key design decisions for the real login and admin mode.
+- **Admin can:** add/remove players, edit any round, delete any round, manage HCP history for all players, bulk enter rounds, change PIN, reassign admin role — destructive actions need admin mode (below), not just `is_admin`.
 - **Players can:** log rounds, view leaderboards, update their own HCP, and set
   their own name and DGU membership number (My Profile). An admin can edit any
   player's DGU number — needed for players who predate the field.
@@ -237,6 +241,14 @@ One implementation, in `index.html`. There is **no** edge function and no cron �
 - `autoDrawIfDue()` — runs on `init()`. From Friday noon through Saturday, if the
   upcoming Saturday has sign-ups and no draw, it locks the event and draws. The
   first person to open the app creates the draw.
+- **`run_draw`** (Phase 2 release A) — the app still computes the allocation
+  (`chooseBestDraw`), but the write goes through `public.run_draw(p_date, p_tee_times,
+  p_alloc)`, a `SECURITY DEFINER` RPC, not a raw PATCH. It revalidates everything the
+  browser sent — the allocation covers every sign-up for the date exactly once, tee
+  times are real, the date is an upcoming Saturday, not already drawn — before writing.
+  It sets a transaction-local `app.drawing` flag so its own write passes the
+  `protect_signup_fields` trigger, which otherwise refuses to let anyone but an admin
+  in admin mode set `group_num`/`tee_time`. Callable by `anon` too, until release B.
 
 **Repeats are not a bug.** At 8 players in 2 groups any pair shares a group 42.9%
 of the time by chance, and with two foursomes the minimum possible repeat count is
@@ -251,12 +263,33 @@ pairings felt stale. A draw computed on demand has no scheduler to fail quietly.
 
 - **Single HTML file** — deliberate. No build complexity. Easy to deploy and share.
 - **Database-assigned IDs** (Phase 1, 2026-09-24) — every table's `id` is `GENERATED ALWAYS AS IDENTITY`; inserts send no `id` and keep the row PostgREST returns. Never reintroduce `Date.now()` ids — the database refuses them. Foreign keys: rows that belong to a player RESTRICT their deletion; mentions (issued_by, recorded_by, marker, captains, match slots) SET NULL. Removing a player sets `archived_at`; use `activePlayers()` for pick lists and `players` for history.
-- **Version gate** (Phase 1) — every API request sends `x-app-version`; `public.require_current_app()` (PostgREST pre-request) refuses older versions with HTTP 426 and the app reloads itself. For a release that must not coexist with the previous one, bump `APP_VERSION` in `index.html`, `SB_H` in `course-mapper.html` and the gate's minimum together. Anything else calling the API needs the header too.
+- **Version gate** (Phase 1; minimum now **3** as of Phase 2 release A) — every API request sends `x-app-version`; `public.require_current_app()` (PostgREST pre-request) refuses older versions with HTTP 426 and the app reloads itself. For a release that must not coexist with the previous one, bump `APP_VERSION` in `index.html`, `x-app-version` in `course-mapper.html` (`SB_H`) *and* `tests/sql/snapshot.mjs` (`H`), and the gate's minimum in `phase2a_auth.sql`, together — `tests/sql/version.test.mjs` checks all four agree. Anything else calling the API needs the header too.
 - **HCP on date** — always calculated dynamically from hcp_history, never stored on round except as snapshot for display.
 - **Playing HCP = Course HCP × 0.95** — WHS competition format.
 - **Rounds created at entry start** — enables live leaderboard. Partial rounds are real data.
 - **Admin = is_admin flag** — not first-by-created_at (which caused issues when player order varied).
-- **No auth layer** — intentional for a small trusted group. Admin PIN is UI-only security.
+- **Supabase Auth** (Phase 2 release A, 2026-09-24, `supabase/phase2a_auth.sql`) — real
+  login replaces the trusted-group assumption: email + password (min 8 chars), forgot
+  password via PKCE (the reset link must be opened on the requesting device/browser),
+  a set-up flow that links an existing member's first login to their player row by
+  email, and sign-up that creates a pending player — all three share one trigger,
+  `private.link_login`, on `auth.users`. `players.user_id` (uuid, unique, FK →
+  `auth.users.id`) is what makes a login a player; `private.current_player()` /
+  `acting_player()` / `is_member()` / `is_admin()` (schema `private`, no Data API
+  grants) read it. **Admin mode** is stronger than `is_admin`: it also needs `aal2`
+  plus a `totp` entry in the JWT's `amr` no older than 12 hours, checked by
+  `private.is_admin()` and mirrored client-side by `adminModeActive()`. A write an
+  admin isn't yet in admin mode for comes back refused (`42501`, or an empty
+  UPDATE/DELETE result — RLS filtering rows looks identical to "not found"); the app
+  prompts once for the authenticator code (`requireAdminMode()`, shared across
+  concurrent callers, throws on cancel) and retries. RLS policies are `p2_*`,
+  `TO authenticated`; the old PIN route's `anon_all` policy stays `TO anon` on every
+  table until release B — the Admin tab's move-over list tracks who's left. Every
+  admin/auth-relevant change is written by `private.audit()` (never directly
+  callable) into `audit_log` (admin-only read, self-trims after 12 months); triggers
+  on `auth.users`/`auth.mfa_factors` catch `OTHERS` and only `RAISE WARNING` — a
+  logging failure must never block a login. Rollback: `supabase/phase2a_rollback.sql`
+  (re-applicable afterwards).
 
 ---
 
