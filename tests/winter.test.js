@@ -129,6 +129,20 @@ setTimeout(async function(){
     T('Enter player round 1: RLS-filtered insert does not add an entry',!entryOf(3,'Winter 2027')&&seasonEntries.every(e=>e&&e.id!=null)&&/2 entered · 1 paid · DKK 175 received/.test(adm()));
     const saved3=SEASONS.splice(1,1);today=()=>'2026-09-20';renderAdminEntries();
     T('no season taking entries: says so',/No season is taking entries/.test(adm()));SEASONS.push(...saved3);
+    // ── Task 6: sign out in the header ──
+    const so=()=>document.getElementById('signOutBtn');
+    T('header has a Sign out button wired to signOut',!!so()&&so().closest('header')&&/signOut\(\)/.test(so().getAttribute('onclick')));
+    _session=null;sessionStorage.removeItem('sl_session_player');updateSignOutBtn();
+    T('hidden when nobody is signed in',so().style.display==='none');
+    sessionStorage.setItem('sl_session_player','1');updateSignOutBtn();
+    T('shown on the old PIN route',so().style.display!=='none');
+    sessionStorage.removeItem('sl_session_player');_session={access_token:'h.e30.s',user:{id:'u-9'}};updateSignOutBtn();
+    T('shown on the new login',so().style.display!=='none');
+    players=[P(1,'Ann',{user_id:'u-1'}),P(2,'Bo')];_session={access_token:'h.e30.s',user:{id:'u-1'}};activeId=2;updateSignOutBtn();
+    T('shown while an admin views as someone else',so().style.display!=='none');
+    activeId=1;renderProfile();
+    T('My Profile keeps Change email but no longer has Sign out',/submitEmailChange/.test(document.getElementById('profileBody').innerHTML)&&!/signOut\(\)/.test(document.getElementById('profileBody').innerHTML));
+    _session=null;
     // ── end ──
   }catch(e){out.push('FAIL EXCEPTION :: '+e.stack);}
   await new Promise(r=>setTimeout(r,150));

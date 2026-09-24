@@ -261,6 +261,7 @@ select option { background: #1a3a2a; }
       <div class="av-sm" id="playerAvatar" style="background:#555"></div>
       <span id="playerName">Select player</span>
     </button>
+    <button class="btn btn-ghost btn-sm" id="signOutBtn" onclick="signOut()" style="display:none">Sign out</button>
   </div>
 </header>
 <div class="main">
@@ -1309,7 +1310,7 @@ async function seedTees(){try{const rows=await sbInsert('tees',_TEES_SEED);tees=
 function adminPlayer(){return players.find(p=>p.is_admin&&!p.archived_at)||activePlayers()[0];}
 function isAdmin(){return isAdminAccount();}
 function updateAdminUI(){const a=isAdmin();document.getElementById('adminTab').style.display=a?'inline-block':'none';document.getElementById('adminBadge').style.display=a?'inline-flex':'none';const ab=document.getElementById('addPlayerBtn');if(ab)ab.style.display=a?'inline-block':'none';if(a)renderSaturdayAdmin();}
-function applyPendingUI(){document.getElementById('pendingPay').innerHTML=payHtml();const p=players.find(x=>x.id===activeId)||pendingPlayers.find(x=>x.id===activeId);const pending=p&&p.approved===false;document.getElementById('pendingBanner').style.display=pending?'block':'none';document.getElementById('tabLeaderboard').style.display=pending?'none':'';document.getElementById('tabHistory').style.display=pending?'none':'';document.getElementById('tabPlayers').style.display=pending?'none':'';if(pending){showView('log',document.querySelector('.nav-tab'));document.querySelector('.nav-tab').classList.remove('active');}const trackTab=document.getElementById('tabTrack');if(trackTab){const me=players.find(x=>x.id===activeId)||pendingPlayers.find(x=>x.id===activeId);const canTrack=me&&me.approved!==false&&!me.is_social;trackTab.style.display=canTrack?'':'none';}}
+function applyPendingUI(){updateSignOutBtn();document.getElementById('pendingPay').innerHTML=payHtml();const p=players.find(x=>x.id===activeId)||pendingPlayers.find(x=>x.id===activeId);const pending=p&&p.approved===false;document.getElementById('pendingBanner').style.display=pending?'block':'none';document.getElementById('tabLeaderboard').style.display=pending?'none':'';document.getElementById('tabHistory').style.display=pending?'none':'';document.getElementById('tabPlayers').style.display=pending?'none':'';if(pending){showView('log',document.querySelector('.nav-tab'));document.querySelector('.nav-tab').classList.remove('active');}const trackTab=document.getElementById('tabTrack');if(trackTab){const me=players.find(x=>x.id===activeId)||pendingPlayers.find(x=>x.id===activeId);const canTrack=me&&me.approved!==false&&!me.is_social;trackTab.style.display=canTrack?'':'none';}}
 
 // ── Login ─────────────────────────────────────────────────────────────────────
 let lockLoginPlayer=null;
@@ -1390,6 +1391,8 @@ async function signOut(){
   _session=null;sessionStorage.removeItem('sl_session_player');localStorage.removeItem('sl_active_player');
   forceReload();
 }
+// Sign out shows for anyone signed in, either route, including an admin viewing as someone else.
+function updateSignOutBtn(){const b=document.getElementById('signOutBtn');if(b)b.style.display=_session||sessionStorage.getItem('sl_session_player')?'':'none';}
 async function submitEmailChange(){
   const email=prompt('New email address');if(!email||!email.includes('@'))return;
   const {error}=await authClient().auth.updateUser({email:email.trim().toLowerCase()});
@@ -5800,7 +5803,7 @@ function renderProfile(){
     row('Units',getUnits()==='yd'?'Yards':'Metres',`<button class="btn btn-ghost btn-sm" onclick="toggleUnits();renderProfile()">Switch</button>`);
   {const s=entryFor(p);if(s)body.innerHTML+=`<div style="margin-top:1rem">${entryStatusHtml(p,s)}</div>`;}
   if(_session&&p.user_id===_session.user.id){
-    body.innerHTML+=`<div style="display:flex;gap:8px;margin-top:1rem"><button class="btn btn-ghost btn-sm" onclick="submitEmailChange()">Change email</button><button class="btn btn-ghost btn-sm" onclick="signOut()">Sign out</button></div>`;
+    body.innerHTML+=`<div style="display:flex;gap:8px;margin-top:1rem"><button class="btn btn-ghost btn-sm" onclick="submitEmailChange()">Change email</button></div>`;
   }
   renderGpsPreferencePanel();
 }
