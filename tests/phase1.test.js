@@ -38,13 +38,8 @@ setTimeout(async function(){
     T('submitPayment sends no id',pm&&!('id' in pm.body),JSON.stringify(pm?.body));
     T('submitPayment keeps the saved row',finePayments.some(p=>p.id===9),JSON.stringify(finePayments));
 
-    stubFetch(echoInsert(55));
-    ['signupName','signupEmail','signupDgu','signupHcp','signupPin','signupPinConfirm'].forEach(id=>document.getElementById(id).value='');
-    document.getElementById('signupName').value='Cy';document.getElementById('signupEmail').value='cy@x.dk';document.getElementById('signupDgu').value='900-1';
-    document.getElementById('signupPin').value='1234';document.getElementById('signupPinConfirm').value='1234';
-    await submitSignup();
-    const su=calls.find(c=>c.method==='POST'&&c.url.includes('/players'));
-    T('sign-up sends no id',su&&!('id' in su.body),JSON.stringify(su?.body));
+    // Sign-up's "no invented id" coverage moved with it to Task 7 (phase2a.test.js): it no longer
+    // POSTs to /players at all — it goes through Supabase Auth signUp, which assigns no id here.
     // ── Task 6: archive instead of delete ──
     T('PLAYER_COLS reads archived_at and legacy_id',/(^|,)archived_at(,|$)/.test(PLAYER_COLS)&&/(^|,)legacy_id(,|$)/.test(PLAYER_COLS),PLAYER_COLS);
     players=[{id:1,name:'Ann',is_admin:true,color:0,hcp_history:[]},{id:2,name:'Bo',color:1,hcp_history:[]},{id:3,name:'Gone',color:2,hcp_history:[],archived_at:'2026-09-01T00:00:00Z'}];

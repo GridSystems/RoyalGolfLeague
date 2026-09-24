@@ -24,17 +24,17 @@ setTimeout(async function(){
     T('other tables unchanged',!/select=/.test(calls[0].url),calls[0].url);
 
     // ── Email + PIN login ──
-    const login=async(email,pin,resp)=>{reset(u=>u.includes('/rpc/login')?resp:[]);loggedIn=null;showLockLogin();
-      document.getElementById('loginEmail').value=email;document.getElementById('loginPin').value=pin;await submitEmailPin();};
+    const login=async(email,pin,resp)=>{reset(u=>u.includes('/rpc/login')?resp:[]);loggedIn=null;showLockPanel('lockPinPanel');
+      document.getElementById('pinEmail').value=email;document.getElementById('loginPin').value=pin;await submitEmailPin();};
     await login('A@B.com ','1234',{ok:true,id:7,name:'Ann'});
     T('login calls rpc/login',!!rpc('login'),JSON.stringify(calls.map(c=>c.url)));
     T('login sends email+pin',rpc('login')?.body?.p_email==='a@b.com'&&rpc('login')?.body?.p_pin==='1234',JSON.stringify(rpc('login')?.body));
     T('login never reads players by email',!calls.some(c=>/players\?.*email=/.test(c.url)),JSON.stringify(calls.map(c=>c.url)));
     T('successful login logs in as returned id',loggedIn&&loggedIn.id===7,JSON.stringify(loggedIn));
     await login('a@b.com','9999',{ok:false});
-    T('wrong PIN or unknown email: one generic message',vis('loginError')&&/email or pin/i.test(document.getElementById('loginError').textContent)&&!loggedIn,document.getElementById('loginError').textContent);
+    T('wrong PIN or unknown email: one generic message',vis('pinLoginError')&&/email or pin/i.test(document.getElementById('pinLoginError').textContent)&&!loggedIn,document.getElementById('pinLoginError').textContent);
     await login('a@b.com','9999',{ok:false,locked:true});
-    T('locked account says so',/15 minutes/.test(document.getElementById('loginError').textContent),document.getElementById('loginError').textContent);
+    T('locked account says so',/15 minutes/.test(document.getElementById('pinLoginError').textContent),document.getElementById('pinLoginError').textContent);
     await login('a@b.com','',{ok:false});
     T('empty PIN is rejected before calling server',!rpc('login'),'called');
     await login('new@b.com','0000',{ok:true,id:8,name:'Neo',needs_pin:true});

@@ -97,6 +97,40 @@ setTimeout(async function(){
     T('old PIN route happy path renders once as the remembered player',renderedHappy.length>0&&renderedHappy.every(n=>n==='Bo'),JSON.stringify(renderedHappy));
     T('old PIN route happy path hides the lock screen',document.getElementById('lockScreen').style.display==='none');
     T('old PIN route happy path sets the active player',activeId===2,String(activeId));
+    // ── Task 7: login flows ──
+    const field=(id,v)=>{document.getElementById(id).value=v;};
+    const shown=id=>document.getElementById(id).style.display!=='none';
+    showLockPanel('lockLoginPanel');
+    field('loginEmail','a@b.dk');field('loginPassword','short');authCalls.length=0;await submitPasswordLogin();
+    T('login: wrong password shows a neutral error',shown('loginError')&&/email or password/i.test(document.getElementById('loginError').textContent));
+    authState.signIn={data:{session:sessionFor('u-2')},error:null};reset(u=>u.includes('/players?')?[{id:2,name:'Bo',user_id:'u-2',color:0,hcp_history:[],approved:true}]:[]);
+    field('loginPassword','correct horse');await submitPasswordLogin();
+    T('login: success starts the app as the player',activeId===2&&document.getElementById('lockScreen').style.display==='none');
+    showLockPanel('lockSetupPanel');field('setupEmail','Bo@X.dk');field('setupPassword','abc');field('setupPassword2','abc');authCalls.length=0;await submitSetup();
+    T('set-up: passwords under 8 characters refused',authCalls.length===0&&/8 characters/.test(document.getElementById('setupError').textContent));
+    field('setupPassword','longenough1');field('setupPassword2','longenough1');await submitSetup();
+    const su=authCalls.find(c=>c[0]==='signUp');
+    T('set-up: signs up with the email and redirect, no player metadata',su&&su[1].email==='bo@x.dk'&&su[1].options.emailRedirectTo===SITE_URL&&!(su[1].options.data||{}).name);
+    T('set-up: says to open the link on this device',shown('lockCheckEmailPanel')&&/this (phone|device)/i.test(document.getElementById('lockCheckEmailPanel').textContent));
+    showLockPanel('lockSignupPanel');['signupName','signupEmail','signupDgu','signupHcp','signupPassword','signupPassword2'].forEach(id=>field(id,''));
+    field('signupName','Cy');field('signupEmail','cy@x.dk');field('signupDgu','900-1');field('signupHcp','14.2');field('signupPassword','longenough1');field('signupPassword2','longenough1');
+    authCalls.length=0;await submitSignup();
+    const sg=authCalls.find(c=>c[0]==='signUp');
+    T('sign-up: sends name, DGU, handicap and colour as metadata',sg&&sg[1].options.data.name==='Cy'&&sg[1].options.data.dgu_number==='900-1'&&sg[1].options.data.handicap===14.2&&Number.isInteger(sg[1].options.data.color));
+    T('sign-up: never writes to players directly',!calls.some(c=>c.method==='POST'&&c.url.includes('/players')));
+    showLockPanel('lockForgotPanel');field('forgotEmail','ghost@x.dk');authCalls.length=0;await submitForgot();
+    const rs=authCalls.find(c=>c[0]==='reset');
+    T('forgot: sends a reset with the site redirect',rs&&rs[1]==='ghost@x.dk'&&rs[2].redirectTo===SITE_URL);
+    T('forgot: neutral message',/if that address belongs to a member/i.test(document.getElementById('lockCheckEmailPanel').textContent));
+    showLockPanel('lockNewPwPanel');field('newPassword','longenough2');field('newPassword2','longenough2');authCalls.length=0;await submitNewPassword();
+    T('new password: updates the password',authCalls.some(c=>c[0]==='update'&&c[1].password==='longenough2'));
+    history.replaceState(null,'','?error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid');
+    handleAuthRedirectError();
+    T('a failed or wrong-device link explains itself',shown('loginError')&&/same (phone|device)|expired/i.test(document.getElementById('loginError').textContent));
+    history.replaceState(null,'',location.pathname);
+    window.forceReload=()=>{};
+    authCalls.length=0;await signOut();
+    T('sign out calls Supabase and clears the session',authCalls.some(c=>c[0]==='signOut')&&_session===null);
     // ── end ──
   }catch(e){out.push('FAIL EXCEPTION :: '+e.stack);}
   await new Promise(r=>setTimeout(r,150));

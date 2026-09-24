@@ -43,6 +43,7 @@ header { background: rgba(0,0,0,0.4); border-bottom: 1px solid var(--border-gold
 .fg { display: grid; grid-template-columns: 1fr 1fr; gap: 11px; }
 .fgi { display: flex; flex-direction: column; gap: 5px; }
 .fgi.full { grid-column: 1 / -1; }
+.lock-link { color: var(--gold-l); cursor: pointer; text-decoration: underline; }
 label { font-size: 0.68rem; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255,255,255,0.38); }
 input, select, textarea { background: rgba(0,0,0,0.28); border: 1px solid var(--border); border-radius: 8px; color: var(--cream); font-family: 'DM Sans', sans-serif; font-size: 0.88rem; padding: 8px 12px; outline: none; transition: border-color 0.2s; width: 100%; }
 input:focus, select:focus, textarea:focus { border-color: rgba(201,168,76,0.5); }
@@ -159,15 +160,67 @@ select option { background: #1a3a2a; }
   <div style="background:rgba(0,0,0,0.35);border:1px solid rgba(201,168,76,0.22);border-radius:20px;padding:2.5rem;width:min(340px,92vw);text-align:center;">
     <div style="font-family:'Playfair Display',serif;font-size:1.5rem;color:#f0d58c;margin-bottom:4px">Saturday League</div>
     <div style="font-size:0.65rem;color:rgba(240,213,140,0.4);letter-spacing:0.12em;text-transform:uppercase;margin-bottom:2rem">Royal Golf Club · Copenhagen</div>
-    <!-- Login panel -->
+    <!-- Password login -->
     <div id="lockLoginPanel">
       <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:1rem;text-align:left">
-        <div class="fgi"><label>Email</label><input type="email" id="loginEmail" placeholder="your@email.com" maxlength="100" onkeydown="if(event.key==='Enter')submitEmailPin()"></div>
-        <div class="fgi"><label>PIN</label><input type="password" id="loginPin" placeholder="••••" maxlength="4" inputmode="numeric" pattern="[0-9]*" onkeydown="if(event.key==='Enter')submitEmailPin()"></div>
+        <div class="fgi"><label>Email</label><input type="email" id="loginEmail" autocomplete="email" maxlength="100" onkeydown="if(event.key==='Enter')submitPasswordLogin()"></div>
+        <div class="fgi"><label>Password</label><input type="password" id="loginPassword" autocomplete="current-password" maxlength="100" onkeydown="if(event.key==='Enter')submitPasswordLogin()"></div>
         <div id="loginError" style="color:#f08080;font-size:0.78rem;display:none"></div>
       </div>
-      <button class="btn btn-primary" style="width:100%" onclick="submitEmailPin()">Enter</button>
-      <div style="margin-top:1.25rem;font-size:0.8rem;color:rgba(240,213,140,0.5)">New here? <span onclick="showLockSignup()" style="color:var(--gold-l);cursor:pointer;text-decoration:underline">Sign up</span></div>
+      <button class="btn btn-primary" style="width:100%" onclick="submitPasswordLogin()">Sign in</button>
+      <div style="margin-top:0.9rem;font-size:0.8rem"><span class="lock-link" onclick="showLockPanel('lockForgotPanel')">Forgot password?</span></div>
+      <div style="margin-top:1rem;font-size:0.8rem;color:rgba(240,213,140,0.5)">First time on the new login? <span class="lock-link" onclick="showLockPanel('lockSetupPanel')">Set it up</span></div>
+      <div style="margin-top:0.4rem;font-size:0.8rem;color:rgba(240,213,140,0.5)">New here? <span class="lock-link" onclick="showLockPanel('lockSignupPanel')">Sign up</span></div>
+      <div style="margin-top:0.9rem;font-size:0.7rem"><span class="lock-link" style="opacity:0.6" onclick="showLockPanel('lockPinPanel')">Use my old PIN</span></div>
+    </div>
+    <!-- Old PIN login (removed in release B) -->
+    <div id="lockPinPanel" style="display:none">
+      <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:1rem;text-align:left">
+        <div class="fgi"><label>Email</label><input type="email" id="pinEmail" placeholder="your@email.com" maxlength="100" onkeydown="if(event.key==='Enter')submitEmailPin()"></div>
+        <div class="fgi"><label>PIN</label><input type="password" id="loginPin" placeholder="••••" maxlength="4" inputmode="numeric" pattern="[0-9]*" onkeydown="if(event.key==='Enter')submitEmailPin()"></div>
+        <div id="pinLoginError" style="color:#f08080;font-size:0.78rem;display:none"></div>
+      </div>
+      <button class="btn btn-primary" style="width:100%" onclick="submitEmailPin()">Enter with PIN</button>
+      <div style="margin-top:1rem;font-size:0.8rem"><span class="lock-link" onclick="showLockPanel('lockLoginPanel')">← Back</span></div>
+    </div>
+    <!-- Set up new login (email + password) -->
+    <div id="lockSetupPanel" style="display:none">
+      <div style="font-size:0.82rem;color:rgba(255,255,255,0.55);margin-bottom:1rem;text-align:left">Use the email the league has on file. Choose a password of at least 8 characters.</div>
+      <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:1rem;text-align:left">
+        <div class="fgi"><label>Email</label><input type="email" id="setupEmail" autocomplete="email" maxlength="100"></div>
+        <div class="fgi"><label>New password</label><input type="password" id="setupPassword" autocomplete="new-password" maxlength="100"></div>
+        <div class="fgi"><label>Confirm password</label><input type="password" id="setupPassword2" autocomplete="new-password" maxlength="100"></div>
+        <div id="setupError" style="color:#f08080;font-size:0.78rem;display:none"></div>
+      </div>
+      <button class="btn btn-primary" style="width:100%" onclick="submitSetup()">Set up my login</button>
+      <div style="margin-top:1rem;font-size:0.8rem"><span class="lock-link" onclick="showLockPanel('lockLoginPanel')">← Back</span></div>
+    </div>
+    <!-- Forgot password -->
+    <div id="lockForgotPanel" style="display:none">
+      <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:1rem;text-align:left">
+        <div class="fgi"><label>Email</label><input type="email" id="forgotEmail" autocomplete="email" maxlength="100"></div>
+      </div>
+      <button class="btn btn-primary" style="width:100%" onclick="submitForgot()">Email me a reset link</button>
+      <div style="margin-top:1rem;font-size:0.8rem"><span class="lock-link" onclick="showLockPanel('lockLoginPanel')">← Back</span></div>
+    </div>
+    <!-- Choose a new password (via reset link or forced recovery) -->
+    <div id="lockNewPwPanel" style="display:none">
+      <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:1rem;text-align:left">
+        <div class="fgi"><label>New password</label><input type="password" id="newPassword" autocomplete="new-password" maxlength="100"></div>
+        <div class="fgi"><label>Confirm password</label><input type="password" id="newPassword2" autocomplete="new-password" maxlength="100"></div>
+        <div id="newPwError" style="color:#f08080;font-size:0.78rem;display:none"></div>
+      </div>
+      <button class="btn btn-primary" style="width:100%" onclick="submitNewPassword()">Save new password</button>
+    </div>
+    <!-- Check your email (confirmation, reset) -->
+    <div id="lockCheckEmailPanel" style="display:none">
+      <div id="checkEmailText" style="font-size:0.88rem;color:rgba(255,255,255,0.75);line-height:1.6;margin-bottom:1rem;text-align:left"></div>
+      <button class="btn btn-ghost" style="width:100%" onclick="showLockPanel('lockLoginPanel')">Back to sign in</button>
+    </div>
+    <!-- Signed in but no matching player row -->
+    <div id="lockUnlinkedPanel" style="display:none">
+      <div style="font-size:0.88rem;color:rgba(255,255,255,0.75);line-height:1.6;margin-bottom:1rem;text-align:left">Your login isn't linked to a player yet. Ask an admin to check the email the league has on file for you, then sign in again.</div>
+      <button class="btn btn-ghost" style="width:100%" onclick="signOut()">Sign out</button>
     </div>
     <!-- First-time PIN set panel (existing player, no PIN yet) -->
     <div id="lockSetPinPanel" style="display:none">
@@ -188,12 +241,12 @@ select option { background: #1a3a2a; }
         <div class="fgi"><label>Email</label><input type="email" id="signupEmail" placeholder="your@email.com" maxlength="100"></div>
         <div class="fgi"><label>DGU Number</label><input type="text" id="signupDgu" placeholder="e.g. 900-1831" maxlength="20"></div>
         <div class="fgi"><label>Handicap Index</label><input type="number" id="signupHcp" placeholder="e.g. 14.2" step="0.1" min="-10" max="54"></div>
-        <div class="fgi"><label>Choose a 4-digit PIN</label><input type="password" id="signupPin" placeholder="••••" maxlength="4" inputmode="numeric" pattern="[0-9]*"></div>
-        <div class="fgi"><label>Confirm PIN</label><input type="password" id="signupPinConfirm" placeholder="••••" maxlength="4" inputmode="numeric" pattern="[0-9]*"></div>
+        <div class="fgi"><label>Password (at least 8 characters)</label><input type="password" id="signupPassword" autocomplete="new-password" maxlength="100"></div>
+        <div class="fgi"><label>Confirm password</label><input type="password" id="signupPassword2" autocomplete="new-password" maxlength="100"></div>
         <div id="signupError" style="color:#f08080;font-size:0.78rem;display:none"></div>
       </div>
       <button class="btn btn-primary" style="width:100%" onclick="submitSignup()">Register</button>
-      <div style="margin-top:1.25rem;font-size:0.8rem;color:rgba(240,213,140,0.5)"><span onclick="showLockLogin()" style="color:var(--gold-l);cursor:pointer;text-decoration:underline">← Back to login</span></div>
+      <div style="margin-top:1.25rem;font-size:0.8rem;color:rgba(240,213,140,0.5)"><span class="lock-link" onclick="showLockPanel('lockLoginPanel')">← Back to login</span></div>
     </div>
     <!-- MobilePay panel -->
     <div id="lockPayPanel" style="display:none">
@@ -1149,15 +1202,14 @@ function isAdmin(){return players.find(p=>p.id===activeId)?.is_admin===true;}
 function updateAdminUI(){const a=isAdmin();document.getElementById('adminTab').style.display=a?'inline-block':'none';document.getElementById('adminBadge').style.display=a?'inline-flex':'none';const ab=document.getElementById('addPlayerBtn');if(ab)ab.style.display=a?'inline-block':'none';if(a)renderSaturdayAdmin();}
 function applyPendingUI(){const p=players.find(x=>x.id===activeId)||pendingPlayers.find(x=>x.id===activeId);const pending=p&&p.approved===false;document.getElementById('pendingBanner').style.display=pending?'block':'none';document.getElementById('tabLeaderboard').style.display=pending?'none':'';document.getElementById('tabHistory').style.display=pending?'none':'';document.getElementById('tabPlayers').style.display=pending?'none':'';if(pending){showView('log',document.querySelector('.nav-tab'));document.querySelector('.nav-tab').classList.remove('active');}const trackTab=document.getElementById('tabTrack');if(trackTab){const me=players.find(x=>x.id===activeId)||pendingPlayers.find(x=>x.id===activeId);const canTrack=me&&me.approved!==false&&!me.is_social;trackTab.style.display=canTrack?'':'none';}}
 
-// ── Email + PIN Login ─────────────────────────────────────────────────────────
+// ── Login ─────────────────────────────────────────────────────────────────────
 let lockLoginPlayer=null;
-// Shows one lock-screen panel and hides the rest. Panels added by later releases (e.g. the
-// password-reset and unlinked-account panels) are tolerated even before their HTML exists.
+const LOCK_PANELS=['lockLoginPanel','lockPinPanel','lockSetPinPanel','lockSetupPanel','lockForgotPanel','lockNewPwPanel','lockCheckEmailPanel','lockUnlinkedPanel','lockSignupPanel','lockPayPanel'];
+// Shows one lock-screen panel and hides the rest.
 function showLockPanel(id){
-  ['lockLoginPanel','lockSetPinPanel','lockSignupPanel','lockPayPanel','lockPinPanel','lockNewPwPanel','lockUnlinkedPanel'].forEach(pid=>{
-    const el=document.getElementById(pid);if(el)el.style.display=(pid===id?'block':'none');
-  });
-  if(id==='lockLoginPanel')setTimeout(()=>document.getElementById('loginEmail')?.focus(),50);
+  document.getElementById('lockScreen').style.display='flex';
+  LOCK_PANELS.forEach(p=>{const el=document.getElementById(p);if(el)el.style.display=p===id?'block':'none';});
+  document.querySelectorAll('#lockScreen [id$="Error"]').forEach(e=>e.style.display='none');
 }
 // The initial data load failed (bad signal, DB unreachable) — say so on the login panel
 // rather than rendering with no player data. Reloading is the retry.
@@ -1166,11 +1218,60 @@ function showLockDbError(){
   const err=document.getElementById('loginError');
   if(err){err.textContent="Can't reach the league database — check your signal and reload.";err.style.display='block';}
 }
-function showLockLogin(){lockLoginPlayer=null;document.getElementById('lockLoginPanel').style.display='block';document.getElementById('lockSetPinPanel').style.display='none';document.getElementById('lockSignupPanel').style.display='none';document.getElementById('lockPayPanel').style.display='none';document.getElementById('loginError').style.display='none';setTimeout(()=>document.getElementById('loginEmail').focus(),50);}
+function showLockLogin(){showLockPanel('lockLoginPanel');}
+function lockError(id,msg){const e=document.getElementById(id);e.textContent=msg;e.style.display='block';}
+const pwProblem=(a,b)=>!a||a.length<8?'Password must be at least 8 characters.':a!==b?'Passwords do not match.':null;
+function checkEmail(text){document.getElementById('checkEmailText').innerHTML=text+'<br><br><strong>Open the link on this phone</strong> (the same device and browser), or it won\'t work.';showLockPanel('lockCheckEmailPanel');}
+async function submitPasswordLogin(){
+  const email=document.getElementById('loginEmail').value.trim().toLowerCase(),password=document.getElementById('loginPassword').value;
+  if(!email||!password){lockError('loginError','Enter your email and password.');return;}
+  const {data,error}=await authClient().auth.signInWithPassword({email,password});
+  if(error||!data.session){lockError('loginError','Email or password incorrect.');return;}
+  _session=data.session;await startApp();
+}
+async function submitSetup(){
+  const email=document.getElementById('setupEmail').value.trim().toLowerCase(),a=document.getElementById('setupPassword').value,b=document.getElementById('setupPassword2').value;
+  if(!email.includes('@')){lockError('setupError','Enter a valid email.');return;}
+  const p=pwProblem(a,b);if(p){lockError('setupError',p);return;}
+  const {error}=await authClient().auth.signUp({email,password:a,options:{emailRedirectTo:SITE_URL}});
+  if(error){lockError('setupError',error.message);return;}
+  checkEmail('We\'ve sent a confirmation link to <strong>'+email+'</strong>. Click it to finish setting up your login.');
+}
+async function submitForgot(){
+  const email=document.getElementById('forgotEmail').value.trim().toLowerCase();if(!email)return;
+  await authClient().auth.resetPasswordForEmail(email,{redirectTo:SITE_URL});
+  checkEmail('If that address belongs to a member, a reset link is on its way. It works once and expires in an hour.');
+}
+async function submitNewPassword(){
+  const a=document.getElementById('newPassword').value,b=document.getElementById('newPassword2').value;
+  const p=pwProblem(a,b);if(p){lockError('newPwError',p);return;}
+  const {error}=await authClient().auth.updateUser({password:a});
+  if(error){lockError('newPwError',error.message);return;}
+  toast('Password changed ✓');await startApp();
+}
+// Links that fail (expired, used, or opened on another device — PKCE) come back with ?error=…
+function handleAuthRedirectError(){
+  const q=new URLSearchParams(location.search+'&'+location.hash.slice(1));
+  if(!q.get('error'))return;
+  showLockPanel('lockLoginPanel');
+  lockError('loginError','That link didn\'t work — it may have expired or been used already, or been opened on a different phone. Request a new one and open it on the same device.');
+  history.replaceState(null,'',location.pathname);
+}
+async function signOut(){
+  try{await authClient().auth.signOut();}catch(e){}
+  _session=null;sessionStorage.removeItem('sl_session_player');localStorage.removeItem('sl_active_player');
+  forceReload();
+}
+async function submitEmailChange(){
+  const email=prompt('New email address');if(!email||!email.includes('@'))return;
+  const {error}=await authClient().auth.updateUser({email:email.trim().toLowerCase()});
+  if(error){alert('Error: '+error.message);return;}
+  toast('Check the new address for a confirmation link');
+}
 async function submitEmailPin(){
-  const email=document.getElementById('loginEmail').value.trim().toLowerCase();
+  const email=document.getElementById('pinEmail').value.trim().toLowerCase();
   const pin=document.getElementById('loginPin').value.trim();
-  const err=document.getElementById('loginError');
+  const err=document.getElementById('pinLoginError');
   if(!email||!pin){err.textContent='Please enter your email and PIN.';err.style.display='block';return;}
   err.style.display='none';
   try{
@@ -1180,7 +1281,7 @@ async function submitEmailPin(){
       lockLoginPlayer={id:res.id,name:res.name,email};
       document.getElementById('lockSetPinName').textContent=res.name;
       document.getElementById('lockSetPinInput').value='';document.getElementById('lockSetPinConfirm').value='';document.getElementById('lockSetPinError').style.display='none';
-      document.getElementById('lockLoginPanel').style.display='none';
+      document.getElementById('lockPinPanel').style.display='none';
       document.getElementById('lockSetPinPanel').style.display='block';
       setTimeout(()=>document.getElementById('lockSetPinInput').focus(),50);
     } else if(res.ok){
@@ -1210,31 +1311,20 @@ async function loginAs(p){                       // old PIN route (removed in re
 }
 
 // ── Sign-up ───────────────────────────────────────────────────────────────────
-function showLockSignup(){document.getElementById('lockLoginPanel').style.display='none';document.getElementById('lockSetPinPanel').style.display='none';document.getElementById('lockSignupPanel').style.display='block';document.getElementById('lockPayPanel').style.display='none';document.getElementById('signupName').value='';document.getElementById('signupEmail').value='';document.getElementById('signupDgu').value='';document.getElementById('signupHcp').value='';document.getElementById('signupPin').value='';document.getElementById('signupPinConfirm').value='';document.getElementById('signupError').style.display='none';setTimeout(()=>document.getElementById('signupName').focus(),50);}
+function showLockSignup(){showLockPanel('lockSignupPanel');}
 function showSignup(){showLockSignup();}
 async function submitSignup(){
-  const name=document.getElementById('signupName').value.trim();
-  const hcpRaw=document.getElementById('signupHcp').value;
-  const pin=document.getElementById('signupPin').value.trim();
-  const pinConfirm=document.getElementById('signupPinConfirm').value.trim();
-  const err=document.getElementById('signupError');
-  const email=document.getElementById('signupEmail').value.trim().toLowerCase();
-  const dgu=document.getElementById('signupDgu').value.trim();
-  if(!name){err.textContent='Please enter your name.';err.style.display='block';return;}
-  if(!email||!email.includes('@')){err.textContent='Please enter a valid email.';err.style.display='block';return;}
-  if(!isValidDgu(dgu)){err.textContent='Enter your DGU number as digits, a hyphen, then digits — for example 900-1831.';err.style.display='block';return;}
-  if(!pin||pin.length<4){err.textContent='PIN must be 4 digits.';err.style.display='block';return;}
-  if(pin!==pinConfirm){err.textContent='PINs do not match.';err.style.display='block';return;}
-  const hcpVal=hcpRaw?parseFloat(hcpRaw):null;
-  const nextColor=Math.floor(Math.random()*COLORS.length);
-  const payload={name,email,dgu_number:dgu,color:nextColor,handicap:hcpVal,hcp_history:hcpVal!=null?[{date:today(),value:hcpVal,note:'Sign-up entry'}]:[],approved:false,pin};
-  err.style.display='none';
-  try{
-    await sbInsert('players',payload);
-    document.getElementById('lockLoginPanel').style.display='none';
-    document.getElementById('lockSignupPanel').style.display='none';
-    document.getElementById('lockPayPanel').style.display='block';
-  }catch(e){err.textContent='Error: '+e.message;err.style.display='block';}
+  const v=id=>document.getElementById(id).value.trim();
+  const name=v('signupName'),email=v('signupEmail').toLowerCase(),dgu=v('signupDgu'),hcpRaw=v('signupHcp'),a=document.getElementById('signupPassword').value,b=document.getElementById('signupPassword2').value;
+  if(!name){lockError('signupError','Please enter your name.');return;}
+  if(!email.includes('@')){lockError('signupError','Please enter a valid email.');return;}
+  if(!isValidDgu(dgu)){lockError('signupError','Enter your DGU number as digits, a hyphen, then digits — for example 900-1831.');return;}
+  const p=pwProblem(a,b);if(p){lockError('signupError',p);return;}
+  const handicap=hcpRaw?parseFloat(hcpRaw):null;
+  const {error}=await authClient().auth.signUp({email,password:a,options:{emailRedirectTo:SITE_URL,
+    data:{name,dgu_number:dgu,handicap,color:Math.floor(Math.random()*COLORS.length)}}});
+  if(error){lockError('signupError',error.message);return;}
+  checkEmail('Nearly there: we\'ve sent a confirmation link to <strong>'+email+'</strong>. After you click it, your registration waits for admin approval.');
 }
 function renderPendingApprovals(){
   const panel=document.getElementById('pendingApprovalsPanel');
@@ -5477,6 +5567,9 @@ function renderProfile(){
     row('Colour',`<span style="display:inline-block;width:15px;height:15px;border-radius:50%;background:${clr(p)}"></span>`,'')+
     row('My Bag','Clubs and carry distances',`<button class="btn btn-ghost btn-sm" onclick="openBagModal()">Edit</button>`)+
     row('Units',getUnits()==='yd'?'Yards':'Metres',`<button class="btn btn-ghost btn-sm" onclick="toggleUnits();renderProfile()">Switch</button>`);
+  if(_session&&p.user_id===_session.user.id){
+    body.innerHTML+=`<div style="display:flex;gap:8px;margin-top:1rem"><button class="btn btn-ghost btn-sm" onclick="submitEmailChange()">Change email</button><button class="btn btn-ghost btn-sm" onclick="signOut()">Sign out</button></div>`;
+  }
   renderGpsPreferencePanel();
 }
 
@@ -6000,6 +6093,7 @@ window.addEventListener('pageshow',checkForUpdate);   // also fires on iOS bfcac
 // Start-up. Nothing is shown as "nobody": the lock screen (or loading) stays up until the session,
 // the data and the player are all resolved, then the app appears once, already as you.
 async function boot(){
+  handleAuthRedirectError();
   let session=null;
   try{session=(await authClient().auth.getSession()).data.session;}catch(e){/* login service unreachable: old route still works */}
   _session=session;
