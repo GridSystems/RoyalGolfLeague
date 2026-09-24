@@ -460,6 +460,16 @@ select option { background: #1a3a2a; }
   <!-- RULES -->
   <div class="view" id="view-rules">
 
+    <!-- Season: which season these rules describe, and what's particular to it -->
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:1rem">
+      <span id="rulesSeasonTitle" style="font-family:'Playfair Display',serif;font-size:1.15rem;color:var(--gold-l)">Rules</span>
+      <select id="rulesSeason" onchange="renderRules(this.value)" style="background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.14);border-radius:6px;color:var(--cream);font-size:0.75rem;padding:4px 8px"></select>
+    </div>
+    <div class="panel" style="margin-bottom:1.25rem">
+      <div class="ph"><span class="pt">This Season</span></div>
+      <div class="pb" id="rulesSeasonNotes" style="font-size:0.88rem;line-height:1.6;color:rgba(240,213,140,0.85)"></div>
+    </div>
+
     <!-- General -->
     <div class="panel" style="margin-bottom:1.25rem">
       <div class="ph"><span class="pt">General Rules</span></div>
@@ -1564,8 +1574,22 @@ function showView(id,btn){
     },30000);
   }
 }
-function renderRules(){
-  const cur=seasonInfo(seasonOf(today()));document.querySelectorAll('.rulesBestN').forEach(e=>e.textContent=cur.best);
+// Seasons whose rules a member can read: every season that has started, plus the one taking entries.
+function rulesSeasons(){const es=entrySeason();return SEASONS.filter(s=>s.from<=today()||s===es).map(s=>s.name).reverse();}
+// The Rules page for `season` (default: the current one). Everything season-specific comes from SEASONS.
+function renderRules(season){
+  const names=rulesSeasons(),sel=document.getElementById('rulesSeason');
+  const name=names.includes(season)?season:seasonOf(today());
+  if(sel){sel.innerHTML=names.map(n=>`<option>${n}</option>`).join('');sel.value=name;}
+  const cur=seasonInfo(name);document.querySelectorAll('.rulesBestN').forEach(e=>e.textContent=cur.best);
+  const title=document.getElementById('rulesSeasonTitle');if(title)title.textContent=`${cur.name} rules`;
+  const pct=a=>Math.round(a*100)+'%';
+  const notes=[`Best <strong>${cur.best}</strong> rounds count towards the season total.`,
+    `Buy-in: <strong>DKK ${cur.buyIn}</strong>.`,
+    cur.eclectic!==PLAYING_ALLOWANCE?`The Eclectic uses <strong>${pct(cur.eclectic)}</strong> of Course Handicap; everything else ${pct(PLAYING_ALLOWANCE)}.`:'',
+    cur.entry?`Entry is opt-in: <strong>Enter on the Season tab</strong> and pay DKK ${cur.buyIn} via MobilePay. Only entrants are in the prizes; entrants whose payment isn't recorded yet show as unpaid.`:'',
+    cur.notes||''].filter(Boolean);
+  const nb=document.getElementById('rulesSeasonNotes');if(nb)nb.innerHTML=notes.map(n=>`<p style="margin-bottom:0.5rem">${n}</p>`).join('');
   // Opt-in seasons: the pot is the money actually received. Otherwise every non-social member × buy-in.
   const paid=cur.entry?seasonEntries.filter(e=>e.season===cur.name&&e.paid_at):[];
   const approved=players.filter(p=>p.approved!==false&&!p.is_social).length;
@@ -5303,7 +5327,8 @@ function scrollToMyEclectic(){
 // rewarded high handicaps — see the rank-bias analysis of 2026-09-10).
 const SEASONS=[
   {name:'Summer 2026',from:'0000-01-01',eclectic:0.95,best:4,buyIn:250,entry:false},
-  {name:'Winter 2027',from:'2026-10-04',eclectic:0.60,best:3,buyIn:175,entry:true}, // day after the Summer 2026 final (3 Oct)
+  {name:'Winter 2027',from:'2026-10-04',eclectic:0.60,best:3,buyIn:175,entry:true, // day after the Summer 2026 final (3 Oct)
+   notes:'The season ends on 1 April, or the first day the club moves back to summer tees, whichever is earliest. For the day, tees can be chosen until Summer tees are closed. At that point, tee 54 is assumed.'},
 ];
 function seasonOf(date){let s=SEASONS[0];for(const x of SEASONS)if(date>=x.from)s=x;return s.name;}
 function seasonInfo(season){return SEASONS.find(s=>s.name===season);}

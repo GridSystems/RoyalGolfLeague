@@ -166,6 +166,18 @@ setTimeout(async function(){
     T('Nett In shows the assumed back-nine subtotal, not a dash',[...document.querySelectorAll('#eclecticRankings td')].some(td=>td.textContent.trim()===backAssumed));
     activeId=1;document.getElementById('myDreamYear')&&(document.getElementById('myDreamYear').innerHTML='<option>Summer 2026</option>');renderMyDreamCard();
     T('My Dream Card shows the assumed back-nine subtotal too',document.getElementById('myDreamCardBody')?.innerHTML.includes('>'+backAssumed+'<'));
+    // ── Rules page by season ──
+    players=[P(1,'Ann'),P(2,'Bo')];seasonEntries=[{id:31,season:'Winter 2027',player_id:1,paid_at:'2026-09-26T10:00:00Z',amount:175}];
+    const notes=()=>document.getElementById('rulesSeasonNotes').innerText,opts=()=>[...document.getElementById('rulesSeason').options].map(o=>o.value);
+    today=()=>'2026-09-28';renderRules();
+    T('during Summer the Rules page offers Summer and the Winter taking entries, Summer first',opts().includes('Summer 2026')&&opts().includes('Winter 2027')&&document.getElementById('rulesSeason').value==='Summer 2026');
+    T('Summer rules: best 4, DKK 250, no entry text',/best 4/i.test(notes())&&/DKK 250/.test(notes())&&!/Enter on the Season tab/.test(notes()));
+    renderRules('Winter 2027');
+    T('Winter rules: best 3, DKK 175, entry, 60% eclectic, season end and tees',/best 3/i.test(notes())&&/DKK 175/.test(notes())&&/Enter on the Season tab/.test(notes())&&/60%/.test(notes())&&/1 April/.test(notes())&&/tee 54 is assumed/.test(notes()));
+    T('choosing Winter sets best N and the pot to Winter',[...document.querySelectorAll('.rulesBestN')].every(e=>e.textContent==='3')&&/1 paid entry/.test(document.getElementById('rulesPot').innerHTML));
+    T('the page names the season it describes',/Winter 2027/.test(document.getElementById('rulesSeasonTitle').textContent));
+    today=()=>'2026-11-01';renderRules();
+    T('from 4 October the Rules page opens on Winter',document.getElementById('rulesSeason').value==='Winter 2027');
     // ── end ──
   }catch(e){out.push('FAIL EXCEPTION :: '+e.stack);}
   await new Promise(r=>setTimeout(r,150));
