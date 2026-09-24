@@ -71,3 +71,84 @@ test('helpers: member, admin needs fresh aal2+totp', async () => {
   assert.equal((await q({ ...aFresh, amr: [{ method: 'totp', timestamp: Math.floor(Date.now() / 1000) - 13 * 3600 }] })).a, false, 'older than 12 h');
   assert.equal((await q(null)).m, false);
 });
+
+const audits = async db => (await db.query(`SELECT action, actor_player_id a, target_player_id t, details d FROM public.audit_log ORDER BY id`)).rows;
+
+test('a member cannot change protected fields; an admin in admin mode can, and it is logged', async () => {
+  const db = await productionDb(); await run(db, REAL());
+  const m = await persona(db, { playerId: 2 });
+  await as(db, m);
+  await assert.rejects(db.query(`UPDATE public.players SET is_admin=true WHERE id=2`), /admin/i);
+  await db.query(`UPDATE public.players SET name='Renamed' WHERE id=2`);           // own profile field: fine
+  const a = await persona(db, { playerId: 1, admin: true, aal: 'aal2', totpAgeSec: 60 });
+  await as(db, a);
+  await db.query(`UPDATE public.players SET is_admin=true WHERE id=2`);
+  await as(db, null); await db.exec('RESET ROLE');
+  assert.deepEqual((await audits(db)).filter(x => x.action === 'admin_granted').map(x => [Number(x.a), Number(x.t)]), [[1, 2]]);
+});
+
+test('the old PIN route (public key) is unchanged at release A', async () => {
+  const db = await productionDb(); await run(db, REAL());
+  await as(db, null);
+  await db.query(`UPDATE public.players SET approved=true WHERE id=2`);           // no token: passes, as today
+});
+
+test('money trail: payments recorded/deleted and fines deleted are logged', async () => {
+  const db = await productionDb(); await run(db, REAL());
+  const a = await persona(db, { playerId: 1, admin: true, aal: 'aal2', totpAgeSec: 60 });
+  await as(db, a);
+  const pay = (await one(db, `INSERT INTO public.fine_payments(player_id, amount, date, recorded_by) VALUES (2, 50, '2026-10-01', 1) RETURNING id`)).id;
+  await db.query(`DELETE FROM public.fine_payments WHERE id=$1`, [pay]);
+  const f = (await one(db, `SELECT id FROM public.fines ORDER BY id LIMIT 1`)).id;
+  await db.query(`DELETE FROM public.fines WHERE id=$1`, [f]);
+  await as(db, null); await db.exec('RESET ROLE');
+  const acts = (await audits(db)).map(x => x.action);
+  assert.deepEqual(acts.filter(x => /payment|fine/.test(x)), ['payment_recorded', 'payment_deleted', 'fine_deleted']);
+  assert.equal((await audits(db)).find(x => x.action === 'payment_recorded').d.amount, 50);
+});
+
+test('auth events are logged without email addresses or IPs', async () => {
+  const db = await productionDb(); await run(db, REAL());
+  const m = await persona(db, { playerId: 2 });
+  await db.query(`UPDATE auth.users SET recovery_sent_at=now() WHERE id=$1`, [m.sub]);
+  await db.query(`UPDATE auth.users SET encrypted_password='x' WHERE id=$1`, [m.sub]);
+  await db.query(`UPDATE auth.users SET last_sign_in_at=now() WHERE id=$1`, [m.sub]);
+  await db.query(`UPDATE auth.users SET email='new@x.dk' WHERE id=$1`, [m.sub]);
+  await db.query(`INSERT INTO auth.mfa_factors(user_id, factor_type, status) VALUES ($1,'totp','verified')`, [m.sub]);
+  const rows = await audits(db);
+  for (const act of ['login_set_up', 'reset_requested', 'password_changed', 'login', 'email_changed', 'mfa_enrolled'])
+    assert.ok(rows.some(r => r.action === act && Number(r.t) === 2), act);
+  assert.ok(!JSON.stringify(rows).includes('@'), 'no email addresses in the log');
+});
+
+test('an audit failure never blocks a login', async () => {
+  const db = await productionDb(); await run(db, REAL());
+  await db.exec(`ALTER TABLE public.audit_log ADD CONSTRAINT boom CHECK (false)`);
+  const u = (await one(db, `INSERT INTO auth.users(email) VALUES ('x@x.dk') RETURNING id`)).id;
+  await db.query(`UPDATE auth.users SET email_confirmed_at=now(), last_sign_in_at=now() WHERE id=$1`, [u]);   // must not throw
+});
+
+test('log_admin_mode logs only for a real admin in admin mode', async () => {
+  const db = await productionDb(); await run(db, REAL());
+  const m = await persona(db, { playerId: 2 });
+  const a = await persona(db, { playerId: 1, admin: true, aal: 'aal2', totpAgeSec: 60 });
+  await as(db, m); assert.equal((await one(db, `SELECT public.log_admin_mode() r`)).r, false);
+  await as(db, a); assert.equal((await one(db, `SELECT public.log_admin_mode() r`)).r, true);
+  await as(db, null); await db.exec('RESET ROLE');
+  assert.equal((await audits(db)).filter(x => x.action === 'admin_mode_unlocked').length, 1);
+});
+
+test('entries older than 12 months are trimmed on the next insert', async () => {
+  const db = await productionDb(); await run(db, REAL());
+  await db.query(`INSERT INTO public.audit_log(at, action) VALUES (now() - interval '13 months', 'old')`);
+  await db.query(`SELECT private.audit('new', NULL, NULL)`);
+  assert.deepEqual((await audits(db)).map(x => x.action).filter(x => x === 'old' || x === 'new'), ['new']);
+});
+
+test('members cannot read or write the audit log', async () => {
+  const db = await productionDb(); await run(db, REAL());
+  const m = await persona(db, { playerId: 2 });
+  await as(db, m);
+  assert.equal((await db.query(`SELECT * FROM public.audit_log`)).rows.length, 0);
+  await assert.rejects(db.query(`INSERT INTO public.audit_log(action) VALUES ('forged')`));
+});

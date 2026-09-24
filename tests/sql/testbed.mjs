@@ -57,6 +57,9 @@ export async function as(db, claims) {
 // A confirmed login linked to an existing player; returns JWT claims for that visitor.
 export async function persona(db, { playerId, admin = false, aal = 'aal1', totpAgeSec = null }) {
   await db.exec('RESET ROLE');
+  // Clear any JWT claims left by a prior as() call in this session — persona() is test setup and
+  // must not be blocked by trigger-level checks (e.g. protect_player_fields) keyed on auth.uid().
+  await db.query(`SELECT set_config('request.jwt.claims', '{}', false)`);
   const email = `p${playerId}@test.invalid`;
   const u = (await db.query(`INSERT INTO auth.users (email) VALUES ($1) RETURNING id`, [email])).rows[0].id;
   await db.query(`UPDATE public.players SET email=$1, is_admin=$2 WHERE id=$3`, [email, admin, playerId]);
