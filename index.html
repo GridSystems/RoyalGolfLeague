@@ -752,8 +752,9 @@ select option { background: #1a3a2a; }
     </div>
   </div>
   <div id="pinSetSection" style="display:none">
-    <div style="font-size:0.82rem;color:rgba(255,255,255,0.45);margin-bottom:1rem">No PIN set yet. Choose a 4-digit PIN to secure your account.</div>
+    <div style="font-size:0.82rem;color:rgba(255,255,255,0.45);margin-bottom:1rem">No PIN set yet. Confirm your email and choose a 4-digit PIN to secure your account.</div>
     <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:1rem">
+      <div class="fgi"><label>Your email</label><input type="email" id="pinSetEmail" placeholder="your@email.com" maxlength="100"></div>
       <div class="fgi"><label>Choose a PIN</label><input type="password" id="pinSetInput" placeholder="••••" maxlength="4" inputmode="numeric" pattern="[0-9]*"></div>
       <div class="fgi"><label>Confirm PIN</label><input type="password" id="pinSetConfirm" placeholder="••••" maxlength="4" inputmode="numeric" pattern="[0-9]*"></div>
       <div id="pinSetError" style="color:#f08080;font-size:0.78rem;display:none"></div>
@@ -817,9 +818,14 @@ select option { background: #1a3a2a; }
 const SUPABASE_URL='https://qvjybtcbymexheqrjkai.supabase.co';
 const SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF2anlidGNieW1leGhlcXJqa2FpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQzNDUyMDAsImV4cCI6MjA4OTkyMTIwMH0.ODg9C2HU4exSpTt5ABfODz_vz3v0Uz_tQsL3XAuWJ-4';
 const H={'Content-Type':'application/json','apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY};
-async function sbGet(t,p=''){const r=await fetch(`${SUPABASE_URL}/rest/v1/${t}?${p}`,{headers:H});if(!r.ok)throw new Error(await r.text());return r.json();}
-async function sbInsert(t,b){const r=await fetch(`${SUPABASE_URL}/rest/v1/${t}`,{method:'POST',headers:{...H,'Prefer':'return=representation'},body:JSON.stringify(b)});if(!r.ok)throw new Error(await r.text());return r.json();}
-async function sbUpdate(t,id,b){const r=await fetch(`${SUPABASE_URL}/rest/v1/${t}?id=eq.${id}`,{method:'PATCH',headers:{...H,'Prefer':'return=representation'},body:JSON.stringify(b)});if(!r.ok)throw new Error(await r.text());return r.json();}
+// players.email and players.pin are not readable with the public key (supabase/phase0b_hide_credentials.sql),
+// so every players request names its columns — `select=*` would be refused. PINs are checked by sbRpc('login') etc.
+const PLAYER_COLS='id,name,color,handicap,hcp_history,created_at,is_admin,approved,is_social,bag,dgu_number';
+const sbSel=t=>t==='players'?'select='+PLAYER_COLS:'';
+async function sbGet(t,p=''){const r=await fetch(`${SUPABASE_URL}/rest/v1/${t}?${[sbSel(t),p].filter(Boolean).join('&')}`,{headers:H});if(!r.ok)throw new Error(await r.text());return r.json();}
+async function sbInsert(t,b){const r=await fetch(`${SUPABASE_URL}/rest/v1/${t}?${sbSel(t)}`,{method:'POST',headers:{...H,'Prefer':'return=representation'},body:JSON.stringify(b)});if(!r.ok)throw new Error(await r.text());return r.json();}
+async function sbUpdate(t,id,b){const r=await fetch(`${SUPABASE_URL}/rest/v1/${t}?id=eq.${id}&${sbSel(t)}`,{method:'PATCH',headers:{...H,'Prefer':'return=representation'},body:JSON.stringify(b)});if(!r.ok)throw new Error(await r.text());return r.json();}
+async function sbRpc(fn,args){const r=await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`,{method:'POST',headers:H,body:JSON.stringify(args)});if(!r.ok)throw new Error(await r.text());const t=await r.text();return t?JSON.parse(t):null;}
 async function sbDelete(t,id){const r=await fetch(`${SUPABASE_URL}/rest/v1/${t}?id=eq.${id}`,{method:'DELETE',headers:H});if(!r.ok)throw new Error(await r.text());}
 async function sbDeleteWhere(t,filter){
   const r=await fetch(`${SUPABASE_URL}/rest/v1/${t}?${filter}`,{method:'DELETE',headers:H});
@@ -1130,20 +1136,19 @@ async function submitEmailPin(){
   if(!email||!pin){err.textContent='Please enter your email and PIN.';err.style.display='block';return;}
   err.style.display='none';
   try{
-    const results=await sbGet('players',`email=eq.${encodeURIComponent(email)}`);
-    if(!results.length){err.textContent='No account found with that email.';err.style.display='block';return;}
-    const p=results[0];
-    if(!p.pin){
-      lockLoginPlayer=p;
-      document.getElementById('lockSetPinName').textContent=p.name;
+    // Checked server-side; unknown email and wrong PIN get the same answer on purpose.
+    const res=await sbRpc('login',{p_email:email,p_pin:pin});
+    if(res.ok&&res.needs_pin){
+      lockLoginPlayer={id:res.id,name:res.name,email};
+      document.getElementById('lockSetPinName').textContent=res.name;
       document.getElementById('lockSetPinInput').value='';document.getElementById('lockSetPinConfirm').value='';document.getElementById('lockSetPinError').style.display='none';
       document.getElementById('lockLoginPanel').style.display='none';
       document.getElementById('lockSetPinPanel').style.display='block';
       setTimeout(()=>document.getElementById('lockSetPinInput').focus(),50);
-    } else if(pin===p.pin){
-      await loginAs(p);
+    } else if(res.ok){
+      await loginAs({id:res.id});
     } else {
-      err.textContent='Incorrect PIN.';err.style.display='block';
+      err.textContent=res.locked?'Too many wrong PINs. Try again in 15 minutes.':'Email or PIN incorrect.';err.style.display='block';
       document.getElementById('loginPin').value='';document.getElementById('loginPin').focus();
     }
   }catch(e){err.textContent='Error: '+e.message;err.style.display='block';}
@@ -1155,8 +1160,8 @@ async function submitLockSetPin(){
   if(!v1||v1.length<4){err.textContent='PIN must be 4 digits.';err.style.display='block';return;}
   if(v1!==v2){err.textContent='PINs do not match.';err.style.display='block';return;}
   try{
-    await sbUpdate('players',lockLoginPlayer.id,{pin:v1});
-    lockLoginPlayer.pin=v1;
+    const res=await sbRpc('set_first_pin',{p_id:lockLoginPlayer.id,p_email:lockLoginPlayer.email,p_pin:v1});
+    if(!res.ok){err.textContent=res.error;err.style.display='block';return;}
     await loginAs(lockLoginPlayer);toast('PIN set ✓');
   }catch(e){err.textContent='Error: '+e.message;err.style.display='block';}
 }
@@ -1168,7 +1173,6 @@ async function loginAs(p){
 }
 
 // ── Sign-up ───────────────────────────────────────────────────────────────────
-function showLockLogin(){document.getElementById('lockLoginPanel').style.display='block';document.getElementById('lockSignupPanel').style.display='none';document.getElementById('lockPayPanel').style.display='none';setTimeout(()=>document.getElementById('appPwdInput').focus(),50);}
 function showLockSignup(){document.getElementById('lockLoginPanel').style.display='none';document.getElementById('lockSetPinPanel').style.display='none';document.getElementById('lockSignupPanel').style.display='block';document.getElementById('lockPayPanel').style.display='none';document.getElementById('signupName').value='';document.getElementById('signupEmail').value='';document.getElementById('signupDgu').value='';document.getElementById('signupHcp').value='';document.getElementById('signupPin').value='';document.getElementById('signupPinConfirm').value='';document.getElementById('signupError').style.display='none';setTimeout(()=>document.getElementById('signupName').focus(),50);}
 function showSignup(){showLockSignup();}
 async function submitSignup(){
@@ -5487,27 +5491,27 @@ function showPicker(){
   document.getElementById('pickerModal').style.display='flex';
 }
 let pendingPinId=null;
-function requirePin(id){
+async function requirePin(id){
   const p=players.find(x=>x.id===id);if(!p)return;
   pendingPinId=id;
   document.getElementById('pinModalAvatar').textContent=ini(p.name);
   document.getElementById('pinModalAvatar').style.background=clr(p);
   document.getElementById('pinModalName').textContent=p.name;
-  const hasPin=p.pin&&p.pin.length>0;
+  let hasPin;try{hasPin=await sbRpc('has_pin',{p_id:id});}catch(e){alert('Error: '+e.message);return;}
   document.getElementById('pinModalSub').textContent=hasPin?'Enter your PIN to continue':'First time? Set a PIN to secure your account';
   document.getElementById('pinEnterSection').style.display=hasPin?'block':'none';
   document.getElementById('pinSetSection').style.display=hasPin?'none':'block';
   document.getElementById('pinInput').value='';document.getElementById('pinError').style.display='none';
-  document.getElementById('pinSetInput').value='';document.getElementById('pinSetConfirm').value='';document.getElementById('pinSetError').style.display='none';
+  document.getElementById('pinSetEmail').value='';document.getElementById('pinSetInput').value='';document.getElementById('pinSetConfirm').value='';document.getElementById('pinSetError').style.display='none';
   closeModal('pickerModal');
   document.getElementById('pinModal').style.display='flex';
-  setTimeout(()=>{const f=hasPin?document.getElementById('pinInput'):document.getElementById('pinSetInput');if(f)f.focus();},50);
+  setTimeout(()=>{const f=hasPin?document.getElementById('pinInput'):document.getElementById('pinSetEmail');if(f)f.focus();},50);
 }
-function submitPin(){
-  const p=players.find(x=>x.id===pendingPinId);if(!p)return;
-  const entered=document.getElementById('pinInput').value;
-  if(entered===p.pin){closeModal('pinModal');setPlayer(pendingPinId);}
-  else{document.getElementById('pinError').style.display='block';document.getElementById('pinInput').value='';document.getElementById('pinInput').focus();}
+async function submitPin(){
+  const entered=document.getElementById('pinInput').value;const err=document.getElementById('pinError');
+  let res;try{res=await sbRpc('check_pin',{p_id:pendingPinId,p_pin:entered});}catch(e){err.textContent='Error: '+e.message;err.style.display='block';return;}
+  if(res.ok){closeModal('pinModal');setPlayer(pendingPinId);}
+  else{err.textContent=res.locked?'Too many wrong PINs. Try again in 15 minutes.':'Incorrect PIN.';err.style.display='block';document.getElementById('pinInput').value='';document.getElementById('pinInput').focus();}
 }
 async function saveFirstPin(){
   const v1=document.getElementById('pinSetInput').value.trim();
@@ -5515,21 +5519,22 @@ async function saveFirstPin(){
   const err=document.getElementById('pinSetError');
   if(!v1||v1.length<4){err.textContent='PIN must be 4 digits.';err.style.display='block';return;}
   if(v1!==v2){err.textContent='PINs do not match.';err.style.display='block';return;}
+  const email=document.getElementById('pinSetEmail').value.trim().toLowerCase();
+  if(!email){err.textContent='Enter your email.';err.style.display='block';return;}
   try{
-    await sbUpdate('players',pendingPinId,{pin:v1});
-    const p=players.find(x=>x.id===pendingPinId);if(p)p.pin=v1;
+    const res=await sbRpc('set_first_pin',{p_id:pendingPinId,p_email:email,p_pin:v1});
+    if(!res.ok){err.textContent=res.error;err.style.display='block';return;}
     closeModal('pinModal');setPlayer(pendingPinId);toast('PIN set ✓');
   }catch(e){err.textContent='Error: '+e.message;err.style.display='block';}
 }
 let editingEmailPlayerId=null;
-function openEditEmail(id){editingEmailPlayerId=id;const p=players.find(x=>x.id===id);if(!p)return;document.getElementById('editEmailTitle').textContent='Edit Email — '+p.name;document.getElementById('editEmailVal').value=p.email||'';document.getElementById('editEmailModal').style.display='flex';setTimeout(()=>document.getElementById('editEmailVal').focus(),50);}
+function openEditEmail(id){editingEmailPlayerId=id;const p=players.find(x=>x.id===id);if(!p)return;document.getElementById('editEmailTitle').textContent='Edit Email — '+p.name;document.getElementById('editEmailVal').value='';document.getElementById('editEmailVal').placeholder='Hidden, enter a new address to replace it';document.getElementById('editEmailModal').style.display='flex';setTimeout(()=>document.getElementById('editEmailVal').focus(),50);}
 async function savePlayerEmail(){const val=document.getElementById('editEmailVal').value.trim().toLowerCase();if(!val||!val.includes('@')){alert('Enter a valid email.');return;}const p=players.find(x=>x.id===editingEmailPlayerId);if(!p)return;setLoading(true,'Saving…');try{await sbUpdate('players',p.id,{email:val});p.email=val;toast('Email updated ✓');closeModal('editEmailModal');renderAdmin();}catch(e){alert('Error: '+e.message);}finally{setLoading(false);}}
 async function resetPlayerPin(id){
   if(!confirm('Reset this player\'s PIN? They will be asked to set a new one next time they log in.'))return;
   setLoading(true,'Resetting…');
   try{
-    await sbUpdate('players',id,{pin:null});
-    const p=players.find(x=>x.id===id);if(p)p.pin=null;
+    await sbRpc('admin_reset_pin',{p_id:id});
     toast('PIN reset ✓');
   }catch(e){alert('Error: '+e.message);}finally{setLoading(false);}
 }

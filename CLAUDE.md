@@ -61,6 +61,18 @@ created_at   timestamptz
 
 **RLS:** Public read/write on both tables (app has no auth layer — admin is PIN-protected at UI level only).
 
+**Credentials are hidden (Phase 0, 2026-09-24):** the public key cannot read
+`players.email`, `players.pin` or the lockout columns (`pin_failures`,
+`pin_locked_until`) — SELECT/UPDATE on `players` are column-level grants. PINs are
+checked only by database functions via `sbRpc()`: `login`, `has_pin`, `check_pin`,
+`set_first_pin`, `admin_reset_pin` (`supabase/phase0a_pin_functions.sql`). Five
+wrong PINs lock an account for 15 minutes.
+**Adding a column to `players`?** Add it to `PLAYER_COLS` in `index.html` *and* to the
+column grants in `supabase/grants.sql` / `phase0b_hide_credentials.sql`, or the app
+can't read it. Never grant SELECT on `players` table-wide.
+Still open until Phase 2 (real login): tables are publicly writable, and the session
+is just a player id in `sessionStorage`.
+
 ---
 
 ## Course data — Royal Golf Club Copenhagen
