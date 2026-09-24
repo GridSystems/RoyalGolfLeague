@@ -5,7 +5,7 @@ import fs from 'node:fs'; import path from 'node:path'; import os from 'node:os'
 const repo = path.resolve(import.meta.dirname, '../..');
 const key = fs.readFileSync(path.join(repo, 'CLAUDE.md'), 'utf8').match(/Key:\s+(\S+)/)[1];
 // x-app-version: the version gate (Phase 1) refuses requests without it.
-const H = { apikey: key, Authorization: 'Bearer ' + key, 'x-app-version': '2' };
+const H = { apikey: key, Authorization: 'Bearer ' + key, 'x-app-version': '3' };
 // players.email and .pin are not readable with the public key; ask for the rest.
 const PLAYER_COLS = 'id,name,color,handicap,hcp_history,created_at,is_admin,approved,is_social,bag,dgu_number';
 const TABLES = ['players', 'rounds', 'fine_types', 'fines', 'fine_payments', 'saturday_events', 'saturday_signups',

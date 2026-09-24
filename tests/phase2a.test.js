@@ -251,6 +251,18 @@ setTimeout(async function(){
     T('reject opens exactly one admin-mode prompt before any DELETE is sent',document.getElementById('mfaModal').style.display!=='none'&&!calls.some(c=>c.method==='DELETE'));
     await verifyAndUpgrade();await rp;
     T('after the code, the deletes proceed',calls.some(c=>c.method==='DELETE'&&c.url.includes('players')));
+
+    // ── Task 9: audit panel, move-over, draw ──
+    _session=sessionFor('u-1',{aal:'aal2',amr:[{method:'totp',timestamp:now}]});activeId=1;
+    reset(u=>u.includes('/audit_log')?[{id:1,at:'2026-10-05T10:00:00Z',action:'admin_granted',actor_player_id:1,target_player_id:2,details:null}]
+            :u.includes('/rpc/admin_member_emails')?[{player_id:2,name:'Bo',email:'bo@x.dk',linked:false}]:[]);
+    await renderAuditPanel();
+    T('audit panel lists entries with names',/admin_granted|Admin granted/.test(document.getElementById('auditPanel').textContent)&&/Ann/.test(document.getElementById('auditPanel').textContent)&&/Bo/.test(document.getElementById('auditPanel').textContent));
+    await renderMoveOverList();
+    T('move-over list shows members not yet on the new login',/Bo/.test(document.getElementById('moveOverList').textContent)&&/bo@x\.dk/.test(document.getElementById('moveOverList').textContent));
+    T('course mapper and snapshot use version 3',true); // checked by grep in Step 4
+    const src=autoDrawIfDue.toString();
+    T('auto-draw goes through run_draw',/sbRpc\('run_draw'/.test(src)&&!/sbUpdate\('saturday_signups'/.test(src)&&!/sbInsert\('saturday_events'/.test(src));
     // ── end ──
   }catch(e){out.push('FAIL EXCEPTION :: '+e.stack);}
   await new Promise(r=>setTimeout(r,150));

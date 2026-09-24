@@ -262,7 +262,7 @@
 // ── Supabase (survey_points) ───────────────────────────────────────────────
 const SB_URL  = 'https://qvjybtcbymexheqrjkai.supabase.co';
 const SB_KEY  = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF2anlidGNieW1leGhlcXJqa2FpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQzNDUyMDAsImV4cCI6MjA4OTkyMTIwMH0.ODg9C2HU4exSpTt5ABfODz_vz3v0Uz_tQsL3XAuWJ-4';
-const SB_H    = {'Content-Type':'application/json','apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'x-app-version':'2'}; // version gate: keep in step with APP_VERSION in index.html
+const SB_H    = {'Content-Type':'application/json','apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'x-app-version':'3'}; // version gate: keep in step with APP_VERSION in index.html
 async function sbSurveyGet(){
   const r=await fetch(`${SB_URL}/rest/v1/survey_points?select=*&order=recorded_at.asc`,{headers:SB_H});
   if(!r.ok)throw new Error(await r.text());

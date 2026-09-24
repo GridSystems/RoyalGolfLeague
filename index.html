@@ -585,6 +585,8 @@ select option { background: #1a3a2a; }
       <div class="ph"><span class="pt">Pending Approvals</span><span id="pendingBadge" style="font-size:0.75rem;color:var(--gold-l)"></span></div>
       <div class="pb" id="pendingApprovalsList"></div>
     </div>
+    <div class="panel"><div class="ph"><span class="pt">New login — not set up yet</span></div><div class="pb" id="moveOverList"></div></div>
+    <div class="panel"><div class="ph"><span class="pt">Audit log</span><select id="auditFilter" onchange="renderAuditPanel()"><option value="">All events</option></select></div><div class="pb" id="auditPanel"></div></div>
     <div class="panel" id="bulkEntryPanel">
       <div class="ph" onclick="toggleAdminSection('bulkEntryBody','achev-bulk')" style="cursor:pointer;user-select:none">
         <span class="pt">Bulk Round Entry</span>
@@ -1469,6 +1471,28 @@ async function rejectPlayer(id){
   }catch(e){alert('Error: '+e.message);}finally{setLoading(false);}
 }
 
+// ── Audit log & move-over list ─────────────────────────────────────────────────
+const AUDIT_LABELS={login:'Signed in',login_set_up:'Set up new login',signed_up:'Signed up',reset_requested:'Password reset requested',password_changed:'Password changed',email_changed:'Email changed',mfa_enrolled:'Two-factor set up',admin_mode_unlocked:'Admin mode unlocked',admin_granted:'Admin granted',admin_removed:'Admin removed',approved:'Approved',archived:'Archived',restored:'Restored',social_changed:'Social status changed',payment_recorded:'Payment recorded',payment_deleted:'Payment deleted',fine_deleted:'Fine deleted'};
+async function renderAuditPanel(){
+  const el=document.getElementById('auditPanel');if(!el)return;
+  const f=document.getElementById('auditFilter');
+  if(f&&f.options.length<2)f.innerHTML='<option value="">All events</option>'+Object.entries(AUDIT_LABELS).map(([k,v])=>`<option value="${k}">${v}</option>`).join('');
+  const q='order=at.desc&limit=200'+(f&&f.value?'&action=eq.'+f.value:'');
+  let rows=[];try{rows=await sbGet('audit_log',q);}catch(e){el.innerHTML='<div class="empty">Audit log needs admin mode.</div>';return;}
+  // An actor/target may not be in players or pendingPlayers yet (e.g. someone who signed in on the
+  // new login but has no linked players row) — admin_member_emails is the fallback name source.
+  let emailNames={};try{(await sbRpc('admin_member_emails',{})||[]).forEach(r=>{emailNames[r.player_id]=r.name;});}catch(e){}
+  const nm=id=>id==null?'—':(players.find(p=>p.id===id)||pendingPlayers.find(p=>p.id===id))?.name||emailNames[id]||('#'+id);
+  el.innerHTML=rows.length?`<div class="rt-wrap"><table class="rt"><thead><tr><th>When</th><th>Who</th><th>What</th><th>Whom</th><th>Detail</th></tr></thead><tbody>${rows.map(r=>`<tr><td style="white-space:nowrap">${new Date(r.at).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}</td><td>${nm(r.actor_player_id)}</td><td>${AUDIT_LABELS[r.action]||r.action}</td><td>${nm(r.target_player_id)}</td><td style="font-family:'DM Mono',monospace;font-size:0.75rem">${r.details?Object.entries(r.details).map(([k,v])=>k+': '+escHtml(v)).join(', '):''}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">No entries yet.</div>';
+}
+async function renderMoveOverList(){
+  const el=document.getElementById('moveOverList');if(!el)return;
+  let rows=[];try{rows=await sbRpc('admin_member_emails',{});}catch(e){el.innerHTML='<div class="empty">Needs admin mode.</div>';return;}
+  const todo=rows.filter(r=>!r.linked);
+  el.innerHTML=todo.length?`<div style="font-size:0.8rem;color:rgba(255,255,255,0.45);margin-bottom:0.5rem">${todo.length} of ${rows.length} members still on the old PIN login. Release B can go ahead when this list is empty.</div>`+todo.map(r=>`<div style="display:flex;justify-content:space-between;padding:4px 0"><span>${r.name}</span><span style="font-family:'DM Mono',monospace;font-size:0.78rem;color:rgba(255,255,255,0.5)">${r.email?escHtml(r.email):'no email on file'}</span></div>`).join('')
+    :'<div class="empty">Everyone has moved to the new login ✓ — release B can go ahead.</div>';
+}
+
 // ── PIN ───────────────────────────────────────────────────────────────────────
 const PIN_KEY='sl_admin_pin';const DEFAULT_PIN='saturday';
 let pendingAdminBtn=null;
@@ -1489,7 +1513,7 @@ function showView(id,btn){
   if(id==='players'){renderGrid();}
   if(id==='profile'){renderProfile();}
   if(id==='log'){buildPlayerCheckboxes();checkForResumableRounds();applySaturdayDraw();}
-  if(id==='admin'){renderPendingApprovals();renderAdmin();renderBulkEntry();renderAdminFines();renderSaturdayAdmin();renderAdminTournament();}
+  if(id==='admin'){renderPendingApprovals();renderAdmin();renderBulkEntry();renderAdminFines();renderSaturdayAdmin();renderAdminTournament();renderMoveOverList();renderAuditPanel();}
   if(id==='rules')renderRules();
   if(id==='track')renderTrackView();
   if(id==='signup')renderSaturdayView();
@@ -4935,20 +4959,12 @@ async function autoDrawIfDue(){
   const teeTimes=(Array.isArray(event?.tee_times)&&event.tee_times.length)
     ? event.tee_times : ['08:30','08:40','08:50'];
   try{
-    // Claim the draw by locking BEFORE allocating, so two people opening the app
-    // at the same moment do not both write one.
-    if(event){await sbUpdate('saturday_events',event.id,{locked:true});event.locked=true;}
-    else{
-      const payload={date,locked:true,tee_times:teeTimes};
-      const[saved]=await sbInsert('saturday_events',payload);
-      saturdayEvents.push(saved);
-    }
     const alloc=chooseBestDraw(signups,teeTimes,date);
-    for(const s of signups){
-      const a=alloc.get(s.id);if(!a)continue;
-      s.tee_time=a.tee_time;s.group_num=a.group_num;
-      await sbUpdate('saturday_signups',s.id,{tee_time:a.tee_time,group_num:a.group_num});
-    }
+    const p_alloc=signups.map(s=>({id:s.id,...alloc.get(s.id)}));
+    const res=await sbRpc('run_draw',{p_date:date,p_tee_times:teeTimes,p_alloc});
+    if(!res||!res.ok)return;                                  // someone else drew first, or the date is locked
+    saturdayEvents=await sbGet('saturday_events','order=date.asc');
+    saturdaySignups=await sbGet('saturday_signups','order=created_at.asc');
     renderSaturdayView();renderTeeSheet();renderSaturdayAdmin();
   }catch(e){console.error('[auto-draw] failed',e);}
 }
