@@ -149,6 +149,18 @@ setTimeout(async function(){
     const txt=mediaRule?mediaRule.cssText.replace(/\s+/g,''):'';
     T('mobile media query hides db-status.db-ok and wraps hdr-right',mediaRule&&txt.includes('.db-status.db-ok{display:none')&&txt.includes('flex-wrap:wrap'));
     _session=null;
+    // ── Eclectic: an unplayed hole counts as a nett triple bogey (all seasons) ──
+    const nine=(id,pid,date,score)=>{const r=round(id,pid,date,score);r.holes=r.holes.map((h,i)=>i<9?h:{...h,score:null});return r;};
+    today=()=>'2026-09-20';players=[P(1,'Ann'),P(2,'Bo')];seasonEntries=[];
+    const e9=eclecticCard(players[0],[nine(1,1,'2026-09-12',4)],0.95);
+    const back=HOLE_PARS.slice(9).reduce((s,p)=>s+p+3,0),front=e9.bestPerHole.slice(0,9).reduce((s,b)=>s+b.nett,0);
+    T('a 9-hole card counts each unplayed hole as par + 3',e9.filled===9&&e9.totalNett===front+back&&e9.completedPar===72,e9.totalNett+' vs '+(front+back));
+    allRounds=[nine(1,1,'2026-09-12',4),round(2,2,'2026-09-12',5)];
+    T('a half card no longer ranks above a full card',eclecticStandings('Summer 2026')[0].p.id===2);
+    allRounds=[nine(1,1,'2026-09-12',4)];renderHallOfFame();
+    T('the Hall of Fame Eclectic winner no longer needs all 18 holes',/Ann/.test(document.getElementById('fameBody').innerHTML.split('Best')[0]));
+    document.getElementById('dreamYear').innerHTML='<option>Summer 2026</option>';document.getElementById('dreamYear').value='Summer 2026';renderDreamCard();
+    T('unplayed holes show on the card as par + 3',document.getElementById('eclecticScorecards').innerHTML.includes('Not played yet'));
     // ── end ──
   }catch(e){out.push('FAIL EXCEPTION :: '+e.stack);}
   await new Promise(r=>setTimeout(r,150));

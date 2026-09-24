@@ -217,7 +217,8 @@ pot for an opt-in season is the sum of paid `amount`s. `entrySeason()` is the se
 the current one if it needs entry, else the next — so entries open before a season starts.
 
 ### Hall of Fame
-Winners per season: Eclectic (complete 18-hole cards only, social members
+Winners per season: Eclectic (a hole not yet played counts as nett par + 3 — `UNPLAYED_NETT` —
+so 9-hole rounds count and a half card can't lead a full one; social members
 excluded), Best N IPS (N from `SEASONS` — 4 for Summer 2026, 3 for Winter 2027), most fined (by count) and the season's fine pot. Computed
 live from `seasonStandings` / `eclecticStandings` / `finesStandings` — the same
 functions the leaderboards use — so there is no winners table to keep in sync.
