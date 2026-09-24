@@ -156,6 +156,38 @@ setTimeout(async function(){
     window.forceReload=()=>{};
     authCalls.length=0;await signOut();
     T('sign out calls Supabase and clears the session',authCalls.some(c=>c[0]==='signOut')&&_session===null);
+
+    // ── Task 8: admin mode ──
+    players=[{id:1,name:'Ann',user_id:'u-1',is_admin:true,color:0,hcp_history:[],approved:true},{id:2,name:'Bo',user_id:'u-2',color:1,hcp_history:[],approved:true}];activeId=1;
+    _session=sessionFor('u-1');
+    T('password-only admin session is not admin mode',adminModeActive()===false);
+    _session=sessionFor('u-1',{aal:'aal2',amr:[{method:'totp',timestamp:now-60}]});
+    T('fresh second factor is admin mode',adminModeActive()===true);
+    _session=sessionFor('u-1',{aal:'aal2',amr:[{method:'totp',timestamp:now-13*3600}]});
+    T('second factor older than 12 hours is not admin mode',adminModeActive()===false);
+    // first admin action: enrol + verify, then retry succeeds
+    _session=sessionFor('u-1');authState.factors=[];let n=0;
+    reset((u,b,m)=>{if(m==='POST'&&u.includes('/fine_types')){n++;return n===1?{__status:403,code:'42501',message:'new row violates row-level security policy'}:[{id:9,name:'x',amount:1}];}if(u.includes('/rpc/log_admin_mode'))return true;return[];});
+    const verifyAndUpgrade=async()=>{document.getElementById('mfaCode').value='123456';_session=sessionFor('u-1',{aal:'aal2',amr:[{method:'totp',timestamp:now}]});await submitMfaCode();};
+    const p=sbInsert('fine_types',{name:'x',amount:1});
+    await new Promise(r=>setTimeout(r,50));
+    T('a refused admin action opens the two-factor prompt',document.getElementById('mfaModal').style.display!=='none'&&authCalls.some(c=>c[0]==='enroll'));
+    await verifyAndUpgrade();const res=await p;
+    T('after the code, the action is retried and succeeds',res&&res[0]&&res[0].id===9&&n===2,`n=${n}`);
+    T('admin mode unlock is logged by the database function',calls.some(c=>c.url.includes('/rpc/log_admin_mode')));
+    // a member's refused action does not prompt
+    activeId=2;_session=sessionFor('u-2');document.getElementById('mfaModal').style.display='none';
+    reset(()=>({__status:403,code:'42501',message:'denied'}));let threw=false;try{await sbInsert('fine_types',{name:'y'});}catch(e){threw=true;}
+    T('members are refused without a prompt',threw&&document.getElementById('mfaModal').style.display==='none');
+    T('admin PIN is gone for signed-in users',typeof openAdminTab==='function'&&!/requireAdminPin/.test(document.getElementById('adminTab').getAttribute('onclick')));
+    // an admin PATCH that silently matches nothing before admin mode → prompt → retried
+    players=[{id:1,name:'Ann',user_id:'u-1',is_admin:true,color:0,hcp_history:[],approved:true}];activeId=1;
+    _session=sessionFor('u-1');authState.factors=[{id:'f1',status:'verified'}];let k=0;
+    reset((u,b,m)=>{if(m==='PATCH'){k++;return k===1?[]:[{id:5,approved:true}];}return u.includes('/rpc/log_admin_mode')?true:[];});
+    const pu=sbUpdate('players',5,{approved:true});await new Promise(r=>setTimeout(r,50));
+    T('an empty admin update opens the prompt (existing factor: no QR)',document.getElementById('mfaModal').style.display!=='none'&&document.getElementById('mfaEnroll').style.display==='none');
+    await verifyAndUpgrade();const pr=await pu;
+    T('…and the retried update returns the row',pr.length===1&&k===2,`k=${k}`);
     // ── end ──
   }catch(e){out.push('FAIL EXCEPTION :: '+e.stack);}
   await new Promise(r=>setTimeout(r,150));

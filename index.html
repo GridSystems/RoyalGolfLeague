@@ -282,7 +282,7 @@ select option { background: #1a3a2a; }
     <button class="nav-tab" id="tabPlayers" onclick="showView('players',this)">Players</button>
     <button class="nav-tab" onclick="showView('rules',this)">Rules</button>
     <button class="nav-tab" id="tabTrack" onclick="openTrackTab()" style="display:none">📍 Track</button>
-    <button class="nav-tab" id="adminTab" style="display:none" onclick="requireAdminPin(this)">⚙ Admin</button>
+    <button class="nav-tab" id="adminTab" style="display:none" onclick="openAdminTab(this)">⚙ Admin</button>
   </div>
 
   <!-- LEADERBOARDS -->
@@ -658,6 +658,14 @@ select option { background: #1a3a2a; }
   </div>
 </div></div>
 
+<div class="modal-bg" id="mfaModal" style="display:none"><div class="modal modal-sm">
+  <div class="mt">Admin mode</div>
+  <div id="mfaEnroll" style="display:none;font-size:0.82rem;color:rgba(255,255,255,0.6);margin-bottom:0.75rem">Scan this with an authenticator app (Google Authenticator, 1Password…), then enter the 6-digit code.<div id="mfaQr" style="background:#fff;padding:8px;border-radius:8px;margin:0.75rem auto;width:180px"></div></div>
+  <div class="fgi"><label>6-digit code</label><input id="mfaCode" inputmode="numeric" maxlength="6" autocomplete="one-time-code" onkeydown="if(event.key==='Enter')submitMfaCode()"></div>
+  <div id="mfaError" style="color:#f08080;font-size:0.78rem;display:none"></div>
+  <div style="display:flex;gap:9px;justify-content:flex-end;margin-top:1rem"><button class="btn btn-ghost btn-sm" onclick="cancelMfa()">Cancel</button><button class="btn btn-primary btn-sm" onclick="submitMfaCode()">Unlock</button></div>
+</div></div>
+
 <div class="modal-bg" id="myHcpModal" style="display:none"><div class="modal modal-sm">
   <h3 id="myHcpTitle">Update My Handicap</h3>
   <div style="font-size:0.8rem;color:rgba(255,255,255,0.45);margin-bottom:1rem">Update your own handicap index.</div>
@@ -877,9 +885,15 @@ const APP_VERSION=3;
 const SITE_URL='https://gridsystems.github.io/RoyalGolfLeague/';
 const H={'Content-Type':'application/json','apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY,'x-app-version':String(APP_VERSION)};
 function forceReload(){location.reload();}
-async function sbCheck(r){
+async function sbCheck(r,retry){
   if(r.status===426){forceReload();throw new Error('Updating to the latest version…');}
-  if(!r.ok)throw new Error(await r.text());
+  if(r.ok)return r;
+  const text=await r.text();
+  // Refused by a permission rule: an admin who isn't in admin mode is asked for their code, then we retry once.
+  if(retry&&_session&&isAdminAccount()&&!adminModeActive()&&/42501|row-level security|admin mode/i.test(text)){
+    if(await requireAdminMode())return sbCheck(await retry(),null);
+  }
+  throw new Error(text);
 }
 // Supabase Auth, used only for login. The data helpers below stay plain fetch calls; when someone is
 // signed in they carry that person's token, so the database's permission rules know who is asking.
@@ -892,20 +906,68 @@ function authClient(){
 function hdr(extra){return{...H,...(_session?{Authorization:'Bearer '+_session.access_token}:{}),...(extra||{})};}
 // The signed-in token's claims (aal, amr) — used for admin mode; the database checks the same.
 function jwtClaims(){try{return JSON.parse(atob(_session.access_token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));}catch(e){return{};}}
+// Admin mode: an admin's powers need their authenticator code, at most 12 hours old. The database
+// enforces this (private.is_admin); this mirrors it so the app can ask before being refused.
+const ADMIN_MODE_SECONDS=12*3600;
+function isAdminAccount(){return players.find(p=>p.id===activeId)?.is_admin===true;}
+function adminModeActive(){
+  const c=jwtClaims();if(c.aal!=='aal2')return false;
+  return (c.amr||[]).some(m=>m.method==='totp'&&m.timestamp>=Date.now()/1000-ADMIN_MODE_SECONDS);
+}
+let _mfa=null;   // {factorId, resolve}
+async function requireAdminMode(){
+  if(!_session)return true;                       // old PIN route: unchanged until release B
+  if(adminModeActive())return true;
+  const {data}=await authClient().auth.mfa.listFactors();
+  let factor=(data.totp||[]).find(f=>f.status==='verified');
+  document.getElementById('mfaEnroll').style.display='none';
+  if(!factor){const e=await authClient().auth.mfa.enroll({factorType:'totp',friendlyName:'Saturday League'});
+    factor={id:e.data.id};
+    // e.data.totp.qr_code is an SVG string returned by Supabase's own auth server, never user text — innerHTML is safe here.
+    document.getElementById('mfaQr').innerHTML=e.data.totp.qr_code;document.getElementById('mfaEnroll').style.display='block';}
+  document.getElementById('mfaCode').value='';document.getElementById('mfaError').style.display='none';
+  document.getElementById('mfaModal').style.display='flex';
+  return new Promise(resolve=>{_mfa={factorId:factor.id,resolve};});
+}
+async function submitMfaCode(){
+  if(!_mfa)return;
+  const code=document.getElementById('mfaCode').value.trim();
+  const {error}=await authClient().auth.mfa.challengeAndVerify({factorId:_mfa.factorId,code});
+  if(error){const e=document.getElementById('mfaError');e.textContent='That code didn\'t work — try the current one.';e.style.display='block';return;}
+  _session=(await authClient().auth.getSession()).data.session||_session;
+  try{await sbRpc('log_admin_mode',{});}catch(e){}
+  document.getElementById('mfaModal').style.display='none';const r=_mfa.resolve;_mfa=null;r(true);
+}
+function cancelMfa(){document.getElementById('mfaModal').style.display='none';if(_mfa){const r=_mfa.resolve;_mfa=null;r(false);}}
+async function openAdminTab(btn){
+  if(!_session){requireAdminPin(btn);return;}     // old PIN route (release B removes)
+  if(await requireAdminMode())showView('admin',btn);
+}
 // players.email and players.pin are not readable with the public key (supabase/phase0b_hide_credentials.sql),
 // so every players request names its columns — `select=*` would be refused. PINs are checked by sbRpc('login') etc.
 const PLAYER_COLS='id,name,color,handicap,hcp_history,created_at,is_admin,approved,is_social,bag,dgu_number,archived_at,legacy_id,user_id';
 const sbSel=t=>t==='players'?'select='+PLAYER_COLS:'';
 // Archived players (people who left) keep their history but are left out of every pick list.
 const activePlayers=()=>players.filter(p=>!p.archived_at);
-async function sbGet(t,p=''){const r=await fetch(`${SUPABASE_URL}/rest/v1/${t}?${[sbSel(t),p].filter(Boolean).join('&')}`,{headers:hdr()});await sbCheck(r);return r.json();}
-async function sbInsert(t,b){const r=await fetch(`${SUPABASE_URL}/rest/v1/${t}?${sbSel(t)}`,{method:'POST',headers:hdr({'Prefer':'return=representation'}),body:JSON.stringify(b)});await sbCheck(r);return r.json();}
-async function sbUpdate(t,id,b){const r=await fetch(`${SUPABASE_URL}/rest/v1/${t}?id=eq.${id}&${sbSel(t)}`,{method:'PATCH',headers:hdr({'Prefer':'return=representation'}),body:JSON.stringify(b)});await sbCheck(r);return r.json();}
-async function sbRpc(fn,args){const r=await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`,{method:'POST',headers:hdr(),body:JSON.stringify(args)});await sbCheck(r);const t=await r.text();return t?JSON.parse(t):null;}
-async function sbDelete(t,id){const r=await fetch(`${SUPABASE_URL}/rest/v1/${t}?id=eq.${id}`,{method:'DELETE',headers:hdr()});await sbCheck(r);}
+async function sbGet(t,p=''){const go=()=>fetch(`${SUPABASE_URL}/rest/v1/${t}?${[sbSel(t),p].filter(Boolean).join('&')}`,{headers:hdr()});return (await sbCheck(await go(),go)).json();}
+async function sbInsert(t,b){const go=()=>fetch(`${SUPABASE_URL}/rest/v1/${t}?${sbSel(t)}`,{method:'POST',headers:hdr({'Prefer':'return=representation'}),body:JSON.stringify(b)});return (await sbCheck(await go(),go)).json();}
+// PostgREST returns zero rows, not an error, when an UPDATE/DELETE policy's USING filters rows out —
+// so an admin who isn't in admin mode gets [] back rather than a refusal, and we retry through the prompt on that too.
+async function sbUpdate(t,id,b){
+  const go=()=>fetch(`${SUPABASE_URL}/rest/v1/${t}?id=eq.${id}&${sbSel(t)}`,{method:'PATCH',headers:hdr({'Prefer':'return=representation'}),body:JSON.stringify(b)});
+  let rows=await (await sbCheck(await go(),go)).json();
+  if(!rows.length&&_session&&isAdminAccount()&&!adminModeActive()&&await requireAdminMode())rows=await (await sbCheck(await go(),null)).json();
+  return rows;
+}
+async function sbRpc(fn,args){const go=()=>fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`,{method:'POST',headers:hdr(),body:JSON.stringify(args)});const r=await sbCheck(await go(),go);const t=await r.text();return t?JSON.parse(t):null;}
+async function sbDelete(t,id){
+  const go=()=>fetch(`${SUPABASE_URL}/rest/v1/${t}?id=eq.${id}`,{method:'DELETE',headers:hdr({'Prefer':'return=representation'})});
+  const rows=await (await sbCheck(await go(),go)).json();
+  if(!rows.length&&_session&&isAdminAccount()&&!adminModeActive()&&await requireAdminMode())await sbCheck(await go(),null);
+}
 async function sbDeleteWhere(t,filter){
-  const r=await fetch(`${SUPABASE_URL}/rest/v1/${t}?${filter}`,{method:'DELETE',headers:hdr()});
-  await sbCheck(r);
+  const go=()=>fetch(`${SUPABASE_URL}/rest/v1/${t}?${filter}`,{method:'DELETE',headers:hdr()});
+  await sbCheck(await go(),go);
 }
 
 // ── Course data ───────────────────────────────────────────────────────────────
@@ -1198,7 +1260,7 @@ async function seedTees(){try{const rows=await sbInsert('tees',_TEES_SEED);tees=
 
 // ── Admin ─────────────────────────────────────────────────────────────────────
 function adminPlayer(){return players.find(p=>p.is_admin&&!p.archived_at)||activePlayers()[0];}
-function isAdmin(){return players.find(p=>p.id===activeId)?.is_admin===true;}
+function isAdmin(){return isAdminAccount();}
 function updateAdminUI(){const a=isAdmin();document.getElementById('adminTab').style.display=a?'inline-block':'none';document.getElementById('adminBadge').style.display=a?'inline-flex':'none';const ab=document.getElementById('addPlayerBtn');if(ab)ab.style.display=a?'inline-block':'none';if(a)renderSaturdayAdmin();}
 function applyPendingUI(){const p=players.find(x=>x.id===activeId)||pendingPlayers.find(x=>x.id===activeId);const pending=p&&p.approved===false;document.getElementById('pendingBanner').style.display=pending?'block':'none';document.getElementById('tabLeaderboard').style.display=pending?'none':'';document.getElementById('tabHistory').style.display=pending?'none':'';document.getElementById('tabPlayers').style.display=pending?'none':'';if(pending){showView('log',document.querySelector('.nav-tab'));document.querySelector('.nav-tab').classList.remove('active');}const trackTab=document.getElementById('tabTrack');if(trackTab){const me=players.find(x=>x.id===activeId)||pendingPlayers.find(x=>x.id===activeId);const canTrack=me&&me.approved!==false&&!me.is_social;trackTab.style.display=canTrack?'':'none';}}
 
@@ -5637,8 +5699,12 @@ function chooseGpsDetailMode(mode){
 // ── Players ───────────────────────────────────────────────────────────────────
 function showPicker(){
   const list=document.getElementById('pickerList');
-  if(!activePlayers().length){list.innerHTML='<div style="color:rgba(255,255,255,0.4);font-size:0.85rem">No players yet.</div>';}
-  else{list.innerHTML=activePlayers().map(p=>`<div onclick="requirePin(${p.id})" style="display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:10px;cursor:pointer;background:${p.id===activeId?'rgba(201,168,76,0.12)':'rgba(255,255,255,0.04)'};border:1px solid ${p.id===activeId?'rgba(201,168,76,0.4)':'rgba(255,255,255,0.08)'}"><div style="width:30px;height:30px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.72rem;font-weight:600;color:#fff">${ini(p.name)}</div><div style="flex:1"><div style="font-weight:500;font-size:0.88rem;display:flex;align-items:center;gap:6px">${p.name}${p.is_admin?'<span class="tag tag-admin">Admin</span>':''}${p.id===activeId?'<span class="tag tag-you">You</span>':''}</div><div style="font-size:0.7rem;color:rgba(255,255,255,0.36)">${currentHcp(p)!=null?'HCP '+currentHcp(p)+' · ':''}${allRounds.filter(r=>r.player_id===p.id).length} rounds</div></div></div>`).join('');}
+  // Signed-in users have a database identity already: only an admin may look at other profiles, and
+  // for them it's a plain "view as" (no PIN) — the old PIN-route list still needs the PIN step below it.
+  if(_session&&!isAdminAccount()){list.innerHTML='<div style="color:rgba(255,255,255,0.4);font-size:0.85rem">You can only view your own profile.</div>';}
+  else if(!activePlayers().length){list.innerHTML='<div style="color:rgba(255,255,255,0.4);font-size:0.85rem">No players yet.</div>';}
+  else{const pick=_session?'setPlayer':'requirePin';
+    list.innerHTML=activePlayers().map(p=>`<div onclick="${pick}(${p.id})" style="display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:10px;cursor:pointer;background:${p.id===activeId?'rgba(201,168,76,0.12)':'rgba(255,255,255,0.04)'};border:1px solid ${p.id===activeId?'rgba(201,168,76,0.4)':'rgba(255,255,255,0.08)'}"><div style="width:30px;height:30px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.72rem;font-weight:600;color:#fff">${ini(p.name)}</div><div style="flex:1"><div style="font-weight:500;font-size:0.88rem;display:flex;align-items:center;gap:6px">${p.name}${p.is_admin?'<span class="tag tag-admin">Admin</span>':''}${p.id===activeId?'<span class="tag tag-you">You</span>':''}</div><div style="font-size:0.7rem;color:rgba(255,255,255,0.36)">${currentHcp(p)!=null?'HCP '+currentHcp(p)+' · ':''}${allRounds.filter(r=>r.player_id===p.id).length} rounds</div></div></div>`).join('');}
   document.getElementById('pickerModal').style.display='flex';
 }
 let pendingPinId=null;
@@ -5692,7 +5758,7 @@ async function resetPlayerPin(id){
 function setPlayer(id){
   // Reset GPS tracking if player changes mid-round
   if(GR&&id!==activeId){stopGpsWatch();if(GR.map)GR.map.remove();if(weatherInterval){clearInterval(weatherInterval);weatherInterval=null;}GR=null;toast('GPS round cleared (player changed)');}
-  const sessionId=parseInt(sessionStorage.getItem('sl_session_player'));
+  const sessionId=_session?players.find(p=>p.user_id===_session.user.id)?.id:parseInt(sessionStorage.getItem('sl_session_player'));
   if(sessionId&&id!==sessionId&&!isAdmin()){toast('You can only view your own profile.');return;}
   activeId=id;const p=players.find(x=>x.id===id);
   if(p){document.getElementById('playerName').textContent=p.name;const av=document.getElementById('playerAvatar');av.textContent=ini(p.name);av.style.background=clr(p);}
