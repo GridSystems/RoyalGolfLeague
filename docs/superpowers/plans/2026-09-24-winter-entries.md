@@ -7,7 +7,7 @@
 **Architecture:** Season rules move into the existing `SEASONS` array in `index.html`. A new
 `season_entries` table (own SQL script, rehearsal switch, RLS in the Phase 2 release A pattern) records
 who entered and who paid. One helper, `inPrizes(p, season)`, replaces the `!p.is_social` prize checks,
-so a non-entrant is treated exactly like a social member.
+so a non-entrant gets no prize place; in an opt-in season they appear only on Today (not in the Season or Eclectic tables).
 
 **Tech Stack:** single-file `index.html` (vanilla JS), Supabase Postgres + PostgREST, PGlite tests
 (`tests/sql`, `node --test`), headless Chrome tests (`tests/run.ps1`).
@@ -392,6 +392,7 @@ git commit -m "feat: season rules in SEASONS — Winter 2027 best 3, DKK 175, en
     allRounds=[round(1,1,'2026-10-10',5),round(2,2,'2026-10-10',4),round(3,3,'2026-10-10',3),round(4,4,'2026-10-10',6)];
     seasonEntries=[{id:1,season:'Winter 2027',player_id:1,paid_at:'2026-10-01T10:00:00Z',amount:175},{id:2,season:'Winter 2027',player_id:4,paid_at:null,amount:null}];
     T('inPrizes: entered and not social',inPrizes(players[0],'Winter 2027')&&inPrizes(players[3],'Winter 2027')&&!inPrizes(players[1],'Winter 2027')&&!inPrizes(players[2],'Winter 2027'));
+    T('Winter eclectic lists entrants only',JSON.stringify(eclecticStandings('Winter 2027').map(e=>e.p.id).sort())==='[1,4]');
     T('Winter standings list entrants only',JSON.stringify(seasonStandings('Winter 2027').map(s=>s.p.id).sort())==='[1,4]');
     allRounds.push(round(5,2,'2026-10-05',4));seasonEntries.push({id:3,season:'Winter 2027',player_id:2,paid_at:null,amount:null,entered_at:'2026-11-01T09:00:00Z'});
     T('a late entry counts rounds from before entering',seasonStandings('Winter 2027').find(s=>s.p.id===2)?.rounds===2);
@@ -399,6 +400,7 @@ git commit -m "feat: season rules in SEASONS — Winter 2027 best 3, DKK 175, en
     T('unpaid entrants are tagged unpaid in the Season table',(document.getElementById('seasonTable').innerHTML.match(/>unpaid</g)||[]).length===2);
     allRounds=[round(1,1,'2026-05-10',5),round(2,2,'2026-05-10',4)];
     T('Summer ignores entries: every non-social member is in',seasonStandings('Summer 2026').length===2&&inPrizes(players[1],'Summer 2026'));
+    T('Summer eclectic still lists everyone, social included',eclecticStandings('Summer 2026').length===2);
     today=()=>'2026-11-01';renderRules();
     T('Winter pot counts paid entries only',/DKK 175/.test(document.getElementById('rulesPot').innerHTML)&&/1 paid entry/.test(document.getElementById('rulesPot').innerHTML));
     today=()=>'2026-09-20';renderRules();
@@ -435,6 +437,7 @@ function unpaidTag(p,season){const e=seasonInfo(season).entry&&entryOf(p.id,seas
 - `renderSeasonLb`: after `${s.p.name}` in the player cell append `${unpaidTag(s.p,season)}`.
 - `renderTodayLb`: `rows.map(row=>row.p?.is_social?null:++_prizeRank)` → `rows.map(row=>row.p&&!inPrizes(row.p,seasonOf(td))?null:++_prizeRank)`.
 - `renderDreamCard` eclectic row: after the `${e.p.is_social?'<span class="tag tag-social"…>Social</span>':''}` add `${unpaidTag(e.p,season)}`.
+- `eclecticStandings`: `players.map(p=>{…})` → `players.filter(p=>!seasonInfo(season).entry||inPrizes(p,season)).map(p=>{…})` — an opt-in season lists entrants only; Summer (entry:false) is unchanged, social members included.
 - `renderHallOfFame`: `eclecticStandings(season).filter(e=>!e.p.is_social&&e.filled===18)` → `.filter(e=>inPrizes(e.p,season)&&e.filled===18)`.
 - `renderRules` (replace the first two lines of the body and the footer text):
 ```js

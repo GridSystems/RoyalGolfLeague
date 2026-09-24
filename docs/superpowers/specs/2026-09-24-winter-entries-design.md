@@ -15,7 +15,7 @@ written into the code.
 | # | Decision |
 |---|---|
 | 1 | Season rules live in the existing `SEASONS` array, next to the eclectic allowance |
-| 2 | A member who hasn't entered still plays and appears, **like a social member** — no prize place |
+| 2 | A member who hasn't entered still plays, but appears **only on Today** (no prize place) — not in the Season or Eclectic tables of an opt-in season |
 | 3 | Entering later counts **all** that member's rounds from the start of the season |
 | 4 | Two-step entry: the member taps **Enter** ("entered, awaiting payment"), the admin marks **paid** |
 | 5 | Unpaid entrants are **in the standings**, tagged "unpaid"; the **pot counts paid entries only** |
@@ -81,9 +81,9 @@ season to approved, non-social, signed-in members:
 - Mark paid / Undo / Remove / Enter-for need admin mode (existing `requireAdminMode` flow)
 
 **Who is in the prizes** — one helper, `inPrizes(p, season)`: not social, and (season has
-`entry:false` or the player has an entry for it). Used by Season standings, Eclectic winners, Hall of
-Fame winners, and Today's prize ranks. Non-entrants keep their rows but get no prize place, exactly as
-social members do today. Unpaid entrants get a small **unpaid** tag in the Season and Eclectic tables.
+`entry:false` or the player has an entry for it). Used by Season standings, Eclectic standings (opt-in
+seasons only — Summer 2026's Eclectic still lists social members), Hall of Fame winners, and Today's
+prize ranks. In an opt-in season a non-entrant appears only on Today, without a prize place. Unpaid entrants get a small **unpaid** tag in the Season and Eclectic tables.
 
 **Best N** — `seasonStandings` counts `seasonInfo(season).best` rounds; "Best 4" headings and labels
 (Season table, Rules page, Hall of Fame) read the season's own `best`.
