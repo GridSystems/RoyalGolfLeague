@@ -187,6 +187,23 @@ CREATE TRIGGER link_login AFTER INSERT OR UPDATE OF email_confirmed_at, last_sig
 -- ===== SECTION 3: permission rules for logged-in users ======================================
 -- The old PIN route (anon) keeps its allow-all policy until release B; everything below applies to
 -- the new login (authenticated). Also covers tables created after enable_rls.sql ran.
+-- Old dashboard-made policies ("Public read players", "public write", …) would OR into the p2_*
+-- rules and give every logged-in user full access. anon_all (below) already covers the old route,
+-- so they go — each one's exact definition is kept in phase2a_backup for the rollback to restore.
+CREATE SCHEMA IF NOT EXISTS phase2a_backup;
+REVOKE ALL ON SCHEMA phase2a_backup FROM PUBLIC, anon, authenticated;
+DROP TABLE IF EXISTS phase2a_backup.legacy_policies;
+CREATE TABLE phase2a_backup.legacy_policies AS
+  SELECT tablename, policyname, format('CREATE POLICY %I ON public.%I AS %s FOR %s TO %s%s%s', policyname, tablename,
+           permissive, cmd, (SELECT string_agg(quote_ident(r), ', ') FROM unnest(roles) r),
+           ' USING (' || qual || ')', ' WITH CHECK (' || with_check || ')') AS def
+  FROM pg_policies WHERE schemaname = 'public' AND policyname <> 'anon_all' AND policyname NOT LIKE 'p2_%';
+DO $$ DECLARE r record; BEGIN
+  FOR r IN SELECT * FROM phase2a_backup.legacy_policies ORDER BY tablename, policyname LOOP
+    EXECUTE format('DROP POLICY %I ON public.%I', r.policyname, r.tablename);
+    INSERT INTO p2_report(line) VALUES ('dropped old policy: ' || r.def);
+  END LOOP;
+END $$;
 DO $$ DECLARE t text; BEGIN
   FOR t IN SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename <> 'audit_log' LOOP
     EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', t);

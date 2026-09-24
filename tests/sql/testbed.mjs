@@ -38,10 +38,20 @@ export async function run(db, sql) {
 }
 
 export const SITE = 'https://gridsystems.github.io/RoyalGolfLeague/';
+const course = [['public read', 'SELECT'], ['public write', 'INSERT'], ['public update', 'UPDATE'], ['public delete', 'DELETE']];
+const named = x => [[`Public read ${x}`, 'SELECT'], [`Public insert ${x}`, 'INSERT'], [`Public update ${x}`, 'UPDATE'], [`Public delete ${x}`, 'DELETE']];
+export const LEGACY_POLICIES = { players: named('players'), rounds: named('rounds'),
+  fairway_polygons: course, fairway_spines: course, tee_strips: course };
 // The database as production has it today: snapshot → RLS allow-all → Phase 0 column grants → Phase 1.
 export async function productionDb() {
   const db = await freshDb();
   await db.exec(sqlFile('enable_rls.sql'));
+  // Old dashboard-made policies production still carries (found by the 2026-09-24 rehearsal),
+  // modelled as the dashboard template makes them: allow-all TO public.
+  for (const [t, names] of Object.entries(LEGACY_POLICIES)) for (const [name, cmd] of names) {
+    const clause = cmd === 'SELECT' || cmd === 'DELETE' ? 'USING (true)' : cmd === 'INSERT' ? 'WITH CHECK (true)' : 'USING (true) WITH CHECK (true)';
+    await db.exec(`CREATE POLICY "${name}" ON public.${t} FOR ${cmd} TO public ${clause}`);
+  }
   await db.exec(sqlFile('phase0b_hide_credentials.sql'));
   const err = await run(db, sqlFile('phase1_ids.sql').replace('SELECT true AS rehearsal', 'SELECT false AS rehearsal'));
   if (err) throw new Error('phase 1 failed in testbed: ' + err);

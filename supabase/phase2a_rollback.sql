@@ -18,7 +18,12 @@ DO $$ DECLARE r record; BEGIN
     EXECUTE format('DROP POLICY IF EXISTS anon_all ON public.%I', r.tablename);
     EXECUTE format('CREATE POLICY anon_all ON public.%I FOR ALL TO anon, authenticated USING (true) WITH CHECK (true)', r.tablename);
   END LOOP;
+  -- the old dashboard-made policies release A dropped, exactly as they were
+  IF to_regclass('phase2a_backup.legacy_policies') IS NOT NULL THEN
+    FOR r IN SELECT def FROM phase2a_backup.legacy_policies LOOP EXECUTE r.def; END LOOP;
+  END IF;
 END $$;
+DROP SCHEMA IF EXISTS phase2a_backup CASCADE;
 DROP FUNCTION IF EXISTS public.run_draw(text, jsonb, jsonb);
 DROP FUNCTION IF EXISTS public.admin_member_emails();
 DROP FUNCTION IF EXISTS public.log_admin_mode();

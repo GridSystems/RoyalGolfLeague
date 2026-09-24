@@ -40,4 +40,6 @@ CREATE TABLE public.tees (id text PRIMARY KEY, name text NOT NULL, color text NO
   slope integer NOT NULL, dist jsonb, archived boolean NOT NULL DEFAULT false);
 CREATE TABLE public.green_polygons (hole int PRIMARY KEY, vertices jsonb, recorded_at timestamptz DEFAULT now());
 CREATE TABLE public.fairway_polygons (hole int PRIMARY KEY, polygons jsonb, recorded_at timestamptz DEFAULT now());
+CREATE TABLE public.fairway_spines (hole int PRIMARY KEY, waypoints jsonb, recorded_at timestamptz DEFAULT now());
+CREATE TABLE public.tee_strips (hole int, tee_id text, geom jsonb);
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO anon, authenticated;

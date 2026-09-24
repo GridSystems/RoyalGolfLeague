@@ -203,13 +203,22 @@ test('version gate minimum is 3', async () => {
   await db.query(`SELECT public.require_current_app()`);
 });
 
-test('CHECKS: a stray permissive policy left behind (e.g. a dashboard "enable read for all") fails the run, naming it', async () => {
+test('old dashboard policies (allow-all TO public) are dropped, reported, and restored exactly by rollback', async () => {
   const db = await productionDb();
   await db.exec(`CREATE POLICY dashboard_stray ON public.players FOR SELECT TO public USING (true)`);
-  const err = await run(db, REAL());
-  assert.match(err, /dashboard_stray/);
-  assert.match(err, /players/);
+  const defs = `SELECT tablename, policyname, permissive, roles::text, cmd, qual, with_check FROM pg_policies
+    WHERE schemaname='public' AND policyname <> 'anon_all' AND policyname NOT LIKE 'p2_%' ORDER BY 1, 2`;
+  const before = (await db.query(defs)).rows;
+  assert.equal(before.length, 21);
+  assert.match(await run(db, sqlFile('phase2a_auth.sql')), /dropped old policy: CREATE POLICY dashboard_stray ON public.players AS PERMISSIVE FOR SELECT TO public USING \(true\)/);
+  assert.equal(await run(db, REAL()), null);
+  assert.deepEqual((await db.query(defs)).rows, []);
+  // a logged-in visitor who is not a member can no longer read players or rounds
+  await as(db, { sub: '00000000-0000-0000-0000-00000000abcd', role: 'authenticated' });
+  assert.equal((await db.query(`SELECT id FROM public.rounds`)).rows.length, 0);
+  assert.equal((await db.query(`SELECT id FROM public.players`)).rows.length, 0);
   await db.exec('RESET ROLE');
-  // nothing committed: SECTION 3's policies must not have been created either
-  assert.equal((await db.query(`SELECT count(*)::int n FROM information_schema.columns WHERE table_name='players' AND column_name='user_id'`)).rows[0].n, 0);
+  assert.equal(await run(db, sqlFile('phase2a_rollback.sql')), null);
+  assert.deepEqual((await db.query(defs)).rows, before);
+  assert.equal((await db.query(`SELECT count(*)::int n FROM pg_namespace WHERE nspname='phase2a_backup'`)).rows[0].n, 0);
 });
