@@ -24,7 +24,9 @@ CREATE TABLE public.season_entries (
   paid_at timestamptz,
   amount numeric,
   recorded_by bigint REFERENCES public.players(id) ON UPDATE CASCADE ON DELETE SET NULL,
-  UNIQUE (season, player_id)
+  UNIQUE (season, player_id),
+  CHECK ((paid_at IS NULL) = (amount IS NULL)),
+  CHECK (amount IS NULL OR amount >= 0)
 );
 ALTER TABLE public.season_entries ENABLE ROW LEVEL SECURITY;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.season_entries TO anon, authenticated;
@@ -74,7 +76,8 @@ DO $$ DECLARE n int; BEGIN
     RAISE EXCEPTION 'season_entries grants missing';
   END IF;
   INSERT INTO se_report(line) VALUES ('grants: anon + authenticated');
-  SELECT count(DISTINCT trigger_name) INTO n FROM information_schema.triggers WHERE event_object_table = 'season_entries';
+  SELECT count(DISTINCT trigger_name) INTO n FROM information_schema.triggers
+   WHERE event_object_schema = 'public' AND event_object_table = 'season_entries';
   IF n <> 1 THEN RAISE EXCEPTION 'Expected 1 trigger on season_entries, found %', n; END IF;
   INSERT INTO se_report(line) VALUES ('audit trigger: 1');
 END $$;
