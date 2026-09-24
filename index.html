@@ -2663,9 +2663,8 @@ async function heInit(playerList,date,notes,startHole){
       const holes=Array.from({length:18},(_,i)=>({hole:i+1,score:null,par:HOLE_PARS[i],hcp:HOLE_HCP[i]}));
       const payload={player_id:p.id,course:'Royal Golf Club, Copenhagen',date,tee_time:HE.teeTime||null,tee_id:entry.teeId,tee_name:tee.name,tee_color:tee.color,rating:tee.rating,slope:tee.slope,hcp_index:index,course_hcp:courseHcp,playing_hcp:entry.phcp,notes,holes};
       const[saved]=await sbInsert('rounds',payload);
-      const rec=saved;
-      roundIds[p.id]=rec.id;
-      allRounds.unshift(rec);
+      roundIds[p.id]=saved.id;
+      allRounds.unshift(saved);
     }
   }catch(e){alert('Error creating rounds: '+e.message);setLoading(false);return;}
   setLoading(false);
@@ -5899,7 +5898,7 @@ function reconcileStoredPlayer(){
   for(const [store,key] of [[localStorage,'sl_active_player'],[sessionStorage,'sl_session_player']]){
     const v=store.getItem(key);if(v==null)continue;
     const p=resolve(v);
-    if(!p||p.archived_at){store.removeItem(key);if(key==='sl_session_player')cleared=true;else if(p)localStorage.removeItem('sl_active_player');}
+    if(!p||p.archived_at){store.removeItem(key);if(key==='sl_session_player')cleared=true;}
     else if(String(p.id)!==v)store.setItem(key,p.id);
   }
   if(cleared)localStorage.removeItem('sl_active_player');
