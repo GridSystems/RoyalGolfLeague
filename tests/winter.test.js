@@ -75,6 +75,13 @@ setTimeout(async function(){
     reset((u,b,m)=>u.includes('/season_entries')&&m==='DELETE'?[{id:11}]:[]);
     await withdrawEntry();
     T('Withdraw deletes the entry and shows Enter again',calls.some(c=>c.method==='DELETE'&&c.url.includes('season_entries?id=eq.11'))&&/enterSeason\(\)/.test(ban())&&!entryOf(1,'Winter 2027'));
+    // ── Task 4 fix round 1 ──
+    // RLS filtered the DELETE (e.g. an admin marked the entry paid after the member loaded the
+    // page) — PostgREST returns 200 [], not an error. withdrawEntry must not treat that as success.
+    seasonEntries=[{id:13,season:'Winter 2027',player_id:1,paid_at:null,amount:null}];renderEntryBanner();
+    reset((u,b,m)=>u.includes('/season_entries')&&m==='DELETE'?[]:[]);
+    await withdrawEntry();
+    T('Withdraw round 1: an RLS-filtered delete (0 rows) keeps the entry and the unpaid banner',!!entryOf(1,'Winter 2027')&&/payment not yet recorded/.test(ban())&&!/Enter Winter 2027/.test(ban()));
     seasonEntries=[{id:12,season:'Winter 2027',player_id:1,paid_at:'2026-09-29T10:00:00Z',amount:175}];renderEntryBanner();
     T('paid: entered and paid, no Withdraw',/entered in Winter 2027 and paid/.test(ban())&&!/withdrawEntry/.test(ban()));
     activeId=2;renderEntryBanner();T('social members see no banner',ban()==='');

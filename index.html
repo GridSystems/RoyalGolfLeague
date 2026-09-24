@@ -1001,7 +1001,7 @@ async function sbRpc(fn,args){const go=()=>fetch(`${SUPABASE_URL}/rest/v1/rpc/${
 // Prefer:return=representation without naming a column set would try to return every column and 42501.
 async function sbDelete(t,id){
   const go=()=>fetch(`${SUPABASE_URL}/rest/v1/${t}?id=eq.${id}&select=id`,{method:'DELETE',headers:hdr({'Prefer':'return=representation'})});
-  await retryEmptyInAdminMode(await (await sbCheck(await go(),go)).json(),go);
+  return retryEmptyInAdminMode(await (await sbCheck(await go(),go)).json(),go);
 }
 async function sbDeleteWhere(t,filter){
   const go=()=>fetch(`${SUPABASE_URL}/rest/v1/${t}?${filter}`,{method:'DELETE',headers:hdr()});
@@ -5331,7 +5331,11 @@ async function enterSeason(){
 async function withdrawEntry(){
   const s=entrySeason(),e=s&&entryOf(activeId,s.name);if(!e||e.paid_at)return;
   if(!confirm(`Withdraw from ${s.name}?`))return;
-  try{await sbDelete('season_entries',e.id);seasonEntries=seasonEntries.filter(x=>x.id!==e.id);toast('Entry withdrawn');}
+  try{
+    const rows=await sbDelete('season_entries',e.id);
+    if(rows.length){seasonEntries=seasonEntries.filter(x=>x.id!==e.id);toast('Entry withdrawn');}
+    else toast('Couldn\'t withdraw — the entry may already be marked paid.');
+  }
   catch(err){toast('Couldn\'t withdraw — '+err.message);}
   refreshEntryViews();
 }
