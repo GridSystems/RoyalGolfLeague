@@ -214,10 +214,26 @@ CREATE POLICY p2_fines_read ON public.fines FOR SELECT TO authenticated USING (p
 CREATE POLICY p2_fines_ins  ON public.fines FOR INSERT TO authenticated WITH CHECK (private.is_member());
 CREATE POLICY p2_fines_upd  ON public.fines FOR UPDATE TO authenticated USING (private.is_admin()) WITH CHECK (private.is_admin());
 CREATE POLICY p2_fines_del  ON public.fines FOR DELETE TO authenticated USING (private.is_admin());
--- saturday_signups: your own; admins anyone's
+-- saturday_signups: your own (members only — a pending player may not sign up); admins anyone's
 CREATE POLICY p2_signups_read  ON public.saturday_signups FOR SELECT TO authenticated USING (private.is_member());
 CREATE POLICY p2_signups_write ON public.saturday_signups FOR ALL TO authenticated
-  USING (player_id = private.current_player() OR private.is_admin()) WITH CHECK (player_id = private.current_player() OR private.is_admin());
+  USING ((private.is_member() AND player_id = private.current_player()) OR private.is_admin())
+  WITH CHECK ((private.is_member() AND player_id = private.current_player()) OR private.is_admin());
+-- The draw fields (group_num, tee_time, date, player_id) change only in admin mode or via run_draw
+-- itself; a member editing their own row keeps early_tee_request/early_tee_reason. run_draw is
+-- SECURITY DEFINER and sets a transaction-local flag (app.drawing) so its own write passes through
+-- without the trigger having to depend on the definer's role name, which differs across environments.
+CREATE FUNCTION private.protect_signup_fields() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+BEGIN
+  IF auth.uid() IS NULL OR private.is_admin() OR coalesce(current_setting('app.drawing', true), '') = 'on' THEN RETURN NEW; END IF;
+  IF NEW.group_num IS DISTINCT FROM OLD.group_num OR NEW.tee_time IS DISTINCT FROM OLD.tee_time
+     OR NEW.date IS DISTINCT FROM OLD.date OR NEW.player_id IS DISTINCT FROM OLD.player_id THEN
+    RAISE EXCEPTION 'Only an admin in admin mode can change the draw.' USING ERRCODE = '42501';
+  END IF;
+  RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION private.protect_signup_fields() FROM PUBLIC, anon, authenticated;
+CREATE TRIGGER protect_signup_fields BEFORE UPDATE ON public.saturday_signups FOR EACH ROW EXECUTE FUNCTION private.protect_signup_fields();
 -- gps_shots: location data — own only; admins
 CREATE POLICY p2_gps ON public.gps_shots FOR ALL TO authenticated
   USING (player_id = private.current_player() OR private.is_admin()) WITH CHECK (player_id = private.current_player() OR private.is_admin());
@@ -246,21 +262,50 @@ END $$;
 CREATE POLICY p2_audit_read ON public.audit_log FOR SELECT TO authenticated USING (private.is_admin());
 
 -- The Saturday draw: the app computes the fairest allocation (chooseBestDraw); this checks it covers
--- every sign-up for the date exactly once and that the date is not drawn yet, then writes it.
+-- every sign-up for the date exactly once, that group_num/tee_time in the allocation are sane and
+-- the date is a real upcoming Saturday, and that the date is not drawn yet, then writes it. Every
+-- value in p_alloc comes from the caller (a member's browser), so none of it is trusted as-is.
 CREATE FUNCTION public.run_draw(p_date text, p_tee_times jsonb, p_alloc jsonb) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
-DECLARE want bigint[]; got bigint[]; ev public.saturday_events%ROWTYPE;
+DECLARE
+  want bigint[]; got bigint[];
+  ev public.saturday_events%ROWTYPE; ev_found boolean;
+  eff_tees jsonb; d date; today date;
 BEGIN
   IF auth.uid() IS NOT NULL AND NOT private.is_member() THEN RETURN jsonb_build_object('ok', false, 'reason', 'not a member'); END IF;
+
+  BEGIN
+    d := p_date::date;
+  EXCEPTION WHEN OTHERS THEN RETURN jsonb_build_object('ok', false, 'reason', 'invalid date'); END;
+  today := (now() AT TIME ZONE 'Europe/Copenhagen')::date;
+  IF d < today OR d > today + 8 THEN RETURN jsonb_build_object('ok', false, 'reason', 'date is not within the next 8 days'); END IF;
+  IF extract(dow FROM d) <> 6 THEN RETURN jsonb_build_object('ok', false, 'reason', 'date is not a Saturday'); END IF;
+
+  -- The effective tee times are the event's own (if it already exists) so a caller can't smuggle in
+  -- a tee time that was never offered; otherwise the caller-supplied list, which must be real.
+  SELECT * INTO ev FROM public.saturday_events WHERE date = p_date FOR UPDATE;
+  ev_found := FOUND;
+  eff_tees := CASE WHEN ev_found THEN ev.tee_times ELSE p_tee_times END;
+  IF eff_tees IS NULL OR jsonb_typeof(eff_tees) IS DISTINCT FROM 'array' OR jsonb_array_length(eff_tees) = 0 THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'tee times must be a non-empty list'); END IF;
+
   SELECT array_agg(id ORDER BY id) INTO want FROM public.saturday_signups WHERE date = p_date;
   SELECT array_agg((e ->> 'id')::bigint ORDER BY (e ->> 'id')::bigint) INTO got FROM jsonb_array_elements(p_alloc) e;
   IF want IS NULL OR got IS DISTINCT FROM want THEN RETURN jsonb_build_object('ok', false, 'reason', 'allocation does not match the sign-ups'); END IF;
+
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(p_alloc) e
+             WHERE (e ->> 'group_num') IS NULL OR (e ->> 'group_num') !~ '^[0-9]+$' OR (e ->> 'group_num')::int < 1) THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'group_num must be a positive integer'); END IF;
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(p_alloc) e
+             WHERE (e ->> 'tee_time') IS NULL OR NOT (eff_tees ? (e ->> 'tee_time'))) THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'tee_time is not one of this event''s tee times'); END IF;
+
   IF EXISTS (SELECT 1 FROM public.saturday_signups WHERE date = p_date AND group_num IS NOT NULL) THEN
     RETURN jsonb_build_object('ok', false, 'reason', 'already drawn'); END IF;
-  SELECT * INTO ev FROM public.saturday_events WHERE date = p_date FOR UPDATE;
-  IF FOUND AND (ev.locked OR ev.cancelled) THEN RETURN jsonb_build_object('ok', false, 'reason', 'locked or cancelled'); END IF;
-  IF FOUND THEN UPDATE public.saturday_events SET locked = true WHERE id = ev.id;
+  IF ev_found AND (ev.locked OR ev.cancelled) THEN RETURN jsonb_build_object('ok', false, 'reason', 'locked or cancelled'); END IF;
+  IF ev_found THEN UPDATE public.saturday_events SET locked = true WHERE id = ev.id;
   ELSE INSERT INTO public.saturday_events (date, locked, tee_times) VALUES (p_date, true, p_tee_times); END IF;
+  PERFORM set_config('app.drawing', 'on', true);   -- transaction-local; lets protect_signup_fields through
   UPDATE public.saturday_signups s SET tee_time = e ->> 'tee_time', group_num = (e ->> 'group_num')::int
     FROM jsonb_array_elements(p_alloc) e WHERE s.id = (e ->> 'id')::bigint;
   RETURN jsonb_build_object('ok', true);
@@ -311,9 +356,20 @@ DO $$ DECLARE n int; BEGIN
   IF n < 30 THEN RAISE EXCEPTION 'Expected at least 30 p2_%% policies, found %', n; END IF;
 END $$;
 
-DO $$ DECLARE n int; BEGIN
+-- A leftover permissive policy (e.g. a dashboard-made "Enable read access for all users" TO public
+-- or authenticated) would OR into the p2_* rules and silently widen access — the matrix tests can't
+-- see it, since they only probe what the intended policies allow. Anything besides anon_all/p2_* is
+-- unexpected; name it so the rehearsal (or a real run, which then rolls back too) makes it visible.
+DO $$ DECLARE bad text; BEGIN
+  SELECT string_agg(schemaname || '.' || tablename || '.' || policyname, ', ' ORDER BY tablename, policyname)
+    INTO bad FROM pg_policies WHERE schemaname = 'public' AND policyname <> 'anon_all' AND policyname NOT LIKE 'p2_%';
+  IF bad IS NOT NULL THEN RAISE EXCEPTION 'Unexpected polic(y/ies) besides anon_all/p2_*: %', bad; END IF;
+END $$;
+
+DO $$ DECLARE n int; expected int; BEGIN
   SELECT count(*) INTO n FROM pg_policies WHERE schemaname = 'public' AND policyname = 'anon_all' AND roles = '{anon}';
-  INSERT INTO p2_report(line) VALUES ('anon_all policies still TO anon: ' || n);
+  SELECT count(*) INTO expected FROM pg_tables WHERE schemaname = 'public' AND tablename <> 'audit_log';
+  INSERT INTO p2_report(line) VALUES ('anon_all policies still TO anon: ' || n || ' of ' || expected || ' public tables (excl. audit_log)');
 END $$;
 
 DO $$ BEGIN

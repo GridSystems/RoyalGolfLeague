@@ -6,6 +6,7 @@ async function world() {
   const db = await productionDb(); assert.equal(await run(db, REAL()), null);
   await db.exec('RESET ROLE');
   await db.query(`UPDATE public.players SET approved=false WHERE id=5`);                      // a pending player
+  await db.query(`INSERT INTO public.saturday_signups(player_id, date) VALUES (2, '2026-11-07'), (3, '2026-11-07')`); // pre-existing signups to probe draw-field protection
   const P = {
     anon: null,
     pending: await persona(db, { playerId: 5 }),
@@ -55,6 +56,10 @@ const MATRIX = [
   ['admin',      'read audit log',               `SELECT id FROM public.audit_log`, '>0'],
   ['member',     'delete a player',              `DELETE FROM public.players WHERE id=5`, 0],
   ['admin',      'delete a pending player',      `DELETE FROM public.players WHERE id=5 AND approved=false`, 'denied-or-1'],
+  ['member',     'set own group_num',            `UPDATE public.saturday_signups SET group_num=9 WHERE player_id=2 AND date='2026-11-07'`, 'denied'],
+  ['member',     'edit own early_tee_reason',    `UPDATE public.saturday_signups SET early_tee_reason='home early' WHERE player_id=2 AND date='2026-11-07'`, 1],
+  ['admin',      "move a player's group",        `UPDATE public.saturday_signups SET group_num=2 WHERE player_id=3 AND date='2026-11-07'`, 1],
+  ['pending',    'sign self up',                 `INSERT INTO public.saturday_signups(player_id,date) VALUES (5,'2026-10-10')`, 'denied'],
 ];
 
 for (const [who, what, sql, want] of MATRIX) {
@@ -68,19 +73,67 @@ for (const [who, what, sql, want] of MATRIX) {
   });
 }
 
-test('run_draw: a member can draw once; a second call and a partial allocation are refused', async () => {
+// The upcoming Saturday (Europe/Copenhagen), computed in the DB so it always agrees with run_draw's
+// own date check — run_draw now refuses anything outside the next 8 days or that isn't a Saturday.
+const upcomingSaturday = async db => (await db.query(
+  `SELECT to_char((now() AT TIME ZONE 'Europe/Copenhagen')::date
+     + (((6 - extract(dow FROM (now() AT TIME ZONE 'Europe/Copenhagen')::date)::int) + 7) % 7), 'YYYY-MM-DD') d`
+)).rows[0].d;
+// A date within the next 8 days that is NOT a Saturday: today, unless today is Saturday (then tomorrow).
+const nonSaturdayInRange = async db => (await db.query(
+  `SELECT to_char(CASE WHEN extract(dow FROM (now() AT TIME ZONE 'Europe/Copenhagen')::date) = 6
+                       THEN (now() AT TIME ZONE 'Europe/Copenhagen')::date + 1
+                       ELSE (now() AT TIME ZONE 'Europe/Copenhagen')::date END, 'YYYY-MM-DD') d`
+)).rows[0].d;
+
+test('run_draw: a member can draw once; a second call and a partial allocation are refused; the draw is actually written', async () => {
   const { db, P } = await world();
   await db.exec('RESET ROLE');
-  await db.query(`INSERT INTO public.saturday_signups(player_id,date) VALUES (2,'2026-10-10'),(3,'2026-10-10')`);
-  const ids = (await db.query(`SELECT id FROM public.saturday_signups WHERE date='2026-10-10' ORDER BY id`)).rows.map(r => Number(r.id));
+  const SAT = await upcomingSaturday(db);
+  await db.query(`DELETE FROM public.saturday_events WHERE date=$1`, [SAT]);   // the snapshot may already have a cancelled/locked event for this date
+  await db.query(`INSERT INTO public.saturday_signups(player_id,date) VALUES (2,$1),(3,$1)`, [SAT]);
+  const ids = (await db.query(`SELECT id FROM public.saturday_signups WHERE date=$1 ORDER BY id`, [SAT])).rows.map(r => Number(r.id));
   const alloc = ids.map((id, i) => ({ id, tee_time: '08:30', group_num: 1 }));
   await as(db, P.member);
-  const bad = (await db.query(`SELECT public.run_draw('2026-10-10', '["08:30"]', $1) r`, [JSON.stringify(alloc.slice(0, 1))])).rows[0].r;
+  const bad = (await db.query(`SELECT public.run_draw($1, '["08:30"]', $2) r`, [SAT, JSON.stringify(alloc.slice(0, 1))])).rows[0].r;
   assert.equal(bad.ok, false);
-  const ok = (await db.query(`SELECT public.run_draw('2026-10-10', '["08:30"]', $1) r`, [JSON.stringify(alloc)])).rows[0].r;
+  const ok = (await db.query(`SELECT public.run_draw($1, '["08:30"]', $2) r`, [SAT, JSON.stringify(alloc)])).rows[0].r;
   assert.equal(ok.ok, true);
-  const again = (await db.query(`SELECT public.run_draw('2026-10-10', '["08:30"]', $1) r`, [JSON.stringify(alloc)])).rows[0].r;
+  const again = (await db.query(`SELECT public.run_draw($1, '["08:30"]', $2) r`, [SAT, JSON.stringify(alloc)])).rows[0].r;
   assert.equal(again.ok, false);
+  await db.exec('RESET ROLE');
+  const written = (await db.query(`SELECT tee_time, group_num FROM public.saturday_signups WHERE date=$1 ORDER BY id`, [SAT])).rows;
+  assert.deepEqual(written.map(r => [r.tee_time, Number(r.group_num)]), [['08:30', 1], ['08:30', 1]]);
+  assert.equal((await db.query(`SELECT locked FROM public.saturday_events WHERE date=$1`, [SAT])).rows[0].locked, true);
+});
+
+test('run_draw: refuses a bad tee_time, a non-positive group_num, and a date that is out of range or not a Saturday', async () => {
+  const { db, P } = await world();
+  await db.exec('RESET ROLE');
+  const SAT = await upcomingSaturday(db);
+  const notSat = await nonSaturdayInRange(db);
+  await db.query(`DELETE FROM public.saturday_events WHERE date IN ($1,$2,'2027-06-05')`, [SAT, notSat]);   // clean slate for every probed date
+  await db.query(`INSERT INTO public.saturday_signups(player_id,date) VALUES (2,$1),(3,$1)`, [SAT]);
+  const ids = (await db.query(`SELECT id FROM public.saturday_signups WHERE date=$1 ORDER BY id`, [SAT])).rows.map(r => Number(r.id));
+  await as(db, P.member);
+
+  const badTee = (await db.query(`SELECT public.run_draw($1, '["08:30"]', $2) r`,
+    [SAT, JSON.stringify(ids.map(id => ({ id, tee_time: 'lol', group_num: 1 })))])).rows[0].r;
+  assert.equal(badTee.ok, false);
+
+  const badGroup = (await db.query(`SELECT public.run_draw($1, '["08:30"]', $2) r`,
+    [SAT, JSON.stringify(ids.map(id => ({ id, tee_time: '08:30', group_num: -7 })))])).rows[0].r;
+  assert.equal(badGroup.ok, false);
+
+  const tooFar = (await db.query(`SELECT public.run_draw('2027-06-05', '["08:30"]', '[]') r`)).rows[0].r;
+  assert.equal(tooFar.ok, false);
+
+  const notSaturday = (await db.query(`SELECT public.run_draw($1, '["08:30"]', '[]') r`, [notSat])).rows[0].r;
+  assert.equal(notSaturday.ok, false);
+
+  await db.exec('RESET ROLE');
+  assert.equal((await db.query(`SELECT count(*)::int n FROM public.saturday_events WHERE date IN ($1,'2027-06-05',$2)`, [SAT, notSat])).rows[0].n, 0, 'nothing written for any rejected call');
+  assert.equal((await db.query(`SELECT count(*)::int n FROM public.saturday_signups WHERE date=$1 AND group_num IS NOT NULL`, [SAT])).rows[0].n, 0, 'nothing written for the rejected date');
 });
 
 test('admin_member_emails: admin mode only, flags who has not moved over', async () => {
@@ -100,4 +153,15 @@ test('version gate minimum is 3', async () => {
   await assert.rejects(db.query(`SELECT public.require_current_app()`), /out of date/);
   await db.query(`SELECT set_config('request.headers', '{"x-app-version":"3"}', false)`);
   await db.query(`SELECT public.require_current_app()`);
+});
+
+test('CHECKS: a stray permissive policy left behind (e.g. a dashboard "enable read for all") fails the run, naming it', async () => {
+  const db = await productionDb();
+  await db.exec(`CREATE POLICY dashboard_stray ON public.players FOR SELECT TO public USING (true)`);
+  const err = await run(db, REAL());
+  assert.match(err, /dashboard_stray/);
+  assert.match(err, /players/);
+  await db.exec('RESET ROLE');
+  // nothing committed: SECTION 3's policies must not have been created either
+  assert.equal((await db.query(`SELECT count(*)::int n FROM information_schema.columns WHERE table_name='players' AND column_name='user_id'`)).rows[0].n, 0);
 });
