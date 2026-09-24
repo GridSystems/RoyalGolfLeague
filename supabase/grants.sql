@@ -11,9 +11,9 @@ GRANT USAGE ON SCHEMA public TO anon, authenticated;
 -- see phase0b_hide_credentials.sql). Never grant them table-wide here.
 GRANT INSERT, DELETE ON public.players TO anon, authenticated;
 GRANT SELECT (id, name, color, handicap, hcp_history, created_at, is_admin, approved,
-              is_social, bag, dgu_number) ON public.players TO anon, authenticated;
+              is_social, bag, dgu_number, archived_at, legacy_id) ON public.players TO anon, authenticated;
 GRANT UPDATE (name, color, handicap, hcp_history, is_admin, approved, is_social, bag,
-              dgu_number, email) ON public.players TO anon, authenticated;
+              dgu_number, email, archived_at) ON public.players TO anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.rounds           TO anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.fines            TO anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.fine_types       TO anon, authenticated;
@@ -28,3 +28,6 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON public.tournaments         TO anon, auth
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.tournament_players  TO anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.tournament_matches  TO anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.tournament_scores   TO anon, authenticated;
+
+-- Phase 1: ids are identity columns; keep sequence usage explicit.
+GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated;

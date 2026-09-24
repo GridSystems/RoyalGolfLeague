@@ -29,7 +29,7 @@ Key:  eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF2a
 
 **players**
 ```
-id           bigint (Date.now() timestamp)
+id           bigint (database-assigned 1..N — Phase 1)
 name         text
 color        int (index into COLORS array)
 dgu_number   text (DGU membership number, "digits-digits" — variable length
@@ -38,11 +38,13 @@ handicap     numeric (legacy, use hcp_history instead)
 hcp_history  jsonb  [{date, value, note}] — sorted ascending by date
 is_admin     boolean
 created_at   timestamptz
+archived_at  timestamptz (null = active; set by "Remove player")
+legacy_id    bigint (pre-Phase-1 timestamp id; remove in Phase 2)
 ```
 
 **rounds**
 ```
-id           bigint (Date.now() + random)
+id           bigint (database-assigned)
 player_id    bigint (FK → players.id)
 course       text
 date         text (YYYY-MM-DD)
@@ -248,7 +250,8 @@ pairings felt stale. A draw computed on demand has no scheduler to fail quietly.
 ## Key design decisions (don't change without reason)
 
 - **Single HTML file** — deliberate. No build complexity. Easy to deploy and share.
-- **Date.now() IDs** — used for both players and rounds. Simple, avoids Supabase serial conflicts with RLS.
+- **Database-assigned IDs** (Phase 1, 2026-09-24) — every table's `id` is `GENERATED ALWAYS AS IDENTITY`; inserts send no `id` and keep the row PostgREST returns. Never reintroduce `Date.now()` ids — the database refuses them. Foreign keys: rows that belong to a player RESTRICT their deletion; mentions (issued_by, recorded_by, marker, captains, match slots) SET NULL. Removing a player sets `archived_at`; use `activePlayers()` for pick lists and `players` for history.
+- **Version gate** (Phase 1) — every API request sends `x-app-version`; `public.require_current_app()` (PostgREST pre-request) refuses older versions with HTTP 426 and the app reloads itself. For a release that must not coexist with the previous one, bump `APP_VERSION` in `index.html`, `SB_H` in `course-mapper.html` and the gate's minimum together. Anything else calling the API needs the header too.
 - **HCP on date** — always calculated dynamically from hcp_history, never stored on round except as snapshot for display.
 - **Playing HCP = Course HCP × 0.95** — WHS competition format.
 - **Rounds created at entry start** — enables live leaderboard. Partial rounds are real data.
