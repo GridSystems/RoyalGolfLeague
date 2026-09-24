@@ -180,6 +180,116 @@ END $$;
 CREATE TRIGGER link_login AFTER INSERT OR UPDATE OF email_confirmed_at ON auth.users
   FOR EACH ROW EXECUTE FUNCTION private.link_login();
 
+-- ===== SECTION 3: permission rules for logged-in users ======================================
+-- The old PIN route (anon) keeps its allow-all policy until release B; everything below applies to
+-- the new login (authenticated). Also covers tables created after enable_rls.sql ran.
+DO $$ DECLARE t text; BEGIN
+  FOR t IN SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename <> 'audit_log' LOOP
+    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', t);
+    EXECUTE format('DROP POLICY IF EXISTS anon_all ON public.%I', t);
+    EXECUTE format('CREATE POLICY anon_all ON public.%I FOR ALL TO anon USING (true) WITH CHECK (true)', t);
+    EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON public.%I TO authenticated', t);
+  END LOOP;
+END $$;
+-- players keeps Phase 0's column-level SELECT/UPDATE for authenticated as well
+REVOKE SELECT, UPDATE ON public.players FROM authenticated;
+GRANT SELECT (id, name, color, handicap, hcp_history, created_at, is_admin, approved, is_social, bag,
+              dgu_number, archived_at, legacy_id, user_id) ON public.players TO authenticated;
+GRANT UPDATE (name, color, handicap, hcp_history, is_admin, approved, is_social, bag, dgu_number,
+              email, archived_at) ON public.players TO authenticated;
+
+-- players
+CREATE POLICY p2_players_read   ON public.players FOR SELECT TO authenticated USING (private.is_member() OR user_id = auth.uid());
+CREATE POLICY p2_players_update ON public.players FOR UPDATE TO authenticated
+  USING (user_id = auth.uid() OR private.is_admin()) WITH CHECK (user_id = auth.uid() OR private.is_admin());
+CREATE POLICY p2_players_insert ON public.players FOR INSERT TO authenticated WITH CHECK (private.is_admin());
+CREATE POLICY p2_players_delete ON public.players FOR DELETE TO authenticated USING (private.is_admin() AND approved IS FALSE);
+-- rounds: members score for their group; pending players only their own
+CREATE POLICY p2_rounds_read  ON public.rounds FOR SELECT TO authenticated USING (private.is_member() OR player_id = private.current_player());
+CREATE POLICY p2_rounds_write ON public.rounds FOR INSERT TO authenticated WITH CHECK (private.is_member() OR player_id = private.current_player());
+CREATE POLICY p2_rounds_upd   ON public.rounds FOR UPDATE TO authenticated USING (private.is_member() OR player_id = private.current_player()) WITH CHECK (private.is_member() OR player_id = private.current_player());
+CREATE POLICY p2_rounds_del   ON public.rounds FOR DELETE TO authenticated USING (player_id = private.current_player() OR private.is_admin());
+-- fines
+CREATE POLICY p2_fines_read ON public.fines FOR SELECT TO authenticated USING (private.is_member());
+CREATE POLICY p2_fines_ins  ON public.fines FOR INSERT TO authenticated WITH CHECK (private.is_member());
+CREATE POLICY p2_fines_upd  ON public.fines FOR UPDATE TO authenticated USING (private.is_admin()) WITH CHECK (private.is_admin());
+CREATE POLICY p2_fines_del  ON public.fines FOR DELETE TO authenticated USING (private.is_admin());
+-- saturday_signups: your own; admins anyone's
+CREATE POLICY p2_signups_read  ON public.saturday_signups FOR SELECT TO authenticated USING (private.is_member());
+CREATE POLICY p2_signups_write ON public.saturday_signups FOR ALL TO authenticated
+  USING (player_id = private.current_player() OR private.is_admin()) WITH CHECK (player_id = private.current_player() OR private.is_admin());
+-- gps_shots: location data — own only; admins
+CREATE POLICY p2_gps ON public.gps_shots FOR ALL TO authenticated
+  USING (player_id = private.current_player() OR private.is_admin()) WITH CHECK (player_id = private.current_player() OR private.is_admin());
+-- tournaments: members play (update status/results, enter scores); admins set up and delete
+CREATE POLICY p2_tourn_read ON public.tournaments FOR SELECT TO authenticated USING (private.is_member());
+CREATE POLICY p2_tourn_upd  ON public.tournaments FOR UPDATE TO authenticated USING (private.is_member()) WITH CHECK (private.is_member());
+CREATE POLICY p2_tourn_adm  ON public.tournaments FOR ALL TO authenticated USING (private.is_admin()) WITH CHECK (private.is_admin());
+CREATE POLICY p2_tmatch_read ON public.tournament_matches FOR SELECT TO authenticated USING (private.is_member());
+CREATE POLICY p2_tmatch_upd  ON public.tournament_matches FOR UPDATE TO authenticated USING (private.is_member()) WITH CHECK (private.is_member());
+CREATE POLICY p2_tmatch_adm  ON public.tournament_matches FOR ALL TO authenticated USING (private.is_admin()) WITH CHECK (private.is_admin());
+CREATE POLICY p2_tscore_read ON public.tournament_scores FOR SELECT TO authenticated USING (private.is_member());
+CREATE POLICY p2_tscore_ins  ON public.tournament_scores FOR INSERT TO authenticated WITH CHECK (private.is_member());
+CREATE POLICY p2_tscore_upd  ON public.tournament_scores FOR UPDATE TO authenticated USING (private.is_member()) WITH CHECK (private.is_member());
+CREATE POLICY p2_tscore_adm  ON public.tournament_scores FOR DELETE TO authenticated USING (private.is_admin());
+-- read by members, written by admins
+DO $$ DECLARE t text; BEGIN
+  FOREACH t IN ARRAY ARRAY['fine_types','fine_payments','saturday_events','tournament_players','tees','green_polygons',
+                           'fairway_polygons','fairway_spines','tee_strips','survey_points'] LOOP
+    IF to_regclass('public.' || t) IS NOT NULL THEN
+      EXECUTE format('CREATE POLICY p2_read ON public.%I FOR SELECT TO authenticated USING (private.is_member())', t);
+      EXECUTE format('CREATE POLICY p2_admin ON public.%I FOR ALL TO authenticated USING (private.is_admin()) WITH CHECK (private.is_admin())', t);
+    END IF;
+  END LOOP;
+END $$;
+-- audit_log: admins read; only private.audit writes
+CREATE POLICY p2_audit_read ON public.audit_log FOR SELECT TO authenticated USING (private.is_admin());
+
+-- The Saturday draw: the app computes the fairest allocation (chooseBestDraw); this checks it covers
+-- every sign-up for the date exactly once and that the date is not drawn yet, then writes it.
+CREATE FUNCTION public.run_draw(p_date text, p_tee_times jsonb, p_alloc jsonb) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE want bigint[]; got bigint[]; ev public.saturday_events%ROWTYPE;
+BEGIN
+  IF auth.uid() IS NOT NULL AND NOT private.is_member() THEN RETURN jsonb_build_object('ok', false, 'reason', 'not a member'); END IF;
+  SELECT array_agg(id ORDER BY id) INTO want FROM public.saturday_signups WHERE date = p_date;
+  SELECT array_agg((e ->> 'id')::bigint ORDER BY (e ->> 'id')::bigint) INTO got FROM jsonb_array_elements(p_alloc) e;
+  IF want IS NULL OR got IS DISTINCT FROM want THEN RETURN jsonb_build_object('ok', false, 'reason', 'allocation does not match the sign-ups'); END IF;
+  IF EXISTS (SELECT 1 FROM public.saturday_signups WHERE date = p_date AND group_num IS NOT NULL) THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'already drawn'); END IF;
+  SELECT * INTO ev FROM public.saturday_events WHERE date = p_date FOR UPDATE;
+  IF FOUND AND (ev.locked OR ev.cancelled) THEN RETURN jsonb_build_object('ok', false, 'reason', 'locked or cancelled'); END IF;
+  IF FOUND THEN UPDATE public.saturday_events SET locked = true WHERE id = ev.id;
+  ELSE INSERT INTO public.saturday_events (date, locked, tee_times) VALUES (p_date, true, p_tee_times); END IF;
+  UPDATE public.saturday_signups s SET tee_time = e ->> 'tee_time', group_num = (e ->> 'group_num')::int
+    FROM jsonb_array_elements(p_alloc) e WHERE s.id = (e ->> 'id')::bigint;
+  RETURN jsonb_build_object('ok', true);
+END $$;
+REVOKE ALL ON FUNCTION public.run_draw(text, jsonb, jsonb) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.run_draw(text, jsonb, jsonb) TO anon, authenticated;   -- anon until release B
+
+-- Members' emails for admins (the Admin tab's move-over list). Admin mode only.
+CREATE FUNCTION public.admin_member_emails() RETURNS TABLE (player_id bigint, name text, email text, linked boolean)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+BEGIN
+  IF NOT private.is_admin() THEN RAISE EXCEPTION 'Admin mode required.' USING ERRCODE = '42501'; END IF;
+  RETURN QUERY SELECT p.id, p.name, coalesce(u.email, p.email), p.user_id IS NOT NULL
+    FROM public.players p LEFT JOIN auth.users u ON u.id = p.user_id
+   WHERE p.approved IS NOT FALSE AND p.archived_at IS NULL ORDER BY p.user_id IS NOT NULL, p.name;
+END $$;
+REVOKE ALL ON FUNCTION public.admin_member_emails() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.admin_member_emails() TO authenticated;
+
+-- Version gate: this release is version 3.
+CREATE OR REPLACE FUNCTION public.require_current_app() RETURNS void LANGUAGE plpgsql AS $fn$
+DECLARE v text := current_setting('request.headers', true)::json ->> 'x-app-version';
+BEGIN
+  IF current_user = 'service_role' THEN RETURN; END IF;
+  IF coalesce(v, '') !~ '^\d+$' OR v::int < 3 THEN
+    RAISE SQLSTATE 'PT426' USING MESSAGE = 'This version of the app is out of date. Please reload the page.';
+  END IF;
+END $fn$;
+
 -- ===== CHECKS =============================================================================
 DO $$ BEGIN
   INSERT INTO p2_report(line) VALUES ('players.user_id added; linked so far: ' || (SELECT count(*) FROM public.players WHERE user_id IS NOT NULL));
@@ -193,6 +303,21 @@ DO $$ DECLARE n int; BEGIN
    WHERE trigger_name IN ('protect_player_fields','audit_players','audit_payments','audit_fines','audit_auth_users','audit_mfa','link_login');
   INSERT INTO p2_report(line) VALUES ('audit triggers: ' || n);
   IF n <> 7 THEN RAISE EXCEPTION 'Expected 7 audit triggers, found %', n; END IF;
+END $$;
+
+DO $$ DECLARE n int; BEGIN
+  SELECT count(*) INTO n FROM pg_policies WHERE schemaname = 'public' AND policyname LIKE 'p2_%';
+  INSERT INTO p2_report(line) VALUES ('p2_% policies: ' || n);
+  IF n < 30 THEN RAISE EXCEPTION 'Expected at least 30 p2_%% policies, found %', n; END IF;
+END $$;
+
+DO $$ DECLARE n int; BEGIN
+  SELECT count(*) INTO n FROM pg_policies WHERE schemaname = 'public' AND policyname = 'anon_all' AND roles = '{anon}';
+  INSERT INTO p2_report(line) VALUES ('anon_all policies still TO anon: ' || n);
+END $$;
+
+DO $$ BEGIN
+  INSERT INTO p2_report(line) VALUES ('version gate: requests need x-app-version >= 3');
 END $$;
 
 DO $$ BEGIN
