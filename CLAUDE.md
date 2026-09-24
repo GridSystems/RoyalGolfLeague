@@ -245,7 +245,11 @@ One implementation, in `index.html`. There is **no** edge function and no cron �
   (`chooseBestDraw`), but the write goes through `public.run_draw(p_date, p_tee_times,
   p_alloc)`, a `SECURITY DEFINER` RPC, not a raw PATCH. It revalidates everything the
   browser sent — the allocation covers every sign-up for the date exactly once, tee
-  times are real, the date is an upcoming Saturday, not already drawn — before writing.
+  times are real, the date is the upcoming Saturday and the draw is due (Friday noon
+  through Saturday, Copenhagen time, via `private.draw_clock()` so tests can pin it),
+  not already drawn — before writing. An event with no tee times falls back to the
+  supplied list. Concurrent calls for a date are serialised by
+  `pg_advisory_xact_lock`.
   It sets a transaction-local `app.drawing` flag so its own write passes the
   `protect_signup_fields` trigger, which otherwise refuses to let anyone but an admin
   in admin mode set `group_num`/`tee_time`. Callable by `anon` too, until release B.
@@ -273,7 +277,9 @@ pairings felt stale. A draw computed on demand has no scheduler to fail quietly.
   password via PKCE (the reset link must be opened on the requesting device/browser),
   a set-up flow that links an existing member's first login to their player row by
   email, and sign-up that creates a pending player — all three share one trigger,
-  `private.link_login`, on `auth.users`. `players.user_id` (uuid, unique, FK →
+  `private.link_login`, on `auth.users`. It also retries the email match on every
+  sign-in of a still-unlinked login (so fixing `players.email` is enough), but only
+  confirmation ever creates a player. `players.user_id` (uuid, unique, FK →
   `auth.users.id`) is what makes a login a player; `private.current_player()` /
   `acting_player()` / `is_member()` / `is_admin()` (schema `private`, no Data API
   grants) read it. **Admin mode** is stronger than `is_admin`: it also needs `aal2`

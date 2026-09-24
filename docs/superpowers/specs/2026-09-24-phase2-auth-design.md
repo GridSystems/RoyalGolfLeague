@@ -67,7 +67,7 @@ Enforced at **release B**; written and tested at release A. `service_role` bypas
 | `saturday_events` | members | only via `run_draw()`; admins directly | admins |
 | `gps_shots` | own; admins | own | own |
 | `tournaments`, `tournament_players`, `tournament_matches` | members | admins | admins |
-| `tournament_scores` | members | members (score entry); admins | admins |
+| `tournament_scores` | members | members (score entry); admins | members (re-entering a score replaces it); admins |
 | `tees`, `green_polygons`, `fairway_polygons`, `fairway_spines`, `tee_strips`, `survey_points` | members | admins | admins |
 | `audit_log` | admins | database only | database only (retention) |
 
