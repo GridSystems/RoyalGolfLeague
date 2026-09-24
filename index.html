@@ -909,34 +909,49 @@ function jwtClaims(){try{return JSON.parse(atob(_session.access_token.split('.')
 // Admin mode: an admin's powers need their authenticator code, at most 12 hours old. The database
 // enforces this (private.is_admin); this mirrors it so the app can ask before being refused.
 const ADMIN_MODE_SECONDS=12*3600;
-function isAdminAccount(){return players.find(p=>p.id===activeId)?.is_admin===true;}
+// isAdminAccount() follows the signed-in identity (players.user_id), matching private.is_admin()'s
+// auth.uid() check — not activeId, which changes under "view as" and would drop admin mode mid-session.
+// The old PIN route has no signed-in identity, so it still goes by activeId there.
+function isAdminAccount(){
+  if(_session)return players.find(p=>p.user_id===_session.user.id)?.is_admin===true;
+  return players.find(p=>p.id===activeId)?.is_admin===true;
+}
 function adminModeActive(){
   const c=jwtClaims();if(c.aal!=='aal2')return false;
   return (c.amr||[]).some(m=>m.method==='totp'&&m.timestamp>=Date.now()/1000-ADMIN_MODE_SECONDS);
 }
-let _mfa=null;   // {factorId, resolve}
+let _mfa=null,_mfaPending=null;   // _mfa: {factorId, resolve} for the prompt in flight; _mfaPending: shared by concurrent callers
 async function requireAdminMode(){
   if(!_session)return true;                       // old PIN route: unchanged until release B
   if(adminModeActive())return true;
-  const {data}=await authClient().auth.mfa.listFactors();
-  let factor=(data.totp||[]).find(f=>f.status==='verified');
-  document.getElementById('mfaEnroll').style.display='none';
-  if(!factor){const e=await authClient().auth.mfa.enroll({factorType:'totp',friendlyName:'Saturday League'});
-    factor={id:e.data.id};
-    // e.data.totp.qr_code is an SVG string returned by Supabase's own auth server, never user text — innerHTML is safe here.
-    document.getElementById('mfaQr').innerHTML=e.data.totp.qr_code;document.getElementById('mfaEnroll').style.display='block';}
-  document.getElementById('mfaCode').value='';document.getElementById('mfaError').style.display='none';
-  document.getElementById('mfaModal').style.display='flex';
-  return new Promise(resolve=>{_mfa={factorId:factor.id,resolve};});
+  // A prompt may already be up for another concurrent caller (e.g. Promise.all of several
+  // sbUpdate calls) — join it instead of opening a second one and orphaning the first.
+  if(_mfaPending)return _mfaPending;
+  _mfaPending=(async()=>{
+    const {data}=await authClient().auth.mfa.listFactors();
+    let factor=(data.totp||[]).find(f=>f.status==='verified');
+    document.getElementById('mfaEnroll').style.display='none';
+    if(!factor){const e=await authClient().auth.mfa.enroll({factorType:'totp',friendlyName:'Saturday League'});
+      factor={id:e.data.id};
+      // e.data.totp.qr_code is an SVG string returned by Supabase's own auth server, never user text — innerHTML is safe here.
+      document.getElementById('mfaQr').innerHTML=e.data.totp.qr_code;document.getElementById('mfaEnroll').style.display='block';}
+    document.getElementById('mfaCode').value='';document.getElementById('mfaError').style.display='none';
+    document.getElementById('mfaModal').style.display='flex';
+    return new Promise(resolve=>{_mfa={factorId:factor.id,resolve};});
+  })();
+  try{return await _mfaPending;}finally{_mfaPending=null;}
 }
 async function submitMfaCode(){
-  if(!_mfa)return;
+  // Claim _mfa into a local and clear the global immediately (before any await) so a double
+  // submit (Enter then click) can't re-enter with a stale reference and call resolve on null.
+  const mfa=_mfa;if(!mfa)return;
+  _mfa=null;
   const code=document.getElementById('mfaCode').value.trim();
-  const {error}=await authClient().auth.mfa.challengeAndVerify({factorId:_mfa.factorId,code});
-  if(error){const e=document.getElementById('mfaError');e.textContent='That code didn\'t work — try the current one.';e.style.display='block';return;}
+  const {error}=await authClient().auth.mfa.challengeAndVerify({factorId:mfa.factorId,code});
+  if(error){const e=document.getElementById('mfaError');e.textContent='That code didn\'t work — try the current one.';e.style.display='block';_mfa=mfa;return;}
   _session=(await authClient().auth.getSession()).data.session||_session;
   try{await sbRpc('log_admin_mode',{});}catch(e){}
-  document.getElementById('mfaModal').style.display='none';const r=_mfa.resolve;_mfa=null;r(true);
+  document.getElementById('mfaModal').style.display='none';mfa.resolve(true);
 }
 function cancelMfa(){document.getElementById('mfaModal').style.display='none';if(_mfa){const r=_mfa.resolve;_mfa=null;r(false);}}
 async function openAdminTab(btn){
@@ -952,18 +967,29 @@ const activePlayers=()=>players.filter(p=>!p.archived_at);
 async function sbGet(t,p=''){const go=()=>fetch(`${SUPABASE_URL}/rest/v1/${t}?${[sbSel(t),p].filter(Boolean).join('&')}`,{headers:hdr()});return (await sbCheck(await go(),go)).json();}
 async function sbInsert(t,b){const go=()=>fetch(`${SUPABASE_URL}/rest/v1/${t}?${sbSel(t)}`,{method:'POST',headers:hdr({'Prefer':'return=representation'}),body:JSON.stringify(b)});return (await sbCheck(await go(),go)).json();}
 // PostgREST returns zero rows, not an error, when an UPDATE/DELETE policy's USING filters rows out —
-// so an admin who isn't in admin mode gets [] back rather than a refusal, and we retry through the prompt on that too.
+// so an admin who isn't in admin mode gets [] back rather than a refusal, and we retry through the
+// prompt on that too. If the prompt is cancelled we throw rather than return the empty result, so a
+// caller can't mistake a blocked write for a successful no-op; a retry that's genuinely still empty
+// (the id just doesn't match anything) is returned unchanged.
 async function sbUpdate(t,id,b){
   const go=()=>fetch(`${SUPABASE_URL}/rest/v1/${t}?id=eq.${id}&${sbSel(t)}`,{method:'PATCH',headers:hdr({'Prefer':'return=representation'}),body:JSON.stringify(b)});
   let rows=await (await sbCheck(await go(),go)).json();
-  if(!rows.length&&_session&&isAdminAccount()&&!adminModeActive()&&await requireAdminMode())rows=await (await sbCheck(await go(),null)).json();
+  if(!rows.length&&_session&&isAdminAccount()&&!adminModeActive()){
+    if(!await requireAdminMode())throw new Error('Admin mode is needed for that.');
+    rows=await (await sbCheck(await go(),null)).json();
+  }
   return rows;
 }
 async function sbRpc(fn,args){const go=()=>fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`,{method:'POST',headers:hdr(),body:JSON.stringify(args)});const r=await sbCheck(await go(),go);const t=await r.text();return t?JSON.parse(t):null;}
+// select=id: every table grants SELECT on id, but players' column-level grants stop there — asking
+// Prefer:return=representation without naming a column set would try to return every column and 42501.
 async function sbDelete(t,id){
-  const go=()=>fetch(`${SUPABASE_URL}/rest/v1/${t}?id=eq.${id}`,{method:'DELETE',headers:hdr({'Prefer':'return=representation'})});
+  const go=()=>fetch(`${SUPABASE_URL}/rest/v1/${t}?id=eq.${id}&select=id`,{method:'DELETE',headers:hdr({'Prefer':'return=representation'})});
   const rows=await (await sbCheck(await go(),go)).json();
-  if(!rows.length&&_session&&isAdminAccount()&&!adminModeActive()&&await requireAdminMode())await sbCheck(await go(),null);
+  if(!rows.length&&_session&&isAdminAccount()&&!adminModeActive()){
+    if(!await requireAdminMode())throw new Error('Admin mode is needed for that.');
+    await sbCheck(await go(),null);
+  }
 }
 async function sbDeleteWhere(t,filter){
   const go=()=>fetch(`${SUPABASE_URL}/rest/v1/${t}?${filter}`,{method:'DELETE',headers:hdr()});
@@ -1428,6 +1454,10 @@ async function approvePlayer(id){
 }
 async function rejectPlayer(id){
   if(!confirm('Reject and delete this signup?'))return;
+  // Get admin mode once, up front — before any of the deletes below. An applicant with no rounds
+  // yet is a normal, empty result; sbDeleteWhere has no way to tell that apart from an admin-mode
+  // refusal, so this flow (admin-only regardless) settles it in one prompt instead of guessing per call.
+  if(!await requireAdminMode())return;
   setLoading(true,'Rejecting…');
   try{
     // An applicant who never became a member leaves nothing behind (and the foreign keys

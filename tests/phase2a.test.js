@@ -188,6 +188,69 @@ setTimeout(async function(){
     T('an empty admin update opens the prompt (existing factor: no QR)',document.getElementById('mfaModal').style.display!=='none'&&document.getElementById('mfaEnroll').style.display==='none');
     await verifyAndUpgrade();const pr=await pu;
     T('…and the retried update returns the row',pr.length===1&&k===2,`k=${k}`);
+
+    // ── Task 8 fix round 1 ──
+    // Fix 1: sbDelete on players must not RETURNING * — column-level SELECT is revoked on
+    // players except for the columns PLAYER_COLS names, so Prefer:return=representation
+    // without a select= param 42501s. select=id is granted on every table.
+    _session=null;reset(()=>[{id:5}]);
+    await sbDelete('players',5);
+    T('sbDelete requests select=id (representation without it fails players\' column-level SELECT grant)',calls[0].url.includes('select=id'),calls[0].url);
+
+    // Fix 2: concurrent admin-mode prompts must share one pending promise, not each open their
+    // own (which orphans every caller but the last — Promise.all(sbUpdate...) then hangs forever).
+    players=[{id:1,name:'Ann',user_id:'u-1',is_admin:true,color:0,hcp_history:[],approved:true}];activeId=1;
+    _session=sessionFor('u-1');authState.factors=[];
+    const seenIds={};
+    reset((u,b,mth)=>{
+      if(mth==='PATCH'){const id=u.match(/id=eq\.(\d+)/)[1];seenIds[id]=(seenIds[id]||0)+1;return seenIds[id]===1?[]:[{id:Number(id)}];}
+      return u.includes('/rpc/log_admin_mode')?true:[];
+    });
+    authCalls.length=0;
+    const q1=sbUpdate('players',10,{x:1});
+    const q2=sbUpdate('players',11,{x:1});
+    await new Promise(r=>setTimeout(r,50));
+    T('concurrent refusals open exactly one modal and one enroll',document.getElementById('mfaModal').style.display!=='none'&&authCalls.filter(c=>c[0]==='enroll').length===1,JSON.stringify(authCalls.filter(c=>c[0]==='enroll')));
+    await verifyAndUpgrade();
+    const raced=await Promise.race([Promise.all([q1,q2]),new Promise(res=>setTimeout(()=>res('TIMEOUT'),300))]);
+    T('both concurrent callers resolve after the single code (neither orphaned)',raced!=='TIMEOUT'&&raced[0].length===1&&raced[0][0].id===10&&raced[1].length===1&&raced[1][0].id===11,JSON.stringify(raced));
+
+    // Fix 3: cancelling the prompt must reject the caller, not return an empty/undefined result
+    // that a caller would mistake for a successful no-op save.
+    players=[{id:1,name:'Ann',user_id:'u-1',is_admin:true,color:0,hcp_history:[],approved:true}];activeId=1;
+    _session=sessionFor('u-1');authState.factors=[{id:'f1',status:'verified'}];
+    reset((u,b,mth)=>{if(mth==='PATCH')return[];return u.includes('/rpc/log_admin_mode')?true:[];});
+    const qc=sbUpdate('players',20,{x:1});await new Promise(r=>setTimeout(r,50));
+    let updCancelThrew=false;cancelMfa();try{await qc;}catch(e){updCancelThrew=true;}
+    T('cancelling a refused update rejects the caller',updCancelThrew);
+    reset((u,b,mth)=>{if(mth==='DELETE')return[];return u.includes('/rpc/log_admin_mode')?true:[];});
+    const qd=sbDelete('players',21);await new Promise(r=>setTimeout(r,50));
+    let delCancelThrew=false;cancelMfa();try{await qd;}catch(e){delCancelThrew=true;}
+    T('cancelling a refused delete rejects the caller',delCancelThrew);
+
+    // Fix 4: isAdminAccount() must track the signed-in identity, not activeId — otherwise an
+    // admin who uses "view as" on another player loses admin mode (and the Admin tab, and the
+    // picker) until reload.
+    players=[{id:1,name:'Ann',user_id:'u-1',is_admin:true,color:0,hcp_history:[],approved:true},{id:2,name:'Bo',user_id:'u-2',color:1,hcp_history:[],approved:true}];
+    _session=sessionFor('u-1');activeId=2; // admin is viewing Bo's profile
+    T('isAdminAccount stays true for the signed-in admin while viewing another profile',isAdminAccount()===true);
+    showPicker();
+    const pickerHtml=document.getElementById('pickerList').innerHTML;
+    T('the picker still lists players (not the own-profile message) while viewing as someone else',pickerHtml.includes('Ann')&&pickerHtml.includes('Bo')&&!/only view your own profile/i.test(pickerHtml));
+    activeId=1;
+
+    // Fix 5: rejectPlayer must get admin mode once, up front — before any of its six child-row
+    // deletes — instead of relying on sbDeleteWhere's empty-result heuristic (a genuinely empty
+    // child table looks identical to one RLS blocked).
+    players=[{id:1,name:'Ann',user_id:'u-1',is_admin:true,color:0,hcp_history:[],approved:true}];activeId=1;
+    _session=sessionFor('u-1');authState.factors=[{id:'f1',status:'verified'}];
+    pendingPlayers=[{id:30,name:'Zed',user_id:'u-9',approved:false}];
+    document.getElementById('mfaModal').style.display='none';
+    reset((u,b,mth)=>{if(mth==='DELETE')return[];return u.includes('/rpc/log_admin_mode')?true:[];});
+    const rp=rejectPlayer(30);await new Promise(r=>setTimeout(r,50));
+    T('reject opens exactly one admin-mode prompt before any DELETE is sent',document.getElementById('mfaModal').style.display!=='none'&&!calls.some(c=>c.method==='DELETE'));
+    await verifyAndUpgrade();await rp;
+    T('after the code, the deletes proceed',calls.some(c=>c.method==='DELETE'&&c.url.includes('players')));
     // ── end ──
   }catch(e){out.push('FAIL EXCEPTION :: '+e.stack);}
   await new Promise(r=>setTimeout(r,150));
