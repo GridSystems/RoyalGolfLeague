@@ -163,3 +163,66 @@ test('private.audit() cannot be called directly by a member or anon — no forgi
   await db.exec('RESET ROLE');
   assert.equal((await db.query(`SELECT * FROM public.audit_log WHERE action = 'forged'`)).rows.length, 0);
 });
+
+test('rollback restores release-A-free state and gate 2', async () => {
+  const db = await productionDb();
+  const before = (await db.query(`SELECT policyname, roles::text FROM pg_policies WHERE schemaname='public' ORDER BY 1,2`)).rows;
+  await run(db, REAL());
+  assert.equal(await run(db, sqlFile('phase2a_rollback.sql')), null);
+  assert.equal((await one(db, `SELECT count(*)::int n FROM information_schema.columns WHERE table_name='players' AND column_name='user_id'`)).n, 0);
+  assert.equal((await one(db, `SELECT count(*)::int n FROM pg_policies WHERE policyname LIKE 'p2%'`)).n, 0);
+  assert.equal((await one(db, `SELECT count(*)::int n FROM information_schema.triggers WHERE event_object_schema IN ('auth','public') AND trigger_name IN ('link_login','audit_auth_users','audit_mfa')`)).n, 0);
+  await db.query(`SELECT set_config('request.headers', '{"x-app-version":"2"}', false)`);
+  await db.query(`SELECT public.require_current_app()`);
+  // The restored policy set is exactly what it was before release A (anon_all TO anon,
+  // authenticated on every table, no p2_*), not just "no p2_* left".
+  const after = (await db.query(`SELECT policyname, roles::text FROM pg_policies WHERE schemaname='public' ORDER BY 1,2`)).rows;
+  assert.deepEqual(after, before);
+});
+
+test('rollback removes every release-A object: private schema, audit_log, saturday_signups draw-field trigger, version-3 gate', async () => {
+  const db = await productionDb();
+  await run(db, REAL());
+  assert.equal(await run(db, sqlFile('phase2a_rollback.sql')), null);
+  assert.equal((await one(db, `SELECT count(*)::int n FROM information_schema.schemata WHERE schema_name='private'`)).n, 0);
+  assert.equal((await one(db, `SELECT count(*)::int n FROM information_schema.tables WHERE table_schema='public' AND table_name='audit_log'`)).n, 0);
+  assert.equal((await one(db, `SELECT count(*)::int n FROM information_schema.triggers WHERE event_object_schema='public' AND event_object_table='saturday_signups' AND trigger_name='protect_signup_fields'`)).n, 0);
+  assert.equal((await one(db, `SELECT count(*)::int n FROM information_schema.routines WHERE routine_schema='public' AND routine_name IN ('run_draw','admin_member_emails','log_admin_mode')`)).n, 0);
+  await db.query(`SELECT set_config('request.headers', '{"x-app-version":"2"}', false)`);
+  await db.query(`SELECT public.require_current_app()`);   // version 2 still accepted
+  await db.query(`SELECT set_config('request.headers', '{"x-app-version":"3"}', false)`);
+  await db.query(`SELECT public.require_current_app()`);   // version 3 also accepted (gate only has a floor)
+});
+
+test('rollback restores Phase 1 column-level grants on players for authenticated', async () => {
+  const db = await productionDb();
+  await run(db, REAL());
+  assert.equal(await run(db, sqlFile('phase2a_rollback.sql')), null);
+  const cols = async priv => (await db.query(
+    `SELECT column_name FROM information_schema.column_privileges
+      WHERE table_name = 'players' AND grantee = 'authenticated' AND privilege_type = $1 ORDER BY column_name`, [priv]
+  )).rows.map(r => r.column_name);
+  assert.deepEqual(await cols('SELECT'),
+    ['approved', 'archived_at', 'bag', 'color', 'created_at', 'dgu_number', 'handicap', 'hcp_history', 'id', 'is_admin', 'is_social', 'legacy_id', 'name']);
+  assert.deepEqual(await cols('UPDATE'),
+    ['approved', 'archived_at', 'bag', 'color', 'dgu_number', 'email', 'handicap', 'hcp_history', 'is_admin', 'is_social', 'name']);
+  // Behavioural check, not just catalog: an authenticated visitor (old PIN-route shape, no login
+  // linked) can still read and update the Phase 1 columns, and user_id no longer exists to query.
+  await db.exec('RESET ROLE');
+  await db.query(`SELECT set_config('request.jwt.claims', '{"role":"authenticated"}', false)`);
+  await db.exec('SET ROLE authenticated');
+  const row = await one(db, `SELECT id, name, color, handicap, hcp_history, created_at, is_admin, approved,
+    is_social, bag, dgu_number, archived_at, legacy_id FROM public.players WHERE id = 2`);
+  assert.equal(row.id, 2);
+  await db.query(`UPDATE public.players SET name = 'Still Works' WHERE id = 2`);
+  await assert.rejects(db.query(`SELECT user_id FROM public.players WHERE id = 2`), /column .*user_id.* does not exist/i);
+  await db.exec('RESET ROLE');
+});
+
+test('rollback is re-applicable: REAL, rollback, REAL again succeeds', async () => {
+  const db = await productionDb();
+  assert.equal(await run(db, REAL()), null);
+  assert.equal(await run(db, sqlFile('phase2a_rollback.sql')), null);
+  assert.equal(await run(db, REAL()), null);
+  assert.equal((await one(db, `SELECT count(*)::int n FROM information_schema.columns WHERE table_name='players' AND column_name='user_id'`)).n, 1);
+});
