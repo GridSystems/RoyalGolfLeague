@@ -161,6 +161,11 @@ setTimeout(async function(){
     T('the Hall of Fame Eclectic winner no longer needs all 18 holes',/Ann/.test(document.getElementById('fameBody').innerHTML.split('Best')[0]));
     document.getElementById('dreamYear').innerHTML='<option>Summer 2026</option>';document.getElementById('dreamYear').value='Summer 2026';renderDreamCard();
     T('unplayed holes show on the card as par + 3',document.getElementById('eclecticScorecards').innerHTML.includes('Not played yet'));
+    // Nett Out + Nett In must add up to the total, assumed holes included (back nine unplayed here).
+    const backAssumed=String(HOLE_PARS.slice(9).reduce((s,p)=>s+p+3,0));
+    T('Nett In shows the assumed back-nine subtotal, not a dash',[...document.querySelectorAll('#eclecticRankings td')].some(td=>td.textContent.trim()===backAssumed));
+    activeId=1;document.getElementById('myDreamYear')&&(document.getElementById('myDreamYear').innerHTML='<option>Summer 2026</option>');renderMyDreamCard();
+    T('My Dream Card shows the assumed back-nine subtotal too',document.getElementById('myDreamCardBody')?.innerHTML.includes('>'+backAssumed+'<'));
     // ── end ──
   }catch(e){out.push('FAIL EXCEPTION :: '+e.stack);}
   await new Promise(r=>setTimeout(r,150));
