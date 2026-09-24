@@ -1221,7 +1221,27 @@ function showLockDbError(){
 function showLockLogin(){showLockPanel('lockLoginPanel');}
 function lockError(id,msg){const e=document.getElementById(id);e.textContent=msg;e.style.display='block';}
 const pwProblem=(a,b)=>!a||a.length<8?'Password must be at least 8 characters.':a!==b?'Passwords do not match.':null;
-function checkEmail(text){document.getElementById('checkEmailText').innerHTML=text+'<br><br><strong>Open the link on this phone</strong> (the same device and browser), or it won\'t work.';showLockPanel('lockCheckEmailPanel');}
+// prefix/suffix are our own fixed copy (may contain simple HTML like <strong>); the typed email is
+// always inserted as text, via textContent, so it can never be parsed as HTML/script.
+function checkEmail(prefix,email,suffix){
+  const wrap=document.getElementById('checkEmailText');
+  wrap.innerHTML='';
+  const pre=document.createElement('span');pre.innerHTML=prefix||'';
+  wrap.appendChild(pre);
+  if(email){const strong=document.createElement('strong');strong.textContent=email;wrap.appendChild(strong);}
+  const suf=document.createElement('span');suf.innerHTML=(suffix||'')+'<br><br><strong>Open the link on this phone</strong> (the same device and browser), or it won\'t work.';
+  wrap.appendChild(suf);
+  showLockPanel('lockCheckEmailPanel');
+}
+// Supabase's signUp error.message can reveal whether an email is already registered (project-setting
+// dependent). Only surface errors that are genuinely actionable and reveal nothing about membership;
+// anything else is treated as if it succeeded, so the check-email screen is shown either way.
+function authSignupError(errId,error){
+  if(!error)return false;
+  if(/password/i.test(error.message)){lockError(errId,error.message);return true;}
+  if(error.status===429||/rate limit|too many/i.test(error.message)){lockError(errId,'Too many attempts — try again in a few minutes.');return true;}
+  return false;
+}
 async function submitPasswordLogin(){
   const email=document.getElementById('loginEmail').value.trim().toLowerCase(),password=document.getElementById('loginPassword').value;
   if(!email||!password){lockError('loginError','Enter your email and password.');return;}
@@ -1234,8 +1254,8 @@ async function submitSetup(){
   if(!email.includes('@')){lockError('setupError','Enter a valid email.');return;}
   const p=pwProblem(a,b);if(p){lockError('setupError',p);return;}
   const {error}=await authClient().auth.signUp({email,password:a,options:{emailRedirectTo:SITE_URL}});
-  if(error){lockError('setupError',error.message);return;}
-  checkEmail('We\'ve sent a confirmation link to <strong>'+email+'</strong>. Click it to finish setting up your login.');
+  if(authSignupError('setupError',error))return;
+  checkEmail('We\'ve sent a confirmation link to ',email,'. Click it to finish setting up your login.');
 }
 async function submitForgot(){
   const email=document.getElementById('forgotEmail').value.trim().toLowerCase();if(!email)return;
@@ -1323,8 +1343,8 @@ async function submitSignup(){
   const handicap=hcpRaw?parseFloat(hcpRaw):null;
   const {error}=await authClient().auth.signUp({email,password:a,options:{emailRedirectTo:SITE_URL,
     data:{name,dgu_number:dgu,handicap,color:Math.floor(Math.random()*COLORS.length)}}});
-  if(error){lockError('signupError',error.message);return;}
-  checkEmail('Nearly there: we\'ve sent a confirmation link to <strong>'+email+'</strong>. After you click it, your registration waits for admin approval.');
+  if(authSignupError('signupError',error))return;
+  checkEmail('Nearly there: we\'ve sent a confirmation link to ',email,'. After you click it, your registration waits for admin approval.');
 }
 function renderPendingApprovals(){
   const panel=document.getElementById('pendingApprovalsPanel');

@@ -11,7 +11,7 @@ setTimeout(async function(){
     getSession:async()=>({data:{session:authState.session},error:null}),
     onAuthStateChange:(cb)=>{authState.cb=cb;return{data:{subscription:{unsubscribe(){}}}};},
     signInWithPassword:async a=>{authCalls.push(['signIn',a]);return authState.signIn||{data:{session:null},error:{message:'Invalid login credentials'}};},
-    signUp:async a=>{authCalls.push(['signUp',a]);return{data:{},error:null};},
+    signUp:async a=>{authCalls.push(['signUp',a]);return authState.signUp||{data:{},error:null};},
     resetPasswordForEmail:async(e,o)=>{authCalls.push(['reset',e,o]);return{data:{},error:null};},
     updateUser:async a=>{authCalls.push(['update',a]);return{data:{},error:null};},
     signOut:async()=>{authCalls.push(['signOut']);return{error:null};},
@@ -128,6 +128,31 @@ setTimeout(async function(){
     handleAuthRedirectError();
     T('a failed or wrong-device link explains itself',shown('loginError')&&/same (phone|device)|expired/i.test(document.getElementById('loginError').textContent));
     history.replaceState(null,'',location.pathname);
+
+    // ── Task 7 fix round 1: never inject the typed email as HTML, never leak raw Supabase errors ──
+    showLockPanel('lockSetupPanel');field('setupEmail','<img src=x onerror="window.__xss=1">@x.dk');field('setupPassword','longenough1');field('setupPassword2','longenough1');
+    window.__xss=undefined;authState.signUp=null;authCalls.length=0;await submitSetup();
+    const cet=document.getElementById('checkEmailText');
+    T('set-up: a malicious email is never parsed as HTML',!cet.querySelector('img')&&window.__xss===undefined&&cet.textContent.includes('<img'),cet.innerHTML);
+
+    showLockPanel('lockSetupPanel');field('setupEmail','existing@x.dk');field('setupPassword','longenough1');field('setupPassword2','longenough1');
+    authState.signUp={data:{},error:{message:'User already registered'}};authCalls.length=0;await submitSetup();
+    T('set-up: an already-registered email gets the same check-email screen as success',shown('lockCheckEmailPanel')&&document.getElementById('setupError').style.display==='none');
+
+    showLockPanel('lockSetupPanel');field('setupEmail','weak@x.dk');field('setupPassword','longenough1');field('setupPassword2','longenough1');
+    authState.signUp={data:{},error:{message:'Password should contain at least one number.'}};authCalls.length=0;await submitSetup();
+    T('set-up: a weak-password error is shown in the form',shown('setupError')&&/password/i.test(document.getElementById('setupError').textContent)&&!shown('lockCheckEmailPanel'));
+
+    showLockPanel('lockSetupPanel');field('setupEmail','busy@x.dk');field('setupPassword','longenough1');field('setupPassword2','longenough1');
+    authState.signUp={data:{},error:{status:429,message:'Request rate limit reached'}};authCalls.length=0;await submitSetup();
+    T('set-up: a rate-limit error shows a generic too-many-attempts message',shown('setupError')&&/too many attempts/i.test(document.getElementById('setupError').textContent));
+
+    showLockPanel('lockSignupPanel');['signupName','signupEmail','signupDgu','signupHcp','signupPassword','signupPassword2'].forEach(id=>field(id,''));
+    field('signupName','Zed');field('signupEmail','zed@x.dk');field('signupDgu','900-2');field('signupPassword','longenough1');field('signupPassword2','longenough1');
+    authState.signUp={data:{},error:{message:'User already registered'}};authCalls.length=0;await submitSignup();
+    T('sign-up: an already-registered email also gets the neutral check-email screen',shown('lockCheckEmailPanel')&&document.getElementById('signupError').style.display==='none');
+    authState.signUp=null;
+
     window.forceReload=()=>{};
     authCalls.length=0;await signOut();
     T('sign out calls Supabase and clears the session',authCalls.some(c=>c[0]==='signOut')&&_session===null);
