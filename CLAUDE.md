@@ -63,11 +63,14 @@ created_at   timestamptz
 
 **season_entries**
 ```
-id           bigint (database-assigned)
-player_id    bigint (FK → players.id)
-season_id    int (FK → SEASONS index in index.html)
-amount       numeric (DKK paid; null = unpaid)
-created_at   timestamptz
+id           bigint (database-assigned, GENERATED ALWAYS)
+season       text (season name, e.g. 'Winter 2027' — matches SEASONS[].name)
+player_id    bigint (FK → players.id, RESTRICT)
+entered_at   timestamptz (default now())
+paid_at      timestamptz (null = entered, awaiting payment)
+amount       numeric (DKK paid; null while unpaid — CHECK: paid_at and amount both null or both set, amount >= 0)
+recorded_by  bigint (FK → players.id, SET NULL; the admin who marked it paid)
+UNIQUE (season, player_id)
 ```
 Members enter and withdraw (unpaid) themselves; marking paid needs admin mode; audited as
 season_entered / entry_paid / entry_unpaid / season_withdrawn. SQL: `supabase/season_entries.sql`,
@@ -209,7 +212,7 @@ its default to adjust the eclectic, as that rescores the whole app.
 Each `SEASONS` row also carries `best` (rounds counted in the Season standings), `buyIn` (DKK) and
 `entry`. `entry:false` (Summer 2026): every approved non-social member is in. `entry:true` (Winter
 2027 onwards): only players with a `season_entries` row are in the prizes — `inPrizes(p, season)`
-treats a non-entrant exactly like a social member, and an unpaid entrant carries an "unpaid" tag. The
+keeps a non-entrant out of the prizes; in an opt-in season a non-entrant appears only on Today (not in the Season or Eclectic tables), and an unpaid entrant carries an "unpaid" tag. The
 pot for an opt-in season is the sum of paid `amount`s. `entrySeason()` is the season taking entries:
 the current one if it needs entry, else the next — so entries open before a season starts.
 
