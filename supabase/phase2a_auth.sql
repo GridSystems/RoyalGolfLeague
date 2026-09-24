@@ -60,6 +60,11 @@ BEGIN
   DELETE FROM public.audit_log WHERE at < now() - interval '12 months';
 EXCEPTION WHEN OTHERS THEN RAISE WARNING 'audit(%): %', p_action, SQLERRM;
 END $$;
+-- Postgres grants EXECUTE to PUBLIC on creation, and schema private has USAGE for
+-- anon/authenticated — without this, any logged-in member (or anon) could forge audit rows by
+-- calling private.audit() directly. Only ever called via PERFORM from SECURITY DEFINER functions,
+-- which run as the owner regardless of this revoke.
+REVOKE ALL ON FUNCTION private.audit(text, bigint, jsonb, bigint) FROM PUBLIC, anon, authenticated;
 
 -- Members change only their own profile fields; status fields need admin mode. Requests without a
 -- login token (the old PIN route) pass unchanged until release B.
@@ -74,6 +79,7 @@ BEGIN
   END IF;
   RETURN NEW;
 END $$;
+REVOKE ALL ON FUNCTION private.protect_player_fields() FROM PUBLIC, anon, authenticated;
 CREATE TRIGGER protect_player_fields BEFORE UPDATE ON public.players FOR EACH ROW EXECUTE FUNCTION private.protect_player_fields();
 
 CREATE FUNCTION private.audit_players() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
@@ -87,6 +93,7 @@ BEGIN
     PERFORM private.audit('social_changed', NEW.id, jsonb_build_object('is_social', NEW.is_social)); END IF;
   RETURN NEW;
 END $$;
+REVOKE ALL ON FUNCTION private.audit_players() FROM PUBLIC, anon, authenticated;
 CREATE TRIGGER audit_players AFTER UPDATE ON public.players FOR EACH ROW EXECUTE FUNCTION private.audit_players();
 
 CREATE FUNCTION private.audit_money() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
@@ -99,6 +106,7 @@ BEGIN
     PERFORM private.audit('fine_deleted', OLD.player_id, jsonb_build_object('amount', OLD.amount, 'date', OLD.date, 'fine_type_id', OLD.fine_type_id)); RETURN OLD;
   END IF;
 END $$;
+REVOKE ALL ON FUNCTION private.audit_money() FROM PUBLIC, anon, authenticated;
 CREATE TRIGGER audit_payments AFTER INSERT OR DELETE ON public.fine_payments FOR EACH ROW EXECUTE FUNCTION private.audit_money();
 CREATE TRIGGER audit_fines AFTER DELETE ON public.fines FOR EACH ROW EXECUTE FUNCTION private.audit_money();
 
@@ -114,6 +122,7 @@ BEGIN
   RETURN NEW;
 EXCEPTION WHEN OTHERS THEN RAISE WARNING 'audit_auth_users: %', SQLERRM; RETURN NEW;
 END $$;
+REVOKE ALL ON FUNCTION private.audit_auth_users() FROM PUBLIC, anon, authenticated;
 CREATE TRIGGER audit_auth_users AFTER UPDATE ON auth.users FOR EACH ROW EXECUTE FUNCTION private.audit_auth_users();
 
 CREATE FUNCTION private.audit_mfa() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
@@ -126,6 +135,7 @@ BEGIN
   RETURN NEW;
 EXCEPTION WHEN OTHERS THEN RAISE WARNING 'audit_mfa: %', SQLERRM; RETURN NEW;
 END $$;
+REVOKE ALL ON FUNCTION private.audit_mfa() FROM PUBLIC, anon, authenticated;
 CREATE TRIGGER audit_mfa AFTER INSERT OR UPDATE OF status ON auth.mfa_factors FOR EACH ROW EXECUTE FUNCTION private.audit_mfa();
 
 -- Called by the app right after the authenticator code is accepted; logs only if the caller's own

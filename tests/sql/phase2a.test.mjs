@@ -152,3 +152,14 @@ test('members cannot read or write the audit log', async () => {
   assert.equal((await db.query(`SELECT * FROM public.audit_log`)).rows.length, 0);
   await assert.rejects(db.query(`INSERT INTO public.audit_log(action) VALUES ('forged')`));
 });
+
+test('private.audit() cannot be called directly by a member or anon — no forging audit rows', async () => {
+  const db = await productionDb(); await run(db, REAL());
+  const m = await persona(db, { playerId: 2 });
+  await as(db, m);
+  await assert.rejects(db.query(`SELECT private.audit('forged', NULL, NULL)`), /permission denied/i);
+  await as(db, null);
+  await assert.rejects(db.query(`SELECT private.audit('forged', NULL, NULL)`), /permission denied/i);
+  await db.exec('RESET ROLE');
+  assert.equal((await db.query(`SELECT * FROM public.audit_log WHERE action = 'forged'`)).rows.length, 0);
+});
