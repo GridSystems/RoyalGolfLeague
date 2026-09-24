@@ -299,7 +299,7 @@ select option { background: #1a3a2a; }
       </div>
       <div class="lb-view" id="lb-season">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:8px">
-          <div style="font-size:0.8rem;color:rgba(255,255,255,0.4)">Sum of each player's <strong style="color:var(--gold-l)">4 best</strong> stableford rounds</div>
+          <div style="font-size:0.8rem;color:rgba(255,255,255,0.4)">Sum of each player's <strong style="color:var(--gold-l)"><span id="seasonBestN">4</span> best</strong> stableford rounds</div>
           <select id="seasonYear" onchange="renderSeasonLb()" style="background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.14);border-radius:6px;color:var(--cream);font-size:0.75rem;padding:4px 8px;outline:none"></select>
         </div>
         <div id="seasonTable"></div>
@@ -465,16 +465,16 @@ select option { background: #1a3a2a; }
         <p>All scoring is <strong>nett</strong> (handicap adjusted).</p>
         <p>Playing Handicap = Course Handicap × 95%, where Course Handicap = Handicap Index × (Slope ÷ 113) + (Course Rating − Par).</p>
         <p>Handicap Index is as per the official <strong>DGA (Danish Golf Association)</strong> index. If found to be incorrect, it will be restated retroactively.</p>
-        <p>The season pot is split <strong>50/50</strong> between the Eclectic and Best 4 IPS competitions.</p>
+        <p>The season pot is split <strong>50/50</strong> between the Eclectic and Best <span class="rulesBestN">4</span> IPS competitions.</p>
         <p style="font-size:0.78rem;color:rgba(255,255,255,0.3)">All payouts are made after MobilePay transaction fees.</p>
       </div>
     </div>
 
     <!-- Best 4 IPS -->
     <div class="panel" style="margin-bottom:1.25rem">
-      <div class="ph"><span class="pt">Best 4 IPS — Individual Points Score</span><span style="font-size:0.72rem;color:rgba(255,255,255,0.3)">Season Competition</span></div>
+      <div class="ph"><span class="pt">Best <span class="rulesBestN">4</span> IPS — Individual Points Score</span><span style="font-size:0.72rem;color:rgba(255,255,255,0.3)">Season Competition</span></div>
       <div class="pb" style="font-size:0.88rem;line-height:1.7;color:rgba(240,213,140,0.85)">
-        <p style="margin-bottom:0.75rem">Stableford scoring across all rounds played during the season. Only your <strong>4 best rounds</strong> count towards your season total.</p>
+        <p style="margin-bottom:0.75rem">Stableford scoring across all rounds played during the season. Only your <strong><span class="rulesBestN">4</span> best rounds</strong> count towards your season total.</p>
         <p style="margin-bottom:0.5rem"><strong style="color:var(--gold-l)">How points are calculated per hole:</strong></p>
         <div style="background:rgba(0,0,0,0.2);border-radius:8px;padding:0.75rem 1rem;margin-bottom:0.75rem;font-family:'DM Mono',monospace;font-size:0.82rem">
           Points = max(0, 2 + Par + Handicap Strokes − Gross Score)
@@ -1059,6 +1059,7 @@ const GPS_OOB_THRESHOLD = 5;                   // consecutive out-of-bounds read
 let currentWeather = null;
 let weatherInterval = null;
 let fineTypes=[],allFines=[],finePayments=[];
+let seasonEntries=[];
 let editingFineTypeId=null;
 let saturdayEvents=[],saturdaySignups=[];
 let tournaments=[],tournamentPlayers=[],tournamentMatches=[],tournamentScores=[];
@@ -1082,7 +1083,7 @@ const fd=d=>d?new Date(d+'T00:00:00').toLocaleDateString('en-GB',{day:'numeric',
 const scC=d=>d<=-2?'s-eagle':d===-1?'s-birdie':d===0?'s-par':d===1?'s-bogey':'s-double';
 const vpC=d=>d<=-2?'#c9a0f0':d===-1?'#7fcc9e':d===0?'#82aaf0':d===1?'#f0a882':'#f08080';
 const ptC=p=>p>=4?'#c9a0f0':p===3?'#7fcc9e':p===2?'#82aaf0':p===1?'#f0a882':'rgba(255,255,255,0.28)';
-const today=()=>new Date().toISOString().split('T')[0];
+let today=()=>new Date().toISOString().split('T')[0];
 function haversineM(lat1,lng1,lat2,lng2){
   const R=6371000,rad=Math.PI/180;
   const dLat=(lat2-lat1)*rad,dLng=(lng2-lng1)*rad;
@@ -1299,7 +1300,7 @@ async function seedTees(){try{const rows=await sbInsert('tees',_TEES_SEED);tees=
 function adminPlayer(){return players.find(p=>p.is_admin&&!p.archived_at)||activePlayers()[0];}
 function isAdmin(){return isAdminAccount();}
 function updateAdminUI(){const a=isAdmin();document.getElementById('adminTab').style.display=a?'inline-block':'none';document.getElementById('adminBadge').style.display=a?'inline-flex':'none';const ab=document.getElementById('addPlayerBtn');if(ab)ab.style.display=a?'inline-block':'none';if(a)renderSaturdayAdmin();}
-function applyPendingUI(){const p=players.find(x=>x.id===activeId)||pendingPlayers.find(x=>x.id===activeId);const pending=p&&p.approved===false;document.getElementById('pendingBanner').style.display=pending?'block':'none';document.getElementById('tabLeaderboard').style.display=pending?'none':'';document.getElementById('tabHistory').style.display=pending?'none':'';document.getElementById('tabPlayers').style.display=pending?'none':'';if(pending){showView('log',document.querySelector('.nav-tab'));document.querySelector('.nav-tab').classList.remove('active');}const trackTab=document.getElementById('tabTrack');if(trackTab){const me=players.find(x=>x.id===activeId)||pendingPlayers.find(x=>x.id===activeId);const canTrack=me&&me.approved!==false&&!me.is_social;trackTab.style.display=canTrack?'':'none';}}
+function applyPendingUI(){document.getElementById('pendingPay').innerHTML=payHtml();const p=players.find(x=>x.id===activeId)||pendingPlayers.find(x=>x.id===activeId);const pending=p&&p.approved===false;document.getElementById('pendingBanner').style.display=pending?'block':'none';document.getElementById('tabLeaderboard').style.display=pending?'none':'';document.getElementById('tabHistory').style.display=pending?'none':'';document.getElementById('tabPlayers').style.display=pending?'none':'';if(pending){showView('log',document.querySelector('.nav-tab'));document.querySelector('.nav-tab').classList.remove('active');}const trackTab=document.getElementById('tabTrack');if(trackTab){const me=players.find(x=>x.id===activeId)||pendingPlayers.find(x=>x.id===activeId);const canTrack=me&&me.approved!==false&&!me.is_social;trackTab.style.display=canTrack?'':'none';}}
 
 // ── Login ─────────────────────────────────────────────────────────────────────
 let lockLoginPlayer=null;
@@ -1430,9 +1431,12 @@ async function loginAs(p){                       // old PIN route (removed in re
 
 // ── Sign-up ───────────────────────────────────────────────────────────────────
 // The season fee: shown after sign-up and on the pending banner until an admin approves.
-const SEASON_PAY_HTML='Please pay <strong style="color:var(--gold-l)">DKK 250</strong> to access the season at the link below. The pot is split 50/50 between the Eclectic tournament and the best 4 IPS Scores at end of Season.'
-  +'<a href="https://qr.mobilepay.dk/box/53592791-c6e9-4588-976f-8b187c98c76d/pay-in" target="_blank" rel="noopener" style="display:block;background:rgba(201,168,76,0.12);border:1px solid rgba(201,168,76,0.35);border-radius:12px;padding:1rem;text-align:center;text-decoration:none;color:var(--gold-l);font-size:0.9rem;font-weight:500;margin-top:0.75rem">Pay DKK 250 via MobilePay →</a>';
-document.getElementById('pendingPay').innerHTML=SEASON_PAY_HTML;
+const MOBILEPAY_URL='https://qr.mobilepay.dk/box/53592791-c6e9-4588-976f-8b187c98c76d/pay-in';
+// The buy-in to pay: the season taking entries, else the current one. A function, not a const:
+// SEASONS is declared further down the script.
+function payHtml(){const s=entrySeason()||seasonInfo(seasonOf(today()));
+  return `Please pay <strong style="color:var(--gold-l)">DKK ${s.buyIn}</strong> to enter ${s.name} at the link below. The pot is split 50/50 between the Eclectic tournament and the best ${s.best} IPS Scores at end of Season.`
+    +`<a href="${MOBILEPAY_URL}" target="_blank" rel="noopener" style="display:block;background:rgba(201,168,76,0.12);border:1px solid rgba(201,168,76,0.35);border-radius:12px;padding:1rem;text-align:center;text-decoration:none;color:var(--gold-l);font-size:0.9rem;font-weight:500;margin-top:0.75rem">Pay DKK ${s.buyIn} via MobilePay →</a>`;}
 async function submitSignup(){
   const v=id=>document.getElementById(id).value.trim();
   const name=v('signupName'),email=v('signupEmail').toLowerCase(),dgu=v('signupDgu'),hcpRaw=v('signupHcp'),a=document.getElementById('signupPassword').value,b=document.getElementById('signupPassword2').value;
@@ -1444,7 +1448,7 @@ async function submitSignup(){
   const {error}=await authClient().auth.signUp({email,password:a,options:{emailRedirectTo:SITE_URL,
     data:{name,dgu_number:dgu,handicap,color:Math.floor(Math.random()*COLORS.length)}}});
   if(authSignupError('signupError',error))return;
-  checkEmail('Nearly there: we\'ve sent a confirmation link to ',email,'. After you click it, your registration waits for admin approval.<br><br>'+SEASON_PAY_HTML);
+  checkEmail('Nearly there: we\'ve sent a confirmation link to ',email,'. After you click it, your registration waits for admin approval.<br><br>'+payHtml());
 }
 function renderPendingApprovals(){
   const panel=document.getElementById('pendingApprovalsPanel');
@@ -1549,6 +1553,7 @@ function showView(id,btn){
   }
 }
 function renderRules(){
+  const cur=seasonInfo(seasonOf(today()));document.querySelectorAll('.rulesBestN').forEach(e=>e.textContent=cur.best);
   const approved=players.filter(p=>p.approved!==false&&!p.is_social).length;
   const gross=approved*250;
   const mpFee=Math.floor(gross/1000)*19;
@@ -5282,13 +5287,16 @@ function scrollToMyEclectic(){
 // `eclectic` is that season's eclectic handicap allowance (60% from Winter 2027: the 95% card
 // rewarded high handicaps — see the rank-bias analysis of 2026-09-10).
 const SEASONS=[
-  {name:'Summer 2026',from:'0000-01-01',eclectic:0.95},
-  {name:'Winter 2027',from:'2026-10-04',eclectic:0.60}, // day after the Summer 2026 final (3 Oct)
+  {name:'Summer 2026',from:'0000-01-01',eclectic:0.95,best:4,buyIn:250,entry:false},
+  {name:'Winter 2027',from:'2026-10-04',eclectic:0.60,best:3,buyIn:175,entry:true}, // day after the Summer 2026 final (3 Oct)
 ];
 function seasonOf(date){let s=SEASONS[0];for(const x of SEASONS)if(date>=x.from)s=x;return s.name;}
 function seasonInfo(season){return SEASONS.find(s=>s.name===season);}
 // Finished once the next season has started.
 function seasonDone(season){const next=SEASONS[SEASONS.indexOf(seasonInfo(season))+1];return !!next&&today()>=next.from;}
+// The season taking entries: the current one if it needs entry, else the next one if that does
+// (so Winter entries open during Summer's last week). null when none does.
+function entrySeason(){const cur=seasonInfo(seasonOf(today()));if(cur.entry)return cur;const next=SEASONS[SEASONS.indexOf(cur)+1];return next&&next.entry?next:null;}
 function inSeason(date,season){return !!date&&seasonOf(date)===season;}
 function getSeasons(){const used=new Set(allRounds.map(r=>seasonOf(r.date)));const s=SEASONS.map(x=>x.name).filter(n=>used.has(n)).reverse();return s.length?s:[seasonOf(today())];}
 function populateYearSelects(){const seasons=getSeasons();['seasonYear','dreamYear','finesYear','myDreamYear'].forEach(id=>{const sel=document.getElementById(id);if(!sel)return;const cur=sel.value;sel.innerHTML=seasons.map(y=>`<option value="${y}">${y}</option>`).join('');if(cur&&seasons.includes(cur))sel.value=cur;});}
@@ -5304,17 +5312,18 @@ function renderTodayLb(){
   document.getElementById('todayTable').innerHTML=`<div class="rt-wrap"><table class="rt"><thead><tr><th></th><th>Player</th><th>Tee</th><th>Playing HCP</th><th>Holes</th><th>Progress</th><th>Points</th></tr></thead><tbody>${rows.map((row,i)=>{const pr=_prizeRanks[i];const rc=pr?(pr===1?'rank gold':pr===2?'rank silver':pr===3?'rank bronze':'rank'):'rank';const med=pr?(pr===1?'1st':pr===2?'2nd':pr===3?'3rd':`${pr}th`):`<span class="tag tag-social" style="font-size:0.6rem">Social</span>`;const pct=Math.round((row.completed/18)*100);return`<tr><td class="${rc}">${med}</td><td><div style="display:flex;align-items:center;gap:8px">${row.p?`<div class="av" style="background:${clr(row.p)}">${ini(row.p.name)}</div>${row.p.name}${row.p.is_social?'<span class="tag tag-social" style="font-size:0.6rem;padding:1px 5px">Social</span>':''}`:'Unknown'}</div></td><td><span style="display:inline-flex;align-items:center;gap:4px;font-size:0.76rem"><span class="tee-dot" style="background:${row.r.tee_color||'#888'}"></span>${row.r.tee_name||'—'}</span></td><td style="font-family:'DM Mono',monospace;color:rgba(255,255,255,0.5)">${row.phcp!=null?row.phcp:'—'}</td><td style="font-family:'DM Mono',monospace">${row.completed}<span style="color:rgba(255,255,255,0.3)">/18</span></td><td><div class="prog-bar"><div class="prog-fill" style="width:${pct}%"></div></div></td><td style="font-family:'DM Mono',monospace;font-weight:600;font-size:1.1rem;color:#82aaf0">${row.pts}</td></tr>`;}).join('')}</tbody></table></div>`;
   document.getElementById('todayScoreboards').innerHTML=rows.map(row=>{if(!row.p)return'';const F=[0,1,2,3,4,5,6,7,8],B=[9,10,11,12,13,14,15,16,17];const hp=row.holePts;function cell(i){const h=row.r.holes[i];if(!h)return`<td style="color:rgba(255,255,255,0.2)">·</td>`;if(h.pickup)return`<td style="font-family:'DM Mono',monospace;font-size:0.82rem;font-weight:700;color:#f0a030">P</td>`;if(h.score==null)return`<td style="color:rgba(255,255,255,0.2)">·</td>`;const d=h.score-h.par;return`<td style="font-family:'DM Mono',monospace;font-size:0.82rem;font-weight:500;color:${vpC(d)}">${h.score}</td>`;}function ptsCell(i){const x=hp[i];if(!x)return`<td style="color:rgba(255,255,255,0.18)">·</td>`;return`<td style="font-family:'DM Mono',monospace;font-size:0.78rem;font-weight:500;color:${ptC(x.pts)}">${x.pts}</td>`;}const fPts=F.map(i=>hp[i]?.pts||0).reduce((a,b)=>a+b,0),bPts=B.map(i=>hp[i]?.pts||0).reduce((a,b)=>a+b,0);return`<div style="margin-top:1rem;padding-top:1rem;border-top:1px solid rgba(255,255,255,0.06)"><div style="display:flex;align-items:center;gap:9px;margin-bottom:0.6rem"><div class="av" style="background:${clr(row.p)};width:22px;height:22px;font-size:0.6rem">${ini(row.p.name)}</div><span style="font-weight:500;font-size:0.88rem">${row.p.name}</span><span style="font-size:0.75rem;color:rgba(255,255,255,0.38)">${row.completed} holes · HCP ${row.phcp!=null?row.phcp:'—'}</span></div><div class="scorecard-wrap"><table class="sc-table" style="min-width:500px"><thead><tr><th class="left">Hole</th>${F.map(i=>`<th>${i+1}</th>`).join('')}<th>Out</th><th class="sep"></th>${B.map(i=>`<th>${i+1}</th>`).join('')}<th>In</th><th>Total</th></tr></thead><tbody><tr><td class="left muted">Par</td>${F.map(i=>`<td class="mono muted">${HOLE_PARS[i]}</td>`).join('')}<td class="tot mono muted">35</td><td class="sep"></td>${B.map(i=>`<td class="mono muted">${HOLE_PARS[i]}</td>`).join('')}<td class="tot mono muted">37</td><td class="tot mono muted">72</td></tr><tr><td class="left" style="font-weight:500;color:var(--gold-l);font-size:0.77rem">Score</td>${F.map(i=>cell(i)).join('')}<td class="tot">${F.some(i=>row.r.holes[i]?.score)?tS(row.r.holes.slice(0,9).filter(h=>h?.score)):''}</td><td class="sep"></td>${B.map(i=>cell(i)).join('')}<td class="tot">${B.some(i=>row.r.holes[i]?.score)?tS(row.r.holes.slice(9).filter(h=>h?.score)):''}</td><td class="tot" style="font-weight:600">${row.completed?tS(row.r.holes.filter(h=>h?.score)):''}</td></tr><tr><td class="left" style="color:#82aaf0;font-size:0.77rem">Points</td>${F.map(i=>ptsCell(i)).join('')}<td class="tot" style="color:#82aaf0;font-weight:600">${fPts||'—'}</td><td class="sep"></td>${B.map(i=>ptsCell(i)).join('')}<td class="tot" style="color:#82aaf0;font-weight:600">${bPts||'—'}</td><td class="tot" style="color:#82aaf0;font-weight:700;font-size:1rem">${row.pts}</td></tr></tbody></table></div>`;}).join('');}
 
-// Best 4 IPS standings, highest first. Social members excluded.
+// Best-N IPS standings (N from SEASONS), highest first. Social members excluded.
 function seasonStandings(season){
   const sr=allRounds.filter(r=>inSeason(r.date,season));
-  return players.filter(p=>!p.is_social).map(p=>{const pr=sr.filter(r=>r.player_id===p.id);if(!pr.length)return null;const rpts=pr.map(r=>({r,pts:calcRoundPoints(r,p)||0})).sort((a,b)=>b.pts-a.pts);const best4=rpts.slice(0,4);const total=best4.reduce((s,x)=>s+x.pts,0);const avg=rpts.length?(rpts.reduce((s,x)=>s+x.pts,0)/rpts.length).toFixed(1):null;return{p,rounds:pr.length,total,best4,avg};}).filter(Boolean).sort((a,b)=>b.total-a.total);
+  return players.filter(p=>!p.is_social).map(p=>{const pr=sr.filter(r=>r.player_id===p.id);if(!pr.length)return null;const rpts=pr.map(r=>({r,pts:calcRoundPoints(r,p)||0})).sort((a,b)=>b.pts-a.pts);const counted=rpts.slice(0,seasonInfo(season).best);const total=counted.reduce((s,x)=>s+x.pts,0);const avg=rpts.length?(rpts.reduce((s,x)=>s+x.pts,0)/rpts.length).toFixed(1):null;return{p,rounds:pr.length,total,counted,avg};}).filter(Boolean).sort((a,b)=>b.total-a.total);
 }
 function renderSeasonLb(){
   const season=document.getElementById('seasonYear')?.value||seasonOf(today());
+  const bn=document.getElementById('seasonBestN');if(bn)bn.textContent=seasonInfo(season).best;
   const standings=seasonStandings(season);
   if(!standings.length){document.getElementById('seasonTable').innerHTML='<div class="empty">No rounds for '+season+' yet.</div>';return;}
   const _seasonPlaces=sharedPlaces(standings,s=>s.total);
-  document.getElementById('seasonTable').innerHTML=`<div class="rt-wrap"><table class="rt"><thead><tr><th></th><th>Player</th><th>Rounds</th><th>HCP</th><th>Avg Pts</th><th>Best 4 Rounds</th><th style="color:#82aaf0">Season Total</th></tr></thead><tbody>${standings.map((s,i)=>{const pl=_seasonPlaces[i];const rc=pl===1?'rank gold':pl===2?'rank silver':pl===3?'rank bronze':'rank';const med=ordinal(pl);const hcp=currentHcp(s.p);const b4=s.best4.map(x=>`<span style="display:inline-flex;align-items:center;background:rgba(130,170,240,0.12);border:1px solid rgba(130,170,240,0.25);border-radius:6px;padding:1px 7px;font-family:'DM Mono',monospace;font-size:0.78rem;color:#82aaf0;margin:1px">${x.pts}<span style="font-size:0.6rem;color:rgba(255,255,255,0.3);margin-left:3px">${fd(x.r.date).replace(/\s\d{4}/,'')}</span></span>`).join(' ');return`<tr><td class="${rc}">${med}</td><td><div style="display:flex;align-items:center;gap:8px"><div class="av" style="background:${clr(s.p)}">${ini(s.p.name)}</div>${s.p.name}</div></td><td style="font-family:'DM Mono',monospace">${s.rounds}</td><td style="font-family:'DM Mono',monospace;color:rgba(255,255,255,0.5)">${hcp!=null?hcp:'—'}</td><td style="font-family:'DM Mono',monospace;color:rgba(255,255,255,0.5)">${s.avg}</td><td>${b4}</td><td style="font-family:'DM Mono',monospace;font-weight:700;font-size:1.1rem;color:#82aaf0">${s.total}</td></tr>`;}).join('')}</tbody></table></div>`;}
+  document.getElementById('seasonTable').innerHTML=`<div class="rt-wrap"><table class="rt"><thead><tr><th></th><th>Player</th><th>Rounds</th><th>HCP</th><th>Avg Pts</th><th>Best ${seasonInfo(season).best} Rounds</th><th style="color:#82aaf0">Season Total</th></tr></thead><tbody>${standings.map((s,i)=>{const pl=_seasonPlaces[i];const rc=pl===1?'rank gold':pl===2?'rank silver':pl===3?'rank bronze':'rank';const med=ordinal(pl);const hcp=currentHcp(s.p);const b4=s.counted.map(x=>`<span style="display:inline-flex;align-items:center;background:rgba(130,170,240,0.12);border:1px solid rgba(130,170,240,0.25);border-radius:6px;padding:1px 7px;font-family:'DM Mono',monospace;font-size:0.78rem;color:#82aaf0;margin:1px">${x.pts}<span style="font-size:0.6rem;color:rgba(255,255,255,0.3);margin-left:3px">${fd(x.r.date).replace(/\s\d{4}/,'')}</span></span>`).join(' ');return`<tr><td class="${rc}">${med}</td><td><div style="display:flex;align-items:center;gap:8px"><div class="av" style="background:${clr(s.p)}">${ini(s.p.name)}</div>${s.p.name}</div></td><td style="font-family:'DM Mono',monospace">${s.rounds}</td><td style="font-family:'DM Mono',monospace;color:rgba(255,255,255,0.5)">${hcp!=null?hcp:'—'}</td><td style="font-family:'DM Mono',monospace;color:rgba(255,255,255,0.5)">${s.avg}</td><td>${b4}</td><td style="font-family:'DM Mono',monospace;font-weight:700;font-size:1.1rem;color:#82aaf0">${s.total}</td></tr>`;}).join('')}</tbody></table></div>`;}
 
 // One player's eclectic: best nett per hole across `rounds`, at the given handicap allowance.
 function eclecticCard(p,rounds,allowance){
@@ -5383,7 +5392,7 @@ function renderHallOfFame(){
       </div>
       <div class="rt-wrap"><table class="rt"><thead><tr><th>Competition</th><th>${done?'Winner':'Leader'}</th><th>Record</th></tr></thead><tbody>
         ${rows('🏆 Eclectic',eW)}
-        ${rows('🏆 Best 4 IPS',iW)}
+        ${rows(`🏆 Best ${seasonInfo(season).best} IPS`,iW)}
         ${rows('🐦 Most birdies',birdies)}
         ${rows('🦅 Most eagles',eagles)}
         ${rows('⛳ Hole in one',aces)}

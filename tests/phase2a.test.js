@@ -328,17 +328,20 @@ setTimeout(async function(){
     T('an enroll error resolves false with a friendly message, no TypeError',enrolThrew===null&&enrolRes===false&&toasts.some(m=>/couldn.t start two-factor/i.test(m)),String(enrolThrew)+' '+JSON.stringify(toasts));
     window.toast=origToast;authState.enroll=null;
 
-    // Finding 5: new members see the DKK 250 pay-in, after sign-up and while pending.
+    // Finding 5: new members see the entry season's pay-in, after sign-up and while pending.
+    // (Task 2, winter-entries: the buy-in shown is now whichever season is taking entries —
+    // see tests/winter.test.js — so this asserts against that season's real buy-in, not a fixed figure.)
     const PAY_URL='https://qr.mobilepay.dk/box/53592791-c6e9-4588-976f-8b187c98c76d/pay-in';
+    const payAmt=(entrySeason()||seasonInfo(seasonOf(today()))).buyIn;
     showLockPanel('lockSignupPanel');['signupName','signupEmail','signupDgu','signupHcp','signupPassword','signupPassword2'].forEach(id=>field(id,''));
     field('signupName','Di');field('signupEmail','di@x.dk');field('signupDgu','900-3');field('signupPassword','longenough1');field('signupPassword2','longenough1');
     await submitSignup();
     const ce=document.getElementById('lockCheckEmailPanel');
-    T('after sign-up the check-email screen shows the DKK 250 pay instruction and link',shown('lockCheckEmailPanel')&&/DKK 250/.test(ce.textContent)&&!!ce.querySelector(`a[href="${PAY_URL}"]`));
+    T('after sign-up the check-email screen shows the pay instruction and link',shown('lockCheckEmailPanel')&&new RegExp('DKK '+payAmt).test(ce.textContent)&&!!ce.querySelector(`a[href="${PAY_URL}"]`));
     players=[];pendingPlayers=[{id:40,name:'Di',user_id:'u-40',approved:false,color:0,hcp_history:[]}];activeId=40;
     applyPendingUI();
     const pb=document.getElementById('pendingBanner');
-    T('a signed-in pending player sees the pay instruction',pb.style.display!=='none'&&/DKK 250/.test(pb.textContent)&&!!pb.querySelector(`a[href="${PAY_URL}"]`));
+    T('a signed-in pending player sees the pay instruction',pb.style.display!=='none'&&new RegExp('DKK '+payAmt).test(pb.textContent)&&!!pb.querySelector(`a[href="${PAY_URL}"]`));
     pendingPlayers=[];
 
     // Finding 2: a confirmation/reset link opened in another browser (no PKCE verifier) has
