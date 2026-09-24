@@ -7,7 +7,7 @@ DO $$ DECLARE c record; t text; BEGIN
   IF NOT EXISTS (SELECT 1 FROM information_schema.schemata WHERE schema_name = 'phase1_backup') THEN
     RAISE EXCEPTION 'No phase1_backup schema — nothing to roll back to.';
   END IF;
-  FOR c IN SELECT conrelid::regclass::text AS tbl, conname FROM pg_constraint WHERE contype = 'f' AND conname LIKE 'fk\_%' LOOP
+  FOR c IN SELECT conrelid::regclass::text AS tbl, conname FROM pg_constraint WHERE contype = 'f' AND conname LIKE 'fk\_%' AND connamespace = 'public'::regnamespace LOOP
     EXECUTE format('ALTER TABLE %s DROP CONSTRAINT %I', c.tbl, c.conname);
   END LOOP;
   FOREACH t IN ARRAY ARRAY['players','rounds','fine_types','fines','fine_payments','saturday_events',

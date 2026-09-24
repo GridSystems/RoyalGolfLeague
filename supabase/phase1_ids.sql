@@ -287,7 +287,7 @@ DO $$ DECLARE t text; n bigint; mn bigint; mx bigint; b numeric; want bigint; nx
              FULL JOIN (SELECT p.legacy_id, count(*) AS n FROM public.rounds r JOIN public.players p ON p.id = r.player_id GROUP BY p.legacy_id) ra
                ON ra.legacy_id = rb.player_id
              WHERE rb.n IS DISTINCT FROM ra.n) THEN bad := bad || 'Rounds per player changed. '; END IF;
-  SELECT count(*) INTO n FROM pg_constraint WHERE contype = 'f' AND conname LIKE 'fk\_%';
+  SELECT count(*) INTO n FROM pg_constraint WHERE contype = 'f' AND conname LIKE 'fk\_%' AND connamespace = 'public'::regnamespace;
   IF n <> 21 THEN bad := bad || format('%s foreign keys, expected 21. ', n); END IF;
   FOR o IN SELECT * FROM p1_orphans ORDER BY k LOOP INSERT INTO p1_report(line) VALUES (format('%s: %s', o.k, o.n)); END LOOP;
   INSERT INTO p1_report(line) VALUES (format('%s foreign keys', n));

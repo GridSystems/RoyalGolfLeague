@@ -22,3 +22,12 @@ test('cleanup drops the backup schema', async () => {
   assert.equal(await run(db, sqlFile('phase1_cleanup.sql')), null);
   assert.equal((await db.query(`SELECT count(*)::int n FROM information_schema.schemata WHERE schema_name='phase1_backup'`)).rows[0].n, 0);
 });
+test('fk_ constraints outside public are left alone by the migration check and the rollback', async () => {
+  const db = await freshDb();
+  await db.exec(`CREATE SCHEMA other; CREATE TABLE other.parent (id int PRIMARY KEY);
+                 CREATE TABLE other.child (id int PRIMARY KEY, p int CONSTRAINT fk_other REFERENCES other.parent(id));`);
+  assert.equal(await run(db, sqlFile('phase1_ids.sql').replace('SELECT true AS rehearsal', 'SELECT false AS rehearsal')), null);
+  assert.equal(await run(db, sqlFile('phase1_rollback.sql')), null);
+  const n = (await db.query(`SELECT count(*)::int n FROM pg_constraint WHERE conname = 'fk_other'`)).rows[0].n;
+  assert.equal(n, 1, 'rollback must not drop another schema’s fk_ constraint');
+});
