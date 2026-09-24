@@ -5370,11 +5370,13 @@ async function adminEntryWrite(save,done){
   renderAdminEntries();renderEntryBanner();renderSeasonLb();
 }
 const replaceEntry=row=>{if(row)seasonEntries=seasonEntries.map(e=>e.id===row.id?row:e);};
-function markEntryPaid(id){const s=entrySeason();return adminEntryWrite(async()=>{const [row]=await sbUpdate('season_entries',id,{paid_at:new Date().toISOString(),amount:s.buyIn,recorded_by:activeId});replaceEntry(row);},'Marked paid');}
-function undoEntryPaid(id){return adminEntryWrite(async()=>{const [row]=await sbUpdate('season_entries',id,{paid_at:null,amount:null,recorded_by:null});replaceEntry(row);},'Payment undone');}
-function removeEntry(id){if(!confirm('Remove this entry?'))return;return adminEntryWrite(async()=>{await sbDelete('season_entries',id);seasonEntries=seasonEntries.filter(e=>e.id!==id);},'Entry removed');}
+// sbUpdate/sbDelete/sbInsert return [] (not an error) when RLS filters the write — treat that the
+// same as a failure, not a silent no-op, so the admin sees "Couldn't save" and local state doesn't drift.
+function markEntryPaid(id){const s=entrySeason();return adminEntryWrite(async()=>{const [row]=await sbUpdate('season_entries',id,{paid_at:new Date().toISOString(),amount:s.buyIn,recorded_by:activeId});if(!row)throw new Error('not saved');replaceEntry(row);},'Marked paid');}
+function undoEntryPaid(id){return adminEntryWrite(async()=>{const [row]=await sbUpdate('season_entries',id,{paid_at:null,amount:null,recorded_by:null});if(!row)throw new Error('not saved');replaceEntry(row);},'Payment undone');}
+function removeEntry(id){if(!confirm('Remove this entry?'))return;return adminEntryWrite(async()=>{if(!(await sbDelete('season_entries',id)).length)throw new Error('not removed');seasonEntries=seasonEntries.filter(e=>e.id!==id);},'Entry removed');}
 function enterPlayerFor(){const s=entrySeason(),pid=+document.getElementById('entryForPlayer').value;
-  return adminEntryWrite(async()=>{const [row]=await sbInsert('season_entries',{season:s.name,player_id:pid});seasonEntries.push(row);},'Player entered');}
+  return adminEntryWrite(async()=>{const [row]=await sbInsert('season_entries',{season:s.name,player_id:pid});if(!row)throw new Error('not saved');seasonEntries.push(row);},'Player entered');}
 function inSeason(date,season){return !!date&&seasonOf(date)===season;}
 function getSeasons(){const used=new Set(allRounds.map(r=>seasonOf(r.date)));const s=SEASONS.map(x=>x.name).filter(n=>used.has(n)).reverse();return s.length?s:[seasonOf(today())];}
 function populateYearSelects(){const seasons=getSeasons();['seasonYear','dreamYear','finesYear','myDreamYear'].forEach(id=>{const sel=document.getElementById(id);if(!sel)return;const cur=sel.value;sel.innerHTML=seasons.map(y=>`<option value="${y}">${y}</option>`).join('');if(cur&&seasons.includes(cur))sel.value=cur;});}

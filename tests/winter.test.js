@@ -113,6 +113,20 @@ setTimeout(async function(){
     reset((u,b,m)=>m==='DELETE'?[{id:23}]:[]);
     await removeEntry(23);
     T('Remove deletes the entry',calls.some(c=>c.method==='DELETE'&&c.url.includes('season_entries?id=eq.23'))&&!entryOf(3,'Winter 2027'));
+    // ── Task 5 fix round 1: an RLS-filtered write (200, []) must not be treated as success ──
+    reset((u,b,m)=>m==='PATCH'?[]:[]);
+    await markEntryPaid(21);
+    T('Mark paid round 1: RLS-filtered update leaves the entry unpaid',!entryOf(2,'Winter 2027').paid_at&&/2 entered · 1 paid · DKK 175 received/.test(adm()));
+    reset((u,b,m)=>m==='PATCH'?[]:[]);
+    await undoEntryPaid(22);
+    T('Undo round 1: RLS-filtered update leaves the entry paid',!!entryOf(1,'Winter 2027').paid_at&&/2 entered · 1 paid · DKK 175 received/.test(adm()));
+    reset((u,b,m)=>m==='DELETE'?[]:[]);
+    await removeEntry(21);
+    T('Remove round 1: RLS-filtered delete keeps the entry',!!entryOf(2,'Winter 2027')&&/2 entered · 1 paid · DKK 175 received/.test(adm()));
+    document.getElementById('entryForPlayer').value='3';
+    reset((u,b,m)=>m==='POST'?[]:[]);
+    await enterPlayerFor();
+    T('Enter player round 1: RLS-filtered insert does not add an entry',!entryOf(3,'Winter 2027')&&seasonEntries.every(e=>e&&e.id!=null)&&/2 entered · 1 paid · DKK 175 received/.test(adm()));
     const saved3=SEASONS.splice(1,1);today=()=>'2026-09-20';renderAdminEntries();
     T('no season taking entries: says so',/No season is taking entries/.test(adm()));SEASONS.push(...saved3);
     // ── end ──
