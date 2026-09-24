@@ -63,6 +63,25 @@ setTimeout(async function(){
     seasonEntries=[{id:9}];
     try{await loadData();}catch(e){out.push('FAIL loadData threw :: '+e.message);}
     T('load failure: season_entries failing leaves an empty list, not a crash',Array.isArray(seasonEntries)&&seasonEntries.length===0);
+    // ── Task 4: member banner ──
+    today=()=>'2026-09-28';players=[P(1,'Ann'),P(2,'Bo',{is_social:true}),P(3,'Cy',{approved:false})];seasonEntries=[];activeId=1;
+    renderEntryBanner();const ban=()=>document.getElementById('entryBanner').innerHTML;
+    T('not entered: Enter Winter 2027 for DKK 175, best 3',/Enter Winter 2027/.test(ban())&&/DKK 175/.test(ban())&&/best 3/.test(ban())&&/enterSeason\(\)/.test(ban()));
+    reset((u,b,m)=>u.includes('/season_entries')&&m==='POST'?[{id:11,season:b.season,player_id:b.player_id,paid_at:null,amount:null}]:[]);
+    await enterSeason();
+    const post=calls.find(c=>c.method==='POST'&&c.url.includes('/season_entries'));
+    T('Enter posts season and own player only',post&&post.body.season==='Winter 2027'&&post.body.player_id===1&&!('id' in post.body)&&!('paid_at' in post.body));
+    T('entered, unpaid: payment not recorded, MobilePay link, Withdraw',/payment not yet recorded/.test(ban())&&ban().includes(MOBILEPAY_URL)&&/withdrawEntry\(\)/.test(ban()));
+    reset((u,b,m)=>u.includes('/season_entries')&&m==='DELETE'?[{id:11}]:[]);
+    await withdrawEntry();
+    T('Withdraw deletes the entry and shows Enter again',calls.some(c=>c.method==='DELETE'&&c.url.includes('season_entries?id=eq.11'))&&/enterSeason\(\)/.test(ban())&&!entryOf(1,'Winter 2027'));
+    seasonEntries=[{id:12,season:'Winter 2027',player_id:1,paid_at:'2026-09-29T10:00:00Z',amount:175}];renderEntryBanner();
+    T('paid: entered and paid, no Withdraw',/entered in Winter 2027 and paid/.test(ban())&&!/withdrawEntry/.test(ban()));
+    activeId=2;renderEntryBanner();T('social members see no banner',ban()==='');
+    activeId=3;renderEntryBanner();T('pending members see no banner',ban()==='');
+    const saved2=SEASONS.splice(1,1);activeId=1;renderEntryBanner();T('no banner when no season takes entries',ban()==='');SEASONS.push(...saved2);
+    activeId=1;seasonEntries=[];renderProfile();
+    T('My Profile shows the entry status',/Enter Winter 2027/.test(document.getElementById('profileBody').innerHTML));
     // ── end ──
   }catch(e){out.push('FAIL EXCEPTION :: '+e.stack);}
   await new Promise(r=>setTimeout(r,150));

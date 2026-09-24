@@ -302,6 +302,7 @@ select option { background: #1a3a2a; }
           <div style="font-size:0.8rem;color:rgba(255,255,255,0.4)">Sum of each player's <strong style="color:var(--gold-l)"><span id="seasonBestN">4</span> best</strong> stableford rounds</div>
           <select id="seasonYear" onchange="renderSeasonLb()" style="background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.14);border-radius:6px;color:var(--cream);font-size:0.75rem;padding:4px 8px;outline:none"></select>
         </div>
+        <div id="entryBanner"></div>
         <div id="seasonTable"></div>
       </div>
       <div class="lb-view" id="lb-dreamcard">
@@ -5307,6 +5308,33 @@ function entryOf(pid,season){return seasonEntries.find(e=>e.player_id===pid&&e.s
 function inPrizes(p,season){if(!p||p.is_social)return false;return !seasonInfo(season).entry||!!entryOf(p.id,season);}
 function unpaidTag(p,season){const e=seasonInfo(season).entry&&entryOf(p.id,season);
   return e&&!e.paid_at?'<span class="tag" style="font-size:0.6rem;padding:1px 5px;margin-left:4px;background:rgba(240,160,48,0.15);color:#f0a030">unpaid</span>':'';}
+// Enter / pay / withdraw for the season taking entries. Social and pending members see nothing.
+function entryStatusHtml(p,s){
+  const e=entryOf(p.id,s.name),box=c=>`<div class="info-box" style="margin-bottom:1rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">${c}</div>`;
+  if(!e)return box(`<span><strong>Enter ${s.name}</strong> — DKK ${s.buyIn}, best ${s.best} rounds count.</span><button class="btn btn-warn btn-sm" onclick="enterSeason()">Enter</button>`);
+  if(!e.paid_at)return box(`<span>You're entered in ${s.name} — payment not yet recorded. <a href="${MOBILEPAY_URL}" target="_blank" rel="noopener" style="color:var(--gold-l)">Pay DKK ${s.buyIn} via MobilePay →</a></span><button class="btn btn-ghost btn-sm" onclick="withdrawEntry()">Withdraw</button>`);
+  return box(`<span>You're entered in ${s.name} and paid ✓</span>`);
+}
+function entryFor(p){const s=entrySeason();return s&&p&&!p.is_social&&p.approved!==false?s:null;}
+function renderEntryBanner(){
+  const el=document.getElementById('entryBanner');if(!el)return;
+  const p=players.find(x=>x.id===activeId)||pendingPlayers.find(x=>x.id===activeId),s=entryFor(p);
+  el.innerHTML=s?entryStatusHtml(p,s):'';
+}
+function refreshEntryViews(){renderEntryBanner();renderSeasonLb();renderProfile();}
+async function enterSeason(){
+  const s=entrySeason();if(!s||entryOf(activeId,s.name))return;
+  try{const [row]=await sbInsert('season_entries',{season:s.name,player_id:activeId});seasonEntries.push(row);toast(`Entered ${s.name}`);}
+  catch(e){toast('Couldn\'t enter — '+e.message);}
+  refreshEntryViews();
+}
+async function withdrawEntry(){
+  const s=entrySeason(),e=s&&entryOf(activeId,s.name);if(!e||e.paid_at)return;
+  if(!confirm(`Withdraw from ${s.name}?`))return;
+  try{await sbDelete('season_entries',e.id);seasonEntries=seasonEntries.filter(x=>x.id!==e.id);toast('Entry withdrawn');}
+  catch(err){toast('Couldn\'t withdraw — '+err.message);}
+  refreshEntryViews();
+}
 function inSeason(date,season){return !!date&&seasonOf(date)===season;}
 function getSeasons(){const used=new Set(allRounds.map(r=>seasonOf(r.date)));const s=SEASONS.map(x=>x.name).filter(n=>used.has(n)).reverse();return s.length?s:[seasonOf(today())];}
 function populateYearSelects(){const seasons=getSeasons();['seasonYear','dreamYear','finesYear','myDreamYear'].forEach(id=>{const sel=document.getElementById(id);if(!sel)return;const cur=sel.value;sel.innerHTML=seasons.map(y=>`<option value="${y}">${y}</option>`).join('');if(cur&&seasons.includes(cur))sel.value=cur;});}
@@ -5328,6 +5356,7 @@ function seasonStandings(season){
   return players.filter(p=>inPrizes(p,season)).map(p=>{const pr=sr.filter(r=>r.player_id===p.id);if(!pr.length)return null;const rpts=pr.map(r=>({r,pts:calcRoundPoints(r,p)||0})).sort((a,b)=>b.pts-a.pts);const counted=rpts.slice(0,seasonInfo(season).best);const total=counted.reduce((s,x)=>s+x.pts,0);const avg=rpts.length?(rpts.reduce((s,x)=>s+x.pts,0)/rpts.length).toFixed(1):null;return{p,rounds:pr.length,total,counted,avg};}).filter(Boolean).sort((a,b)=>b.total-a.total);
 }
 function renderSeasonLb(){
+  renderEntryBanner();
   const season=document.getElementById('seasonYear')?.value||seasonOf(today());
   const bn=document.getElementById('seasonBestN');if(bn)bn.textContent=seasonInfo(season).best;
   const standings=seasonStandings(season);
@@ -5727,6 +5756,7 @@ function renderProfile(){
     row('Colour',`<span style="display:inline-block;width:15px;height:15px;border-radius:50%;background:${clr(p)}"></span>`,'')+
     row('My Bag','Clubs and carry distances',`<button class="btn btn-ghost btn-sm" onclick="openBagModal()">Edit</button>`)+
     row('Units',getUnits()==='yd'?'Yards':'Metres',`<button class="btn btn-ghost btn-sm" onclick="toggleUnits();renderProfile()">Switch</button>`);
+  {const s=entryFor(p);if(s)body.innerHTML+=`<div style="margin-top:1rem">${entryStatusHtml(p,s)}</div>`;}
   if(_session&&p.user_id===_session.user.id){
     body.innerHTML+=`<div style="display:flex;gap:8px;margin-top:1rem"><button class="btn btn-ghost btn-sm" onclick="submitEmailChange()">Change email</button><button class="btn btn-ghost btn-sm" onclick="signOut()">Sign out</button></div>`;
   }
