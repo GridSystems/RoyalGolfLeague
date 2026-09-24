@@ -114,6 +114,19 @@ setTimeout(async function(){
     reloaded=0;threw=false;try{await sbGet('rounds');}catch(e){threw=e.message==='boom';}
     T('other errors still throw without reloading',reloaded===0&&threw);
     window.fetch=realFetch;
+    // ── Final review fixes ──
+    // A failed data load leaves players empty: that must not sign anyone out or drop their round group.
+    players=[];pendingPlayers=[];localStorage.clear();sessionStorage.clear();
+    sessionStorage.setItem('sl_session_player','5');localStorage.setItem('sl_active_player','5');
+    localStorage.setItem('sl_active_group',JSON.stringify({date:today(),players:[{id:5,teeId:'57'}]}));
+    T('failed load: reconcile leaves the session alone',reconcileStoredPlayer()===false&&sessionStorage.getItem('sl_session_player')==='5'&&localStorage.getItem('sl_active_player')==='5');
+    T('failed load: round in progress is kept',localStorage.getItem('sl_active_group')!==null);
+    // An archived admin is not an admin: the last active admin cannot give up their rights.
+    players=[{id:1,name:'Ann',is_admin:true,color:0,hcp_history:[]},{id:2,name:'Old',is_admin:true,archived_at:'2026-09-01T00:00:00Z',color:1,hcp_history:[]}];
+    activeId=1;window.__alert=null;stubFetch(()=>[{}]);
+    await makeAdmin(1);
+    T('last active admin cannot remove own rights while only an archived admin remains',/at least one admin/i.test(window.__alert||'')&&!calls.some(c=>c.method==='PATCH'),String(window.__alert));
+    T('adminPlayer() never returns an archived admin',adminPlayer().id===1,JSON.stringify(adminPlayer()));
     // ── end ──
   }catch(e){out.push('FAIL EXCEPTION :: '+e.stack);}
   await new Promise(r=>setTimeout(r,150));

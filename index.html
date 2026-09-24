@@ -1133,7 +1133,7 @@ tournamentMatches.forEach(m=>{
 async function seedTees(){try{const rows=await sbInsert('tees',_TEES_SEED);tees=rows;}catch(e){console.warn('seedTees failed:',e);tees=[..._TEES_SEED];}}
 
 // ── Admin ─────────────────────────────────────────────────────────────────────
-function adminPlayer(){return players.find(p=>p.is_admin)||players[0];}
+function adminPlayer(){return players.find(p=>p.is_admin&&!p.archived_at)||activePlayers()[0];}
 function isAdmin(){return players.find(p=>p.id===activeId)?.is_admin===true;}
 function updateAdminUI(){const a=isAdmin();document.getElementById('adminTab').style.display=a?'inline-block':'none';document.getElementById('adminBadge').style.display=a?'inline-flex':'none';const ab=document.getElementById('addPlayerBtn');if(ab)ab.style.display=a?'inline-block':'none';if(a)renderSaturdayAdmin();}
 function applyPendingUI(){const p=players.find(x=>x.id===activeId)||pendingPlayers.find(x=>x.id===activeId);const pending=p&&p.approved===false;document.getElementById('pendingBanner').style.display=pending?'block':'none';document.getElementById('tabLeaderboard').style.display=pending?'none':'';document.getElementById('tabHistory').style.display=pending?'none':'';document.getElementById('tabPlayers').style.display=pending?'none':'';if(pending){showView('log',document.querySelector('.nav-tab'));document.querySelector('.nav-tab').classList.remove('active');}const trackTab=document.getElementById('tabTrack');if(trackTab){const me=players.find(x=>x.id===activeId)||pendingPlayers.find(x=>x.id===activeId);const canTrack=me&&me.approved!==false&&!me.is_social;trackTab.style.display=canTrack?'':'none';}}
@@ -5619,7 +5619,7 @@ async function makeAdmin(id){
   const p=players.find(x=>x.id===id);if(!p)return;
   const willRemove=p.is_admin;
   if(willRemove){
-    const admins=players.filter(x=>x.is_admin);
+    const admins=players.filter(x=>x.is_admin&&!x.archived_at);
     if(admins.length<=1){alert('At least one admin is required.');return;}
     if(!confirm(`Remove admin rights from ${p.name}?`))return;
   } else {
@@ -5888,6 +5888,8 @@ async function deleteRoundAdmin(){
 // legacy_id in Phase 2.
 function reconcileStoredPlayer(){
   const all=[...players,...pendingPlayers];
+  if(!all.length)return false; // data failed to load (no signal, or a version reload is under way): judge nothing
+
   const resolve=v=>{const n=Number(v);return all.find(p=>p.id===n)||all.find(p=>p.legacy_id===n);};
   for(const p of all){if(p.legacy_id==null||p.legacy_id===p.id)continue;
     for(const k of ['sl_units_','sl_gps_detail_']){const v=localStorage.getItem(k+p.legacy_id);if(v!=null){localStorage.setItem(k+p.id,v);localStorage.removeItem(k+p.legacy_id);}}}
