@@ -580,7 +580,6 @@ select option { background: #1a3a2a; }
       <div class="pb" id="pendingApprovalsList"></div>
     </div>
     <div class="panel"><div class="ph"><span class="pt">New login — not set up yet</span></div><div class="pb" id="moveOverList"></div></div>
-    <div class="panel"><div class="ph"><span class="pt">Audit log</span><select id="auditFilter" onchange="renderAuditPanel()"><option value="">All events</option></select></div><div class="pb" id="auditPanel"></div></div>
     <div class="panel" id="bulkEntryPanel">
       <div class="ph" onclick="toggleAdminSection('bulkEntryBody','achev-bulk')" style="cursor:pointer;user-select:none">
         <span class="pt">Bulk Round Entry</span>
@@ -636,6 +635,16 @@ select option { background: #1a3a2a; }
         <span id="achev-tourn" style="color:rgba(255,255,255,0.35);font-size:1.2rem;transition:transform 0.2s;display:inline-block;line-height:1">›</span>
       </div>
       <div class="pb" id="adminTournamentBody" style="display:none"></div>
+    </div>
+    <div class="panel">
+      <div class="ph" onclick="toggleAuditLog()" style="cursor:pointer;user-select:none">
+        <span class="pt">Audit log</span>
+        <div style="display:flex;align-items:center;gap:8px">
+          <select id="auditFilter" onclick="event.stopPropagation()" onchange="renderAuditPanel()"><option value="">All events</option></select>
+          <span id="achev-audit" style="color:rgba(255,255,255,0.35);font-size:1.2rem;transition:transform 0.2s;display:inline-block;line-height:1">›</span>
+        </div>
+      </div>
+      <div class="pb" id="auditPanel" style="display:none"></div>
     </div>
   </div>
 </div>
@@ -1476,6 +1485,7 @@ async function rejectPlayer(id){
 const AUDIT_LABELS={login:'Signed in',login_set_up:'Set up new login',signed_up:'Signed up',reset_requested:'Password reset requested',password_changed:'Password changed',email_changed:'Email changed',mfa_enrolled:'Two-factor set up',admin_mode_unlocked:'Admin mode unlocked',admin_granted:'Admin granted',admin_removed:'Admin removed',approved:'Approved',archived:'Archived',restored:'Restored',social_changed:'Social status changed',payment_recorded:'Payment recorded',payment_deleted:'Payment deleted',fine_deleted:'Fine deleted'};
 async function renderAuditPanel(){
   const el=document.getElementById('auditPanel');if(!el)return;
+  if(!_session){el.innerHTML='<div class="empty">Sign in with the new email login to see the audit log.</div>';return;}
   const f=document.getElementById('auditFilter');
   if(f&&f.options.length<2)f.innerHTML='<option value="">All events</option>'+Object.entries(AUDIT_LABELS).map(([k,v])=>`<option value="${k}">${v}</option>`).join('');
   const q='order=at.desc&limit=200'+(f&&f.value?'&action=eq.'+f.value:'');
@@ -1483,8 +1493,11 @@ async function renderAuditPanel(){
   const nm=id=>id==null?'—':(players.find(p=>p.id===id)||pendingPlayers.find(p=>p.id===id))?.name||('#'+id);
   el.innerHTML=rows.length?`<div class="rt-wrap"><table class="rt"><thead><tr><th>When</th><th>Who</th><th>What</th><th>Whom</th><th>Detail</th></tr></thead><tbody>${rows.map(r=>`<tr><td style="white-space:nowrap">${new Date(r.at).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}</td><td>${escHtml(nm(r.actor_player_id))}</td><td>${AUDIT_LABELS[r.action]||r.action}</td><td>${escHtml(nm(r.target_player_id))}</td><td style="font-family:'DM Mono',monospace;font-size:0.75rem">${r.details?Object.entries(r.details).map(([k,v])=>k+': '+escHtml(v)).join(', '):''}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">No entries yet.</div>';
 }
+// Collapsed by default and fetched only when opened — the log grows by the week.
+async function toggleAuditLog(){toggleAdminSection('auditPanel','achev-audit');if(document.getElementById('auditPanel').style.display!=='none')await renderAuditPanel();}
 async function renderMoveOverList(){
   const el=document.getElementById('moveOverList');if(!el)return;
+  if(!_session){el.innerHTML='<div class="empty">Sign in with the new email login to see this list.</div>';return;}
   let rows=[];try{rows=await sbRpc('admin_member_emails',{});}catch(e){el.innerHTML='<div class="empty">Needs admin mode.</div>';return;}
   const todo=rows.filter(r=>!r.linked);
   el.innerHTML=todo.length?`<div style="font-size:0.8rem;color:rgba(255,255,255,0.45);margin-bottom:0.5rem">${todo.length} of ${rows.length} members still on the old PIN login. Release B can go ahead when this list is empty.</div>`+todo.map(r=>`<div style="display:flex;justify-content:space-between;padding:4px 0"><span>${escHtml(r.name)}</span><span style="font-family:'DM Mono',monospace;font-size:0.78rem;color:rgba(255,255,255,0.5)">${r.email?escHtml(r.email):'no email on file'}</span></div>`).join('')
@@ -1511,7 +1524,7 @@ function showView(id,btn){
   if(id==='players'){renderGrid();}
   if(id==='profile'){renderProfile();}
   if(id==='log'){buildPlayerCheckboxes();checkForResumableRounds();applySaturdayDraw();}
-  if(id==='admin'){renderPendingApprovals();renderAdmin();renderBulkEntry();renderAdminFines();renderSaturdayAdmin();renderAdminTournament();renderMoveOverList();renderAuditPanel();}
+  if(id==='admin'){renderPendingApprovals();renderAdmin();renderBulkEntry();renderAdminFines();renderSaturdayAdmin();renderAdminTournament();renderMoveOverList();}
   if(id==='rules')renderRules();
   if(id==='track')renderTrackView();
   if(id==='signup')renderSaturdayView();

@@ -281,6 +281,26 @@ setTimeout(async function(){
     await new Promise(r=>setTimeout(r,50));
     T('move-over list escapes a malicious player name (no <img>, no script run)',!document.getElementById('moveOverList').querySelector('img')&&window.__xss9===undefined);
 
+    // ── Audit log: collapsed, last, fetched only when opened ──
+    const adminPanels=[...document.querySelectorAll('#view-admin > .panel')];
+    T('audit log is the last admin panel',adminPanels[adminPanels.length-1]&&adminPanels[adminPanels.length-1].contains(document.getElementById('auditPanel')));
+    T('audit log starts collapsed',document.getElementById('auditPanel').style.display==='none');
+    players=[{id:1,name:'Ann',user_id:'u-1',is_admin:true,color:0,hcp_history:[],approved:true}];
+    _session=sessionFor('u-1',{aal:'aal2',amr:[{method:'totp',timestamp:now}]});activeId=1;
+    reset(u=>u.includes('/audit_log')?[{id:3,at:'2026-10-05T10:00:00Z',action:'approved',actor_player_id:1,target_player_id:1,details:null}]:[]);
+    try{showView('admin',null);}catch(e){}
+    await new Promise(r=>setTimeout(r,50));
+    T('opening the Admin tab does not fetch the audit log',!calls.some(c=>c.url.includes('/audit_log')));
+    await toggleAuditLog();
+    T('expanding it fetches and shows entries',document.getElementById('auditPanel').style.display!=='none'&&/Approved/.test(document.getElementById('auditPanel').textContent));
+    await toggleAuditLog();
+    T('collapsing it hides it again',document.getElementById('auditPanel').style.display==='none');
+    _session=null;reset(()=>({__status:401,code:'42501',message:'permission denied for table audit_log'}));
+    await renderAuditPanel();
+    T('on the old PIN login the audit log says to use the new login',/new (email )?login/i.test(document.getElementById('auditPanel').textContent)&&!calls.some(c=>c.url.includes('/audit_log')));
+    await renderMoveOverList();
+    T('on the old PIN login the move-over list says to use the new login',/new (email )?login/i.test(document.getElementById('moveOverList').textContent));
+
     // ── Final review ──
     // Finding 7: resetTournament gets admin mode before any delete (a pre-admin-mode DELETE
     // silently removes nothing, then the PATCH would prompt and reset the status anyway).
