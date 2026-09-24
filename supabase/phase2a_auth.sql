@@ -150,19 +150,23 @@ REVOKE ALL ON FUNCTION public.log_admin_mode() FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.log_admin_mode() TO authenticated;
 
 -- Link a confirmed login to its player (existing member, matched by email), or create the pending
--- player for a new sign-up. Never blocks a login: any error becomes a warning.
+-- player for a new sign-up. Also tries the email match again on every sign-in of a still-unlinked
+-- login, so an admin correcting players.email is enough to fix it — but only confirmation ever
+-- creates a player, so a rejected applicant is not recreated by signing in again.
+-- Never blocks a login: any error becomes a warning.
 CREATE FUNCTION private.link_login() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
-DECLARE pid bigint; m jsonb := coalesce(NEW.raw_user_meta_data, '{}'::jsonb);
+DECLARE pid bigint; m jsonb := coalesce(NEW.raw_user_meta_data, '{}'::jsonb); confirming boolean;
 BEGIN
   IF NEW.email_confirmed_at IS NULL THEN RETURN NEW; END IF;
-  IF TG_OP = 'UPDATE' AND OLD.email_confirmed_at IS NOT NULL THEN RETURN NEW; END IF;
+  confirming := CASE WHEN TG_OP = 'INSERT' THEN true ELSE OLD.email_confirmed_at IS NULL END;
+  IF NOT confirming AND (NEW.last_sign_in_at IS NULL OR NEW.last_sign_in_at IS NOT DISTINCT FROM OLD.last_sign_in_at) THEN RETURN NEW; END IF;
   IF EXISTS (SELECT 1 FROM public.players WHERE user_id = NEW.id) THEN RETURN NEW; END IF;
   SELECT id INTO pid FROM public.players
    WHERE lower(email) = lower(NEW.email) AND user_id IS NULL AND archived_at IS NULL ORDER BY id LIMIT 1;
   IF pid IS NOT NULL THEN
     UPDATE public.players SET user_id = NEW.id WHERE id = pid;
     PERFORM private.audit('login_set_up', pid, NULL, pid);
-  ELSIF m ? 'name' AND NOT EXISTS (SELECT 1 FROM public.players WHERE lower(email) = lower(NEW.email)) THEN
+  ELSIF confirming AND m ? 'name' AND NOT EXISTS (SELECT 1 FROM public.players WHERE lower(email) = lower(NEW.email)) THEN
     INSERT INTO public.players (name, email, dgu_number, color, handicap, hcp_history, approved, user_id)
     VALUES (left(m ->> 'name', 60), NEW.email, left(m ->> 'dgu_number', 20), coalesce((m ->> 'color')::int, 0),
             nullif(m ->> 'handicap', '')::numeric,
@@ -177,7 +181,7 @@ BEGIN
 EXCEPTION WHEN OTHERS THEN
   RAISE WARNING 'link_login: %', SQLERRM; RETURN NEW;
 END $$;
-CREATE TRIGGER link_login AFTER INSERT OR UPDATE OF email_confirmed_at ON auth.users
+CREATE TRIGGER link_login AFTER INSERT OR UPDATE OF email_confirmed_at, last_sign_in_at ON auth.users
   FOR EACH ROW EXECUTE FUNCTION private.link_login();
 
 -- ===== SECTION 3: permission rules for logged-in users ======================================
@@ -246,17 +250,20 @@ CREATE TRIGGER protect_signup_fields BEFORE INSERT OR UPDATE ON public.saturday_
 -- gps_shots: location data — own only; admins
 CREATE POLICY p2_gps ON public.gps_shots FOR ALL TO authenticated
   USING (player_id = private.current_player() OR private.is_admin()) WITH CHECK (player_id = private.current_player() OR private.is_admin());
--- tournaments: members play (update status/results, enter scores); admins set up and delete
-CREATE POLICY p2_tourn_read ON public.tournaments FOR SELECT TO authenticated USING (private.is_member());
-CREATE POLICY p2_tourn_upd  ON public.tournaments FOR UPDATE TO authenticated USING (private.is_member()) WITH CHECK (private.is_member());
-CREATE POLICY p2_tourn_adm  ON public.tournaments FOR ALL TO authenticated USING (private.is_admin()) WITH CHECK (private.is_admin());
-CREATE POLICY p2_tmatch_read ON public.tournament_matches FOR SELECT TO authenticated USING (private.is_member());
-CREATE POLICY p2_tmatch_upd  ON public.tournament_matches FOR UPDATE TO authenticated USING (private.is_member()) WITH CHECK (private.is_member());
-CREATE POLICY p2_tmatch_adm  ON public.tournament_matches FOR ALL TO authenticated USING (private.is_admin()) WITH CHECK (private.is_admin());
+-- tournaments: members play (update status/results, enter scores); admins set up and delete.
+-- Re-entering a score deletes the old row first, so members delete scores too (admins are members).
+DO $$ DECLARE t text; p text; BEGIN
+  FOREACH t IN ARRAY ARRAY['tournaments','tournament_matches'] LOOP
+    p := CASE t WHEN 'tournaments' THEN 'p2_tourn' ELSE 'p2_tmatch' END;
+    EXECUTE format('CREATE POLICY %I ON public.%I FOR SELECT TO authenticated USING (private.is_member())', p || '_read', t);
+    EXECUTE format('CREATE POLICY %I ON public.%I FOR UPDATE TO authenticated USING (private.is_member()) WITH CHECK (private.is_member())', p || '_upd', t);
+    EXECUTE format('CREATE POLICY %I ON public.%I FOR ALL TO authenticated USING (private.is_admin()) WITH CHECK (private.is_admin())', p || '_adm', t);
+  END LOOP;
+END $$;
 CREATE POLICY p2_tscore_read ON public.tournament_scores FOR SELECT TO authenticated USING (private.is_member());
 CREATE POLICY p2_tscore_ins  ON public.tournament_scores FOR INSERT TO authenticated WITH CHECK (private.is_member());
 CREATE POLICY p2_tscore_upd  ON public.tournament_scores FOR UPDATE TO authenticated USING (private.is_member()) WITH CHECK (private.is_member());
-CREATE POLICY p2_tscore_adm  ON public.tournament_scores FOR DELETE TO authenticated USING (private.is_admin());
+CREATE POLICY p2_tscore_del  ON public.tournament_scores FOR DELETE TO authenticated USING (private.is_member());
 -- read by members, written by admins
 DO $$ DECLARE t text; BEGIN
   FOREACH t IN ARRAY ARRAY['fine_types','fine_payments','saturday_events','tournament_players','tees','green_polygons',
@@ -270,31 +277,41 @@ END $$;
 -- audit_log: admins read; only private.audit writes
 CREATE POLICY p2_audit_read ON public.audit_log FOR SELECT TO authenticated USING (private.is_admin());
 
+-- The draw's clock: always now(). A function of its own only so the tests can pin the time.
+CREATE FUNCTION private.draw_clock() RETURNS timestamptz LANGUAGE sql STABLE SET search_path = '' AS $$ SELECT now() $$;
+
 -- The Saturday draw: the app computes the fairest allocation (chooseBestDraw); this checks it covers
--- every sign-up for the date exactly once, that group_num/tee_time in the allocation are sane and
--- the date is a real upcoming Saturday, and that the date is not drawn yet, then writes it. Every
--- value in p_alloc comes from the caller (a member's browser), so none of it is trusted as-is.
+-- every sign-up for the date exactly once, that group_num/tee_time in the allocation are sane, that
+-- the date is the upcoming Saturday and the draw is due (Friday noon through Saturday, Copenhagen
+-- time — the same window as the app's autoDrawIfDue), and that the date is not drawn yet, then
+-- writes it. Every value in p_alloc comes from the caller (a member's browser), so none of it is
+-- trusted as-is. Concurrent calls for one date are serialised by the advisory lock, so two
+-- browsers opening the app at the same moment cannot both insert an event and both write groups.
 CREATE FUNCTION public.run_draw(p_date text, p_tee_times jsonb, p_alloc jsonb) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
 DECLARE
   want bigint[]; got bigint[];
   ev public.saturday_events%ROWTYPE; ev_found boolean;
-  eff_tees jsonb; d date; today date;
+  eff_tees jsonb; d date; local_now timestamp; today date; dow int;
 BEGIN
+  PERFORM pg_advisory_xact_lock(hashtext('run_draw:' || p_date));
   IF auth.uid() IS NOT NULL AND NOT private.is_member() THEN RETURN jsonb_build_object('ok', false, 'reason', 'not a member'); END IF;
 
   BEGIN
     d := p_date::date;
   EXCEPTION WHEN OTHERS THEN RETURN jsonb_build_object('ok', false, 'reason', 'invalid date'); END;
-  today := (now() AT TIME ZONE 'Europe/Copenhagen')::date;
-  IF d < today OR d > today + 8 THEN RETURN jsonb_build_object('ok', false, 'reason', 'date is not within the next 8 days'); END IF;
-  IF extract(dow FROM d) <> 6 THEN RETURN jsonb_build_object('ok', false, 'reason', 'date is not a Saturday'); END IF;
+  local_now := private.draw_clock() AT TIME ZONE 'Europe/Copenhagen';
+  today := local_now::date; dow := extract(dow FROM today)::int;
+  IF d <> today + (6 - dow + 7) % 7 THEN RETURN jsonb_build_object('ok', false, 'reason', 'date is not the upcoming Saturday'); END IF;
+  IF NOT (dow = 6 OR (dow = 5 AND extract(hour FROM local_now) >= 12)) THEN RETURN jsonb_build_object('ok', false, 'reason', 'not due yet'); END IF;
 
-  -- The effective tee times are the event's own (if it already exists) so a caller can't smuggle in
-  -- a tee time that was never offered; otherwise the caller-supplied list, which must be real.
+  -- The effective tee times are the event's own (if it already exists and has some) so a caller
+  -- can't smuggle in a tee time that was never offered; otherwise the caller-supplied list, which
+  -- must be real — as the app itself falls back to its defaults for an event with none.
   SELECT * INTO ev FROM public.saturday_events WHERE date = p_date FOR UPDATE;
   ev_found := FOUND;
-  eff_tees := CASE WHEN ev_found THEN ev.tee_times ELSE p_tee_times END;
+  eff_tees := CASE WHEN ev_found AND jsonb_typeof(ev.tee_times) = 'array' AND jsonb_array_length(ev.tee_times) > 0
+                   THEN ev.tee_times ELSE p_tee_times END;
   IF eff_tees IS NULL OR jsonb_typeof(eff_tees) IS DISTINCT FROM 'array' OR jsonb_array_length(eff_tees) = 0 THEN
     RETURN jsonb_build_object('ok', false, 'reason', 'tee times must be a non-empty list'); END IF;
 
@@ -312,7 +329,7 @@ BEGIN
   IF EXISTS (SELECT 1 FROM public.saturday_signups WHERE date = p_date AND group_num IS NOT NULL) THEN
     RETURN jsonb_build_object('ok', false, 'reason', 'already drawn'); END IF;
   IF ev_found AND (ev.locked OR ev.cancelled) THEN RETURN jsonb_build_object('ok', false, 'reason', 'locked or cancelled'); END IF;
-  IF ev_found THEN UPDATE public.saturday_events SET locked = true WHERE id = ev.id;
+  IF ev_found THEN UPDATE public.saturday_events SET locked = true, tee_times = eff_tees WHERE id = ev.id;
   ELSE INSERT INTO public.saturday_events (date, locked, tee_times) VALUES (p_date, true, p_tee_times); END IF;
   PERFORM set_config('app.drawing', 'on', true);   -- transaction-local; lets protect_signup_fields through
   UPDATE public.saturday_signups s SET tee_time = e ->> 'tee_time', group_num = (e ->> 'group_num')::int

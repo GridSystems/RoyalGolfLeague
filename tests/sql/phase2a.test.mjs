@@ -60,6 +60,25 @@ test('a confirmed set-up login with no match and no metadata creates nothing', a
   assert.equal((await one(db, `SELECT count(*)::int n FROM public.players`)).n, before);
 });
 
+test('an unlinked login is linked on its next sign-in once an admin fixes the player email', async () => {
+  const db = await productionDb(); await run(db, REAL());
+  const u = (await one(db, `INSERT INTO auth.users(email, email_confirmed_at) VALUES ('typo@x.dk', now()) RETURNING id`)).id;
+  assert.equal((await one(db, `SELECT count(*)::int n FROM public.players WHERE user_id=$1`, [u])).n, 0, 'unlinked at confirmation');
+  await db.query(`UPDATE public.players SET email='typo@x.dk' WHERE id=4`);         // the admin corrects the email on file
+  await db.query(`UPDATE auth.users SET last_sign_in_at=now() WHERE id=$1`, [u]);
+  assert.equal((await one(db, `SELECT user_id::text u FROM public.players WHERE id=4`)).u, u);
+});
+
+test('a later sign-in never recreates a rejected applicant', async () => {
+  const db = await productionDb(); await run(db, REAL());
+  const u = (await one(db, `INSERT INTO auth.users(email, raw_user_meta_data) VALUES ('nope@x.dk', '{"name":"Nope","dgu_number":"900-9"}') RETURNING id`)).id;
+  await db.query(`UPDATE auth.users SET email_confirmed_at=now() WHERE id=$1`, [u]);
+  assert.equal((await one(db, `SELECT count(*)::int n FROM public.players WHERE user_id=$1`, [u])).n, 1, 'pending player created at confirmation');
+  await db.query(`DELETE FROM public.players WHERE user_id=$1`, [u]);             // the admin rejects the sign-up
+  await db.query(`UPDATE auth.users SET last_sign_in_at=now() WHERE id=$1`, [u]);
+  assert.equal((await one(db, `SELECT count(*)::int n FROM public.players WHERE lower(email)='nope@x.dk'`)).n, 0);
+});
+
 test('helpers: member, admin needs fresh aal2+totp', async () => {
   const db = await productionDb(); await run(db, REAL());
   const q = async c => { await as(db, c); const r = await one(db, `SELECT private.current_player() p, private.is_member() m, private.is_admin() a`); await as(db, null); return r; };
