@@ -817,21 +817,31 @@ select option { background: #1a3a2a; }
 // ── Supabase ──────────────────────────────────────────────────────────────────
 const SUPABASE_URL='https://qvjybtcbymexheqrjkai.supabase.co';
 const SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF2anlidGNieW1leGhlcXJqa2FpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQzNDUyMDAsImV4cCI6MjA4OTkyMTIwMH0.ODg9C2HU4exSpTt5ABfODz_vz3v0Uz_tQsL3XAuWJ-4';
-const H={'Content-Type':'application/json','apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY};
+// Every request carries the app version. The database's version gate (supabase/phase1_ids.sql,
+// public.require_current_app) refuses older versions with HTTP 426, and this app then reloads
+// itself — so a breaking release reaches every open tab on its first data click. Bump together
+// with the gate's minimum (and SB_H in course-mapper.html).
+const APP_VERSION=2;
+const H={'Content-Type':'application/json','apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY,'x-app-version':String(APP_VERSION)};
+function forceReload(){location.reload();}
+async function sbCheck(r){
+  if(r.status===426){forceReload();throw new Error('Updating to the latest version…');}
+  if(!r.ok)throw new Error(await r.text());
+}
 // players.email and players.pin are not readable with the public key (supabase/phase0b_hide_credentials.sql),
 // so every players request names its columns — `select=*` would be refused. PINs are checked by sbRpc('login') etc.
 const PLAYER_COLS='id,name,color,handicap,hcp_history,created_at,is_admin,approved,is_social,bag,dgu_number,archived_at,legacy_id';
 const sbSel=t=>t==='players'?'select='+PLAYER_COLS:'';
 // Archived players (people who left) keep their history but are left out of every pick list.
 const activePlayers=()=>players.filter(p=>!p.archived_at);
-async function sbGet(t,p=''){const r=await fetch(`${SUPABASE_URL}/rest/v1/${t}?${[sbSel(t),p].filter(Boolean).join('&')}`,{headers:H});if(!r.ok)throw new Error(await r.text());return r.json();}
-async function sbInsert(t,b){const r=await fetch(`${SUPABASE_URL}/rest/v1/${t}?${sbSel(t)}`,{method:'POST',headers:{...H,'Prefer':'return=representation'},body:JSON.stringify(b)});if(!r.ok)throw new Error(await r.text());return r.json();}
-async function sbUpdate(t,id,b){const r=await fetch(`${SUPABASE_URL}/rest/v1/${t}?id=eq.${id}&${sbSel(t)}`,{method:'PATCH',headers:{...H,'Prefer':'return=representation'},body:JSON.stringify(b)});if(!r.ok)throw new Error(await r.text());return r.json();}
-async function sbRpc(fn,args){const r=await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`,{method:'POST',headers:H,body:JSON.stringify(args)});if(!r.ok)throw new Error(await r.text());const t=await r.text();return t?JSON.parse(t):null;}
-async function sbDelete(t,id){const r=await fetch(`${SUPABASE_URL}/rest/v1/${t}?id=eq.${id}`,{method:'DELETE',headers:H});if(!r.ok)throw new Error(await r.text());}
+async function sbGet(t,p=''){const r=await fetch(`${SUPABASE_URL}/rest/v1/${t}?${[sbSel(t),p].filter(Boolean).join('&')}`,{headers:H});await sbCheck(r);return r.json();}
+async function sbInsert(t,b){const r=await fetch(`${SUPABASE_URL}/rest/v1/${t}?${sbSel(t)}`,{method:'POST',headers:{...H,'Prefer':'return=representation'},body:JSON.stringify(b)});await sbCheck(r);return r.json();}
+async function sbUpdate(t,id,b){const r=await fetch(`${SUPABASE_URL}/rest/v1/${t}?id=eq.${id}&${sbSel(t)}`,{method:'PATCH',headers:{...H,'Prefer':'return=representation'},body:JSON.stringify(b)});await sbCheck(r);return r.json();}
+async function sbRpc(fn,args){const r=await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`,{method:'POST',headers:H,body:JSON.stringify(args)});await sbCheck(r);const t=await r.text();return t?JSON.parse(t):null;}
+async function sbDelete(t,id){const r=await fetch(`${SUPABASE_URL}/rest/v1/${t}?id=eq.${id}`,{method:'DELETE',headers:H});await sbCheck(r);}
 async function sbDeleteWhere(t,filter){
   const r=await fetch(`${SUPABASE_URL}/rest/v1/${t}?${filter}`,{method:'DELETE',headers:H});
-  if(!r.ok)throw new Error(await r.text());
+  await sbCheck(r);
 }
 
 // ── Course data ───────────────────────────────────────────────────────────────

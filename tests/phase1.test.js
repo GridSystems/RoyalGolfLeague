@@ -98,6 +98,22 @@ setTimeout(async function(){
     localStorage.clear();sessionStorage.clear();sessionStorage.setItem('sl_session_player','1');
     T('current id is left alone',reconcileStoredPlayer()===false&&sessionStorage.getItem('sl_session_player')==='1');
     T('init calls reconcileStoredPlayer',/reconcileStoredPlayer\(\)/.test(init.toString()));
+    // ── Task 7b: version gate ──
+    let reloaded=0;window.forceReload=()=>{reloaded++;};
+    const realFetch=window.fetch;
+    let seenHeaders=null;
+    window.fetch=async(url,opts={})=>{seenHeaders=opts.headers;return{ok:false,status:426,text:async()=>'{"message":"This version of the app is out of date. Please reload the page."}',json:async()=>({})};};
+    let threw=false;try{await sbGet('rounds');}catch(e){threw=true;}
+    T('requests carry the app version header',seenHeaders&&seenHeaders['x-app-version']===String(APP_VERSION)&&APP_VERSION>=2,JSON.stringify(seenHeaders));
+    T('a 426 answer reloads the app and stops the action',reloaded===1&&threw,`reloaded=${reloaded} threw=${threw}`);
+    reloaded=0;threw=false;try{await sbRpc('has_pin',{p_id:1});}catch(e){threw=true;}
+    T('rpc calls are gated the same way',reloaded===1&&threw);
+    reloaded=0;threw=false;try{await sbUpdate('rounds',1,{notes:'x'});}catch(e){threw=true;}
+    T('updates are gated the same way',reloaded===1&&threw);
+    window.fetch=async()=>({ok:false,status:500,text:async()=>'boom',json:async()=>({})});
+    reloaded=0;threw=false;try{await sbGet('rounds');}catch(e){threw=e.message==='boom';}
+    T('other errors still throw without reloading',reloaded===0&&threw);
+    window.fetch=realFetch;
     // ── end ──
   }catch(e){out.push('FAIL EXCEPTION :: '+e.stack);}
   await new Promise(r=>setTimeout(r,150));
