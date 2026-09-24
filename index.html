@@ -5873,6 +5873,28 @@ async function deleteRoundAdmin(){
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
+// Phase 1 renumbered players. A browser may still remember a player by the old timestamp id
+// (players.legacy_id): translate it and move that player's preference keys. A player who is
+// unknown or archived is signed out. Returns true when the session was cleared. Remove with
+// legacy_id in Phase 2.
+function reconcileStoredPlayer(){
+  const all=[...players,...pendingPlayers];
+  const resolve=v=>{const n=Number(v);return all.find(p=>p.id===n)||all.find(p=>p.legacy_id===n);};
+  for(const p of all){if(p.legacy_id==null||p.legacy_id===p.id)continue;
+    for(const k of ['sl_units_','sl_gps_detail_']){const v=localStorage.getItem(k+p.legacy_id);if(v!=null){localStorage.setItem(k+p.id,v);localStorage.removeItem(k+p.legacy_id);}}}
+  try{const g=JSON.parse(localStorage.getItem('sl_active_group')||'null');
+    if(g&&(g.players||[]).some(x=>!all.some(p=>p.id===x.id)))localStorage.removeItem('sl_active_group');}
+  catch(e){localStorage.removeItem('sl_active_group');}
+  let cleared=false;
+  for(const [store,key] of [[localStorage,'sl_active_player'],[sessionStorage,'sl_session_player']]){
+    const v=store.getItem(key);if(v==null)continue;
+    const p=resolve(v);
+    if(!p||p.archived_at){store.removeItem(key);if(key==='sl_session_player')cleared=true;else if(p)localStorage.removeItem('sl_active_player');}
+    else if(String(p.id)!==v)store.setItem(key,p.id);
+  }
+  if(cleared)localStorage.removeItem('sl_active_player');
+  return cleared;
+}
 async function init(){
   document.getElementById('roundDate').value=lastSaturday();
   try{
@@ -5881,6 +5903,7 @@ async function init(){
     document.getElementById('dbStatus').textContent='● Supabase';document.getElementById('dbStatus').className='db-status db-ok';
   }catch(e){document.getElementById('dbStatus').textContent='✕ DB Error';document.getElementById('dbStatus').className='db-status db-err';console.error(e);}
   populateYearSelects();renderTodayLb();renderGrid();
+  if(reconcileStoredPlayer()){location.reload();return;}
   // Restore last selected player
   const savedId=localStorage.getItem('sl_active_player');
   if(savedId){const saved=players.find(p=>p.id==savedId)||pendingPlayers.find(p=>p.id==savedId);if(saved){activeId=saved.id;document.getElementById('playerName').textContent=saved.name;const av=document.getElementById('playerAvatar');av.textContent=ini(saved.name);av.style.background=clr(saved);updateUnitsBtn();renderProfile();}}

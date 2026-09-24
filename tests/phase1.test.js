@@ -79,6 +79,25 @@ setTimeout(async function(){
     await rejectPlayer(9);
     const dels=calls.filter(c=>c.method==='DELETE').map(c=>c.url.replace(/^.*\/rest\/v1\//,''));
     T('rejectPlayer deletes the applicant\'s rows before the player',dels.length>1&&dels[dels.length-1].startsWith('players?id=eq.9')&&dels.slice(0,-1).every(u=>/player_id=eq\.9/.test(u)),JSON.stringify(dels));
+    // ── Task 7: old browser ids ──
+    players=[{id:1,name:'Ann',legacy_id:1774371644307},{id:2,name:'Bo',legacy_id:1774371644999,archived_at:'2026-09-01T00:00:00Z'}];pendingPlayers=[];
+    localStorage.clear();sessionStorage.clear();
+    localStorage.setItem('sl_active_player','1774371644307');sessionStorage.setItem('sl_session_player','1774371644307');
+    localStorage.setItem('sl_units_1774371644307','yards');localStorage.setItem('sl_gps_detail_1774371644307','full');
+    localStorage.setItem('sl_active_group',JSON.stringify({date:today(),players:[{id:1774371644307,teeId:'57'}]}));
+    let cleared=reconcileStoredPlayer();
+    T('old id translated in local and session storage',localStorage.getItem('sl_active_player')==='1'&&sessionStorage.getItem('sl_session_player')==='1'&&cleared===false);
+    T('preference keys moved to the new id',localStorage.getItem('sl_units_1')==='yards'&&localStorage.getItem('sl_gps_detail_1')==='full'&&localStorage.getItem('sl_units_1774371644307')===null);
+    T('saved Log Round group with old ids is discarded',localStorage.getItem('sl_active_group')===null);
+    localStorage.clear();sessionStorage.clear();sessionStorage.setItem('sl_session_player','999');
+    cleared=reconcileStoredPlayer();
+    T('unknown id clears the session',cleared===true&&sessionStorage.getItem('sl_session_player')===null);
+    localStorage.clear();sessionStorage.clear();sessionStorage.setItem('sl_session_player','2');localStorage.setItem('sl_active_player','2');
+    cleared=reconcileStoredPlayer();
+    T('archived player is signed out',cleared===true&&sessionStorage.getItem('sl_session_player')===null&&localStorage.getItem('sl_active_player')===null);
+    localStorage.clear();sessionStorage.clear();sessionStorage.setItem('sl_session_player','1');
+    T('current id is left alone',reconcileStoredPlayer()===false&&sessionStorage.getItem('sl_session_player')==='1');
+    T('init calls reconcileStoredPlayer',/reconcileStoredPlayer\(\)/.test(init.toString()));
     // ── end ──
   }catch(e){out.push('FAIL EXCEPTION :: '+e.stack);}
   await new Promise(r=>setTimeout(r,150));
