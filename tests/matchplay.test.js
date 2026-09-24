@@ -76,6 +76,37 @@ setTimeout(async function(){
       d=decide(lv(26,{outcome:'double_forfeit'}),[]);T('group double forfeit: decided, nobody wins',d.decided&&d.winner===null);
       T('playoff double forfeit: the named player goes through',decide(lv(27,{outcome:'double_forfeit',result:'a',stage:'semi',bracket:1,round:4}),[]).winner==='a');
     }
+    // ── Task 3: draw, fixtures, deadlines ──
+    {
+      const ents=[5,30,12,1,22,8,17,3,26,14,9,20,2,28,11,6].map((index,i)=>({pid:100+i,index}));
+      const potOf={};[...ents].sort((x,y)=>x.index-y.index).forEach((e,i)=>potOf[e.pid]=Math.floor(i/4)+1);
+      let okPots=true,okDistinct=true;const seenInA=new Set();
+      for(let k=0;k<200;k++){const gs=mlDrawGroups(ents);
+        if(!gs.every(g=>g.map(p=>potOf[p]).join()==='1,2,3,4'))okPots=false;
+        if(new Set(gs.flat()).size!==16)okDistinct=false;
+        seenInA.add(gs[0][0]);}
+      T('draw: every group has one player from each pot, in pot order',okPots);
+      T('draw: 16 distinct players',okDistinct);
+      T('draw: which pot-1 player lands in group A varies',seenInA.size===4);
+      const tie=[...Array(16)].map((_,i)=>({pid:200+i,index:i<3?1:i<5?10:20+i}));   // 203 and 204 tie on 10 across the pot 1/2 boundary
+      T('draw: an index tie across a pot boundary goes by sign-up order',mlDrawGroups(tie).some(g=>g[0]===203)&&mlDrawGroups(tie).every(g=>g[0]!==204));
+      const GR=[[1,2,3,4],[5,6,7,8],[9,10,11,12],[13,14,15,16]];
+      const fx=mlFixtures(GR),grp=fx.filter(r=>r.stage==='group');
+      T('fixtures: 40 rows — 24 group matches, 8 semis, 4 finals, 4 third/fourth',fx.length===40&&grp.length===24&&fx.filter(r=>r.stage==='semi').length===8&&fx.filter(r=>r.stage==='final').length===4&&fx.filter(r=>r.stage==='place').length===4);
+      T('fixtures: every pair in a group meets exactly once',GR.every(g=>{const ps=grp.filter(r=>g.includes(r.team_a_p1_id)).map(r=>[r.team_a_p1_id,r.team_b_p1_id].sort((x,y)=>x-y).join('-'));return ps.length===6&&new Set(ps).size===6&&ps.every(p=>p.split('-').every(x=>g.includes(+x)));}));
+      T('fixtures: 2 matches per group per round, each player once a round',GR.every((g,gi)=>[1,2,3].every(rd=>{const ms=grp.filter(r=>r.round===rd&&mlGroupOf(r)===gi+1);return ms.length===2&&new Set(ms.flatMap(r=>[r.team_a_p1_id,r.team_b_p1_id])).size===4;})));
+      T('fixtures: round + match number identify every slot',new Set(fx.map(r=>r.round+'-'+r.match_num)).size===40);
+      T('fixtures: playoff slots start empty, semis round 4, finals and 3rd/4th round 5',fx.filter(r=>r.stage!=='group').every(r=>r.team_a_p1_id==null&&r.team_b_p1_id==null&&r.bracket>=1)&&fx.filter(r=>r.stage==='semi').every(r=>r.round===4)&&fx.filter(r=>r.stage==='final'||r.stage==='place').every(r=>r.round===5));
+      T('match names',mlMatchName({stage:'group',round:2,match_num:3})==='Group B · round 2'&&mlMatchName({stage:'semi',bracket:2,match_num:4})==='Runners-up semi-final 2'&&mlMatchName({stage:'final',bracket:1,match_num:1})==='Winners final'&&mlMatchName({stage:'place',bracket:4,match_num:8})==='Fourths 3rd/4th');
+      const LGd={deadlines:{group_1:'2027-05-15',group_2:'2027-06-15',group_3:'2027-07-31',semi:'2027-08-20',final:'2027-09-10'}};
+      today=()=>'2027-05-16';
+      T('deadline by round: 1 → group_1, 4 → semi, 5 → final',mlDeadline(LGd,{round:1})==='2027-05-15'&&mlDeadline(LGd,{round:4})==='2027-08-20'&&mlDeadline(LGd,{round:5})==='2027-09-10');
+      T('overdue: past the deadline and undecided',mlOverdue(LGd,{round:1},{decided:false}));
+      T('not overdue once decided',!mlOverdue(LGd,{round:1},{decided:true}));
+      today=()=>'2027-05-15';T('not overdue on the deadline day itself',!mlOverdue(LGd,{round:1},{decided:false}));
+      T('no deadlines set: never overdue',!mlOverdue({},{round:1},{decided:false}));
+      today=()=>'2027-05-10';
+    }
     // ── end ──
   }catch(e){out.push('FAIL EXCEPTION :: '+e.stack);}
   await new Promise(r=>setTimeout(r,150));
