@@ -6,3 +6,6 @@
 
 # Supabase CLI local cache
 supabase/.temp/
+
+# SQL testbed dependencies
+tests/sql/node_modules/
