@@ -7,8 +7,10 @@ test('rollback restores every row and the old app can insert its own ids again',
   assert.equal(await run(db, sqlFile('phase1_rollback.sql')), null);
   for (const t of TABLES) assert.deepEqual(await dump(db, t), before[t], t);
   await db.query(`INSERT INTO public.fine_types(id, name, amount) VALUES (1790000000001, 'old app', 10)`);
-  const g = (await db.query(`INSERT INTO public.gps_shots(player_id, hole) VALUES (1, 1) RETURNING id`)).rows[0].id;
-  assert.ok(g > 0);
+  const pid = (await db.query(`SELECT id FROM public.players ORDER BY id LIMIT 1`)).rows[0].id;
+  const gmax = Number((await db.query(`SELECT max(id) m FROM public.gps_shots`)).rows[0].m);
+  const g = (await db.query(`INSERT INTO public.gps_shots(player_id, round_date, hole, shot_num) VALUES ($1, '2026-10-01', 1, 1) RETURNING id`, [pid])).rows[0].id;
+  assert.equal(Number(g), gmax + 1, 'gps_shots continues after its highest id');
   const r = (await db.query(`SELECT public.login('nobody@x', '0000') r`)).rows[0].r;
   assert.equal(r.ok, false);
   const gate = (await db.query(`SELECT count(*)::int n FROM pg_db_role_setting WHERE setrole = 'authenticator'::regrole AND array_to_string(setconfig, ',') LIKE '%db_pre_request%'`)).rows[0].n;

@@ -199,7 +199,7 @@ DO $$ DECLARE t text; ord text; BEGIN
 END $$;
 
 -- 8. Only the database assigns ids from now on ------------------------------------------
-DO $$ DECLARE t text; ident "char"; mx bigint; BEGIN
+DO $$ DECLARE t text; ident "char"; mx bigint; seq text; BEGIN
   FOREACH t IN ARRAY ARRAY['players','rounds','fine_types','fines','fine_payments','saturday_events',
     'saturday_signups','gps_shots','tournaments','tournament_players','tournament_matches','tournament_scores'] LOOP
     SELECT attidentity INTO ident FROM pg_attribute WHERE attrelid = format('public.%I', t)::regclass AND attname = 'id';
@@ -209,7 +209,12 @@ DO $$ DECLARE t text; ident "char"; mx bigint; BEGIN
     ELSIF ident = 'd' THEN
       EXECUTE format('ALTER TABLE public.%I ALTER COLUMN id SET GENERATED ALWAYS', t);
     ELSE
+      -- A serial column (gps_shots is BIGSERIAL) keeps its old sequence attached after DROP
+      -- DEFAULT, and pg_get_serial_sequence would then find that one instead of the identity's:
+      -- drop it first, or new ids restart at 1 and collide.
+      seq := pg_get_serial_sequence(format('public.%I', t), 'id');
       EXECUTE format('ALTER TABLE public.%I ALTER COLUMN id DROP DEFAULT', t);
+      IF seq IS NOT NULL THEN EXECUTE format('DROP SEQUENCE %s', seq); END IF;
       EXECUTE format('ALTER TABLE public.%I ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY', t);
     END IF;
     PERFORM setval(pg_get_serial_sequence(format('public.%I', t), 'id'), greatest(mx, 1), mx > 0);
@@ -257,7 +262,7 @@ ALTER ROLE authenticator SET pgrst.db_pre_request = 'public.require_current_app'
 INSERT INTO p1_report(line) VALUES ('version gate: requests need x-app-version >= 2');
 
 -- 11. Checks — any failure raises and undoes everything ------------------------------------
-DO $$ DECLARE t text; n bigint; mn bigint; mx bigint; b numeric; want bigint; bad text := ''; o record; BEGIN
+DO $$ DECLARE t text; n bigint; mn bigint; mx bigint; b numeric; want bigint; nxt bigint; bad text := ''; o record; BEGIN
   FOREACH t IN ARRAY ARRAY['players','rounds','fine_types','fines','fine_payments','saturday_events',
     'saturday_signups','gps_shots','tournaments','tournament_players','tournament_matches','tournament_scores'] LOOP
     EXECUTE format('SELECT count(*), coalesce(min(id), 0), coalesce(max(id), 0) FROM public.%I', t) INTO n, mn, mx;
@@ -269,7 +274,11 @@ DO $$ DECLARE t text; n bigint; mn bigint; mx bigint; b numeric; want bigint; ba
       + CASE WHEN t = 'players' AND EXISTS (SELECT 1 FROM public.players WHERE legacy_id IS NULL) THEN 1 ELSE 0 END;
     IF n <> want THEN bad := bad || format('%s has %s rows, expected %s. ', t, n, want); END IF;
     IF t <> 'gps_shots' AND n > 0 AND (mn <> 1 OR mx <> n) THEN bad := bad || format('%s ids run %s-%s for %s rows. ', t, mn, mx, n); END IF;
-    INSERT INTO p1_report(line) VALUES (format('%s: %s rows (was %s), ids %s-%s', t, n, b, mn, mx));
+    -- Where the next insert's id comes from: must be past every existing id, or inserts collide.
+    EXECUTE format('SELECT CASE WHEN is_called THEN last_value + 1 ELSE last_value END FROM %s',
+                   pg_get_serial_sequence(format('public.%I', t), 'id')) INTO nxt;
+    IF nxt <= mx THEN bad := bad || format('%s next id %s would reuse an existing id (max %s). ', t, nxt, mx); END IF;
+    INSERT INTO p1_report(line) VALUES (format('%s: %s rows (was %s), ids %s-%s, next id %s', t, n, b, mn, mx, nxt));
   END LOOP;
   IF (SELECT coalesce(sum(amount), 0) FROM public.fines) <> (SELECT v FROM p1_before WHERE k = 'fines_dkk') THEN bad := bad || 'Fines total changed. '; END IF;
   IF (SELECT coalesce(sum(amount), 0) FROM public.fine_payments) <> (SELECT v FROM p1_before WHERE k = 'payments_dkk') THEN bad := bad || 'Payments total changed. '; END IF;

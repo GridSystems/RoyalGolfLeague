@@ -22,6 +22,11 @@ test('real run: ids are 1..N and the report says all checks passed', async () =>
   }
   const last = (await db.query(`SELECT line FROM phase1_backup.report ORDER BY ord DESC LIMIT 1`)).rows[0].line;
   assert.equal(last, 'ALL CHECKS PASSED');
+  // The report shows where each table's next id will come from, so a mis-set sequence is visible in the rehearsal.
+  const gmax = Number((await one(db, `SELECT max(id) m FROM public.gps_shots`)).m);
+  const report = (await db.query(`SELECT string_agg(line, E'\\n' ORDER BY ord) r FROM phase1_backup.report`)).rows[0].r;
+  assert.match(report, new RegExp(`gps_shots: .* next id ${gmax + 1}\\b`));
+  assert.match(report, /players: 30 rows .* next id 31\b/);
 });
 
 test('real run: orphans resolved as decided, money unchanged', async () => {
@@ -50,7 +55,7 @@ test('real run: database assigns ids and refuses invented ones', async () => {
   assert.equal((await one(db, `INSERT INTO public.fine_types(name, amount) VALUES ('t', 10) RETURNING id::int id`)).id, n + 1);
   await assert.rejects(db.query(`INSERT INTO public.fine_types(id, name, amount) VALUES (1790000000000, 'x', 10)`));
   const g = (await one(db, `SELECT coalesce(max(id),0)::int m FROM public.gps_shots`)).m;
-  assert.equal((await one(db, `INSERT INTO public.gps_shots(player_id, hole) VALUES (1, 1) RETURNING id::int id`)).id, g + 1);
+  assert.equal((await one(db, `INSERT INTO public.gps_shots(player_id, round_date, hole, shot_num) VALUES (1, '2026-10-01', 1, 1) RETURNING id::int id`)).id, g + 1);
 });
 
 test('real run: foreign keys behave per the spec', async () => {
