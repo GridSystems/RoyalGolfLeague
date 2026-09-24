@@ -5309,8 +5309,9 @@ function seasonOf(date){let s=SEASONS[0];for(const x of SEASONS)if(date>=x.from)
 function seasonInfo(season){return SEASONS.find(s=>s.name===season);}
 // Finished once the next season has started.
 function seasonDone(season){const next=SEASONS[SEASONS.indexOf(seasonInfo(season))+1];return !!next&&today()>=next.from;}
-// The season taking entries: the current one if it needs entry, else the next one if that does
-// (so Winter entries open during Summer's last week). null when none does.
+// The season taking entries: the current one if it needs entry, else the next one if that does —
+// so entries for the next season open as soon as it is defined as opt-in, i.e. for the whole of
+// the current season, not just its last week. null when none does.
 function entrySeason(){const cur=seasonInfo(seasonOf(today()));if(cur.entry)return cur;const next=SEASONS[SEASONS.indexOf(cur)+1];return next&&next.entry?next:null;}
 function entryOf(pid,season){return seasonEntries.find(e=>e.player_id===pid&&e.season===season);}
 // In the prizes: not social, and entered when the season needs entry. A non-entrant is treated
@@ -5331,12 +5332,12 @@ function renderEntryBanner(){
   const p=players.find(x=>x.id===activeId)||pendingPlayers.find(x=>x.id===activeId),s=entryFor(p);
   el.innerHTML=s?entryStatusHtml(p,s):'';
 }
-function refreshEntryViews(){renderEntryBanner();renderSeasonLb();renderProfile();}
+function addEntry(pid){return sbInsert('season_entries',{season:entrySeason().name,player_id:pid});}
 async function enterSeason(){
   const s=entrySeason();if(!s||entryOf(activeId,s.name))return;
-  try{const [row]=await sbInsert('season_entries',{season:s.name,player_id:activeId});seasonEntries.push(row);toast(`Entered ${s.name}`);}
+  try{const [row]=await addEntry(activeId);seasonEntries.push(row);toast(`Entered ${s.name}`);}
   catch(e){toast('Couldn\'t enter — '+e.message);}
-  refreshEntryViews();
+  renderSeasonLb();renderProfile();
 }
 async function withdrawEntry(){
   const s=entrySeason(),e=s&&entryOf(activeId,s.name);if(!e||e.paid_at)return;
@@ -5347,7 +5348,7 @@ async function withdrawEntry(){
     else toast('Couldn\'t withdraw — the entry may already be marked paid.');
   }
   catch(err){toast('Couldn\'t withdraw — '+err.message);}
-  refreshEntryViews();
+  renderSeasonLb();renderProfile();
 }
 // Admin: who entered the season taking entries, who has paid, and entering someone on their behalf.
 function renderAdminEntries(){
@@ -5366,20 +5367,22 @@ function renderAdminEntries(){
     +head('Paid')+(paid.length?paid.map(e=>line(e,`<span style="font-size:0.75rem;color:rgba(255,255,255,0.4)">${fd(e.paid_at.slice(0,10))}</span><button class="btn btn-ghost btn-sm" onclick="undoEntryPaid(${e.id})">Undo</button>`)).join(''):'<div class="empty">Nobody yet.</div>')
     +(others.length?`<div style="display:flex;gap:6px;margin-top:0.9rem"><select id="entryForPlayer">${others.map(p=>`<option value="${p.id}">${escHtml(p.name)}</option>`).join('')}</select><button class="btn btn-ghost btn-sm" onclick="enterPlayerFor()">Enter player</button></div>`:'');
 }
-// Every admin write: admin mode first, then save, then redraw what depends on entries.
-async function adminEntryWrite(save,done){
+// Every admin write: admin mode first, then save, then apply the rows to local state, then redraw
+// what depends on entries. sbUpdate/sbDelete/sbInsert return [] (not an error) when RLS filters the
+// write — treat that the same as a failure, not a silent no-op, so the admin sees "Couldn't save"
+// and local state doesn't drift (apply only runs once rows come back non-empty).
+async function adminEntryWrite(save,apply,done){
   if(!await requireAdminMode())return;
-  try{await save();toast(done);}catch(e){toast('Couldn\'t save — '+e.message);}
-  renderAdminEntries();renderEntryBanner();renderSeasonLb();
+  try{const rows=await save();if(!rows||!rows.length)throw new Error('not saved');apply(rows);toast(done);}
+  catch(e){toast('Couldn\'t save — '+e.message);}
+  renderAdminEntries();renderSeasonLb();
 }
 const replaceEntry=row=>{if(row)seasonEntries=seasonEntries.map(e=>e.id===row.id?row:e);};
-// sbUpdate/sbDelete/sbInsert return [] (not an error) when RLS filters the write — treat that the
-// same as a failure, not a silent no-op, so the admin sees "Couldn't save" and local state doesn't drift.
-function markEntryPaid(id){const s=entrySeason();return adminEntryWrite(async()=>{const [row]=await sbUpdate('season_entries',id,{paid_at:new Date().toISOString(),amount:s.buyIn,recorded_by:activeId});if(!row)throw new Error('not saved');replaceEntry(row);},'Marked paid');}
-function undoEntryPaid(id){return adminEntryWrite(async()=>{const [row]=await sbUpdate('season_entries',id,{paid_at:null,amount:null,recorded_by:null});if(!row)throw new Error('not saved');replaceEntry(row);},'Payment undone');}
-function removeEntry(id){if(!confirm('Remove this entry?'))return;return adminEntryWrite(async()=>{if(!(await sbDelete('season_entries',id)).length)throw new Error('not removed');seasonEntries=seasonEntries.filter(e=>e.id!==id);},'Entry removed');}
-function enterPlayerFor(){const s=entrySeason(),pid=+document.getElementById('entryForPlayer').value;
-  return adminEntryWrite(async()=>{const [row]=await sbInsert('season_entries',{season:s.name,player_id:pid});if(!row)throw new Error('not saved');seasonEntries.push(row);},'Player entered');}
+function markEntryPaid(id){const s=entrySeason();return adminEntryWrite(()=>sbUpdate('season_entries',id,{paid_at:new Date().toISOString(),amount:s.buyIn,recorded_by:activeId}),rows=>replaceEntry(rows[0]),'Marked paid');}
+function undoEntryPaid(id){return adminEntryWrite(()=>sbUpdate('season_entries',id,{paid_at:null,amount:null,recorded_by:null}),rows=>replaceEntry(rows[0]),'Payment undone');}
+function removeEntry(id){if(!confirm('Remove this entry?'))return;return adminEntryWrite(()=>sbDelete('season_entries',id),()=>{seasonEntries=seasonEntries.filter(e=>e.id!==id);},'Entry removed');}
+function enterPlayerFor(){const pid=+document.getElementById('entryForPlayer').value;
+  return adminEntryWrite(()=>addEntry(pid),rows=>seasonEntries.push(rows[0]),'Player entered');}
 function inSeason(date,season){return !!date&&seasonOf(date)===season;}
 function getSeasons(){const used=new Set(allRounds.map(r=>seasonOf(r.date)));const s=SEASONS.map(x=>x.name).filter(n=>used.has(n)).reverse();return s.length?s:[seasonOf(today())];}
 function populateYearSelects(){const seasons=getSeasons();['seasonYear','dreamYear','finesYear','myDreamYear'].forEach(id=>{const sel=document.getElementById(id);if(!sel)return;const cur=sel.value;sel.innerHTML=seasons.map(y=>`<option value="${y}">${y}</option>`).join('');if(cur&&seasons.includes(cur))sel.value=cur;});}
@@ -5392,10 +5395,11 @@ function renderTodayLb(){
   if(!todayRounds.length){document.getElementById('todayTable').innerHTML='<div class="empty">No rounds logged today yet.</div>';document.getElementById('todayScoreboards').innerHTML='';return;}
   const rows=todayRounds.map(r=>{const p=players.find(x=>x.id===r.player_id);const holePts=p?calcHolePoints(r,p):[];const completed=r.holes.filter(h=>h&&(h.score!=null||h.pickup)).length;const pts=holePts.filter(x=>x!==null).reduce((s,x)=>s+(x.pts||0),0);const tee=getTee(r.tee_id||'platinum');const index=p?hcpOnDate(p,r.date):null;const phcp=index!=null?calcPlayingHcp(index,tee):null;return{r,p,pts,completed,phcp,holePts};}).sort((a,b)=>b.pts!==a.pts?b.pts-a.pts:b.completed-a.completed);
   let _prizeRank=0;const _prizeRanks=rows.map(row=>row.p&&!inPrizes(row.p,seasonOf(td))?null:++_prizeRank);
-  document.getElementById('todayTable').innerHTML=`<div class="rt-wrap"><table class="rt"><thead><tr><th></th><th>Player</th><th>Tee</th><th>Playing HCP</th><th>Holes</th><th>Progress</th><th>Points</th></tr></thead><tbody>${rows.map((row,i)=>{const pr=_prizeRanks[i];const rc=pr?(pr===1?'rank gold':pr===2?'rank silver':pr===3?'rank bronze':'rank'):'rank';const med=pr?(pr===1?'1st':pr===2?'2nd':pr===3?'3rd':`${pr}th`):`<span class="tag tag-social" style="font-size:0.6rem">Social</span>`;const pct=Math.round((row.completed/18)*100);return`<tr><td class="${rc}">${med}</td><td><div style="display:flex;align-items:center;gap:8px">${row.p?`<div class="av" style="background:${clr(row.p)}">${ini(row.p.name)}</div>${row.p.name}${row.p.is_social?'<span class="tag tag-social" style="font-size:0.6rem;padding:1px 5px">Social</span>':''}`:'Unknown'}</div></td><td><span style="display:inline-flex;align-items:center;gap:4px;font-size:0.76rem"><span class="tee-dot" style="background:${row.r.tee_color||'#888'}"></span>${row.r.tee_name||'—'}</span></td><td style="font-family:'DM Mono',monospace;color:rgba(255,255,255,0.5)">${row.phcp!=null?row.phcp:'—'}</td><td style="font-family:'DM Mono',monospace">${row.completed}<span style="color:rgba(255,255,255,0.3)">/18</span></td><td><div class="prog-bar"><div class="prog-fill" style="width:${pct}%"></div></div></td><td style="font-family:'DM Mono',monospace;font-weight:600;font-size:1.1rem;color:#82aaf0">${row.pts}</td></tr>`;}).join('')}</tbody></table></div>`;
+  document.getElementById('todayTable').innerHTML=`<div class="rt-wrap"><table class="rt"><thead><tr><th></th><th>Player</th><th>Tee</th><th>Playing HCP</th><th>Holes</th><th>Progress</th><th>Points</th></tr></thead><tbody>${rows.map((row,i)=>{const pr=_prizeRanks[i];const rc=pr?(pr===1?'rank gold':pr===2?'rank silver':pr===3?'rank bronze':'rank'):'rank';const med=pr?(pr===1?'1st':pr===2?'2nd':pr===3?'3rd':`${pr}th`):(row.p&&row.p.is_social?'<span class="tag tag-social" style="font-size:0.6rem">Social</span>':'<span style="color:rgba(255,255,255,0.3)">—</span>');const pct=Math.round((row.completed/18)*100);return`<tr><td class="${rc}">${med}</td><td><div style="display:flex;align-items:center;gap:8px">${row.p?`<div class="av" style="background:${clr(row.p)}">${ini(row.p.name)}</div>${row.p.name}${row.p.is_social?'<span class="tag tag-social" style="font-size:0.6rem;padding:1px 5px">Social</span>':''}`:'Unknown'}</div></td><td><span style="display:inline-flex;align-items:center;gap:4px;font-size:0.76rem"><span class="tee-dot" style="background:${row.r.tee_color||'#888'}"></span>${row.r.tee_name||'—'}</span></td><td style="font-family:'DM Mono',monospace;color:rgba(255,255,255,0.5)">${row.phcp!=null?row.phcp:'—'}</td><td style="font-family:'DM Mono',monospace">${row.completed}<span style="color:rgba(255,255,255,0.3)">/18</span></td><td><div class="prog-bar"><div class="prog-fill" style="width:${pct}%"></div></div></td><td style="font-family:'DM Mono',monospace;font-weight:600;font-size:1.1rem;color:#82aaf0">${row.pts}</td></tr>`;}).join('')}</tbody></table></div>`;
   document.getElementById('todayScoreboards').innerHTML=rows.map(row=>{if(!row.p)return'';const F=[0,1,2,3,4,5,6,7,8],B=[9,10,11,12,13,14,15,16,17];const hp=row.holePts;function cell(i){const h=row.r.holes[i];if(!h)return`<td style="color:rgba(255,255,255,0.2)">·</td>`;if(h.pickup)return`<td style="font-family:'DM Mono',monospace;font-size:0.82rem;font-weight:700;color:#f0a030">P</td>`;if(h.score==null)return`<td style="color:rgba(255,255,255,0.2)">·</td>`;const d=h.score-h.par;return`<td style="font-family:'DM Mono',monospace;font-size:0.82rem;font-weight:500;color:${vpC(d)}">${h.score}</td>`;}function ptsCell(i){const x=hp[i];if(!x)return`<td style="color:rgba(255,255,255,0.18)">·</td>`;return`<td style="font-family:'DM Mono',monospace;font-size:0.78rem;font-weight:500;color:${ptC(x.pts)}">${x.pts}</td>`;}const fPts=F.map(i=>hp[i]?.pts||0).reduce((a,b)=>a+b,0),bPts=B.map(i=>hp[i]?.pts||0).reduce((a,b)=>a+b,0);return`<div style="margin-top:1rem;padding-top:1rem;border-top:1px solid rgba(255,255,255,0.06)"><div style="display:flex;align-items:center;gap:9px;margin-bottom:0.6rem"><div class="av" style="background:${clr(row.p)};width:22px;height:22px;font-size:0.6rem">${ini(row.p.name)}</div><span style="font-weight:500;font-size:0.88rem">${row.p.name}</span><span style="font-size:0.75rem;color:rgba(255,255,255,0.38)">${row.completed} holes · HCP ${row.phcp!=null?row.phcp:'—'}</span></div><div class="scorecard-wrap"><table class="sc-table" style="min-width:500px"><thead><tr><th class="left">Hole</th>${F.map(i=>`<th>${i+1}</th>`).join('')}<th>Out</th><th class="sep"></th>${B.map(i=>`<th>${i+1}</th>`).join('')}<th>In</th><th>Total</th></tr></thead><tbody><tr><td class="left muted">Par</td>${F.map(i=>`<td class="mono muted">${HOLE_PARS[i]}</td>`).join('')}<td class="tot mono muted">35</td><td class="sep"></td>${B.map(i=>`<td class="mono muted">${HOLE_PARS[i]}</td>`).join('')}<td class="tot mono muted">37</td><td class="tot mono muted">72</td></tr><tr><td class="left" style="font-weight:500;color:var(--gold-l);font-size:0.77rem">Score</td>${F.map(i=>cell(i)).join('')}<td class="tot">${F.some(i=>row.r.holes[i]?.score)?tS(row.r.holes.slice(0,9).filter(h=>h?.score)):''}</td><td class="sep"></td>${B.map(i=>cell(i)).join('')}<td class="tot">${B.some(i=>row.r.holes[i]?.score)?tS(row.r.holes.slice(9).filter(h=>h?.score)):''}</td><td class="tot" style="font-weight:600">${row.completed?tS(row.r.holes.filter(h=>h?.score)):''}</td></tr><tr><td class="left" style="color:#82aaf0;font-size:0.77rem">Points</td>${F.map(i=>ptsCell(i)).join('')}<td class="tot" style="color:#82aaf0;font-weight:600">${fPts||'—'}</td><td class="sep"></td>${B.map(i=>ptsCell(i)).join('')}<td class="tot" style="color:#82aaf0;font-weight:600">${bPts||'—'}</td><td class="tot" style="color:#82aaf0;font-weight:700;font-size:1rem">${row.pts}</td></tr></tbody></table></div>`;}).join('');}
 
-// Best-N IPS standings (N from SEASONS), highest first. Social members excluded.
+// Best-N IPS standings (N from SEASONS), highest first. Prize players only (inPrizes): no social
+// members, and entrants only in an opt-in season.
 function seasonStandings(season){
   const sr=allRounds.filter(r=>inSeason(r.date,season));
   return players.filter(p=>inPrizes(p,season)).map(p=>{const pr=sr.filter(r=>r.player_id===p.id);if(!pr.length)return null;const rpts=pr.map(r=>({r,pts:calcRoundPoints(r,p)||0})).sort((a,b)=>b.pts-a.pts);const counted=rpts.slice(0,seasonInfo(season).best);const total=counted.reduce((s,x)=>s+x.pts,0);const avg=rpts.length?(rpts.reduce((s,x)=>s+x.pts,0)/rpts.length).toFixed(1):null;return{p,rounds:pr.length,total,counted,avg};}).filter(Boolean).sort((a,b)=>b.total-a.total);

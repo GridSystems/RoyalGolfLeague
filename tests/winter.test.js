@@ -56,8 +56,11 @@ setTimeout(async function(){
     T('Summer pot is still players × DKK 250',/DKK 250 × 3 players = DKK 750/.test(document.getElementById('rulesPot').innerHTML));
     // Bo (2) has not entered; Ann (1) has.
     seasonEntries=[{id:1,season:'Winter 2027',player_id:1,paid_at:'2026-10-01T10:00:00Z',amount:175}];
-    allRounds=[round(1,2,'2026-11-01',4),round(2,1,'2026-11-01',5)];today=()=>'2026-11-01';renderTodayLb();
+    allRounds=[round(1,2,'2026-11-01',4),round(2,1,'2026-11-01',5),round(3,3,'2026-11-01',3)];today=()=>'2026-11-01';renderTodayLb();
     T('Today: a non-entrant gets no prize place',/1st/.test(document.getElementById('todayTable').innerHTML)&&!/2nd/.test(document.getElementById('todayTable').innerHTML));
+    const rankCellOf=pid=>{const row=[...document.querySelectorAll('#todayTable tbody tr')].find(tr=>tr.textContent.includes(players.find(p=>p.id===pid).name));return row?row.querySelector('td').innerHTML:'';};
+    T('Today: non-social non-entrant\'s rank cell has no Social tag',!/Social/.test(rankCellOf(2)));
+    T('Today: social member\'s rank cell still shows Social',/Social/.test(rankCellOf(3)));
     // tees non-empty so loadData doesn't try to seed them; everything else empty; season_entries fails.
     reset(u=>u.includes('/season_entries')?{__status:500,message:'boom'}:u.includes('/tees')?[{id:'platinum',name:'Royal Platinum',color:'#b0a0c0',rating:77.6,slope:153,dist:[]}]:[]);
     seasonEntries=[{id:9}];

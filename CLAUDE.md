@@ -197,7 +197,7 @@ Admin bulk entry is **completely separate** from HE. One player at a time. Full 
 Live rounds for today's date. Shows holes completed, progress bar, stableford points. Per-player hole-by-hole scorecard below. Includes partial rounds (live scoring).
 
 ### Season
-Best 4 stableford rounds per player, summed. Filterable by season.
+Best N stableford rounds per player, summed (N from `SEASONS` — 4 for Summer 2026, 3 for Winter 2027). Filterable by season.
 
 Seasons are named editions ("Summer 2026", "Winter 2027"), not calendar years —
 defined by start date in the `SEASONS` array in `index.html`. Season, Eclectic,
@@ -218,7 +218,7 @@ the current one if it needs entry, else the next — so entries open before a se
 
 ### Hall of Fame
 Winners per season: Eclectic (complete 18-hole cards only, social members
-excluded), Best 4 IPS, most fined (by count) and the season's fine pot. Computed
+excluded), Best N IPS (N from `SEASONS` — 4 for Summer 2026, 3 for Winter 2027), most fined (by count) and the season's fine pot. Computed
 live from `seasonStandings` / `eclecticStandings` / `finesStandings` — the same
 functions the leaderboards use — so there is no winners table to keep in sync.
 Ties share the title. The current season shows as "In progress · current leaders".

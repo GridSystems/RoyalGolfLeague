@@ -35,7 +35,8 @@ const SEASONS=[
 - `buyIn` — DKK per entrant; the default amount when an admin marks an entry paid.
 - `entry:false` — every approved non-social member is in (Summer 2026 behaves exactly as today).
 - **Entry season** — `entrySeason()` returns the current season if it has `entry:true`, otherwise the
-  next season if that has `entry:true`, otherwise none. This opens Winter entries during Summer's last week.
+  next season if that has `entry:true`, otherwise none. Entries for the next season open as soon as
+  it is defined as opt-in, i.e. for the whole of the current season, not just its last week.
 
 ## Data: `season_entries`
 
