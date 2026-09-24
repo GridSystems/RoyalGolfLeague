@@ -253,6 +253,9 @@ setTimeout(async function(){
     T('after the code, the deletes proceed',calls.some(c=>c.method==='DELETE'&&c.url.includes('players')));
 
     // ── Task 9: audit panel, move-over, draw ──
+    // players must carry both names locally: renderAuditPanel's nm() resolves only from
+    // players/pendingPlayers (no admin_member_emails fallback) — see Fix round 1, finding 1.
+    players=[{id:1,name:'Ann',user_id:'u-1',is_admin:true,color:0,hcp_history:[],approved:true},{id:2,name:'Bo',user_id:'u-2',color:1,hcp_history:[],approved:true}];
     _session=sessionFor('u-1',{aal:'aal2',amr:[{method:'totp',timestamp:now}]});activeId=1;
     reset(u=>u.includes('/audit_log')?[{id:1,at:'2026-10-05T10:00:00Z',action:'admin_granted',actor_player_id:1,target_player_id:2,details:null}]
             :u.includes('/rpc/admin_member_emails')?[{player_id:2,name:'Bo',email:'bo@x.dk',linked:false}]:[]);
@@ -260,9 +263,21 @@ setTimeout(async function(){
     T('audit panel lists entries with names',/admin_granted|Admin granted/.test(document.getElementById('auditPanel').textContent)&&/Ann/.test(document.getElementById('auditPanel').textContent)&&/Bo/.test(document.getElementById('auditPanel').textContent));
     await renderMoveOverList();
     T('move-over list shows members not yet on the new login',/Bo/.test(document.getElementById('moveOverList').textContent)&&/bo@x\.dk/.test(document.getElementById('moveOverList').textContent));
-    T('course mapper and snapshot use version 3',true); // checked by grep in Step 4
     const src=autoDrawIfDue.toString();
     T('auto-draw goes through run_draw',/sbRpc\('run_draw'/.test(src)&&!/sbUpdate\('saturday_signups'/.test(src)&&!/sbInsert\('saturday_events'/.test(src));
+
+    // ── Task 9 fix round 1, finding 2: player names must be escaped, not injected raw ──
+    delete window.__xss9;
+    const evilName='<img src=x onerror="window.__xss9=1">';
+    players=[{id:1,name:evilName,user_id:'u-1',is_admin:true,color:0,hcp_history:[],approved:true},{id:2,name:'Bo',user_id:'u-2',color:1,hcp_history:[],approved:true}];
+    reset(u=>u.includes('/audit_log')?[{id:2,at:'2026-10-05T10:05:00Z',action:'admin_granted',actor_player_id:1,target_player_id:2,details:null}]
+            :u.includes('/rpc/admin_member_emails')?[{player_id:1,name:evilName,email:'a@x.dk',linked:false}]:[]);
+    await renderAuditPanel();
+    await new Promise(r=>setTimeout(r,50));
+    T('audit panel escapes a malicious player name (no <img>, no script run)',!document.getElementById('auditPanel').querySelector('img')&&window.__xss9===undefined);
+    await renderMoveOverList();
+    await new Promise(r=>setTimeout(r,50));
+    T('move-over list escapes a malicious player name (no <img>, no script run)',!document.getElementById('moveOverList').querySelector('img')&&window.__xss9===undefined);
     // ── end ──
   }catch(e){out.push('FAIL EXCEPTION :: '+e.stack);}
   await new Promise(r=>setTimeout(r,150));

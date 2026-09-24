@@ -1479,17 +1479,14 @@ async function renderAuditPanel(){
   if(f&&f.options.length<2)f.innerHTML='<option value="">All events</option>'+Object.entries(AUDIT_LABELS).map(([k,v])=>`<option value="${k}">${v}</option>`).join('');
   const q='order=at.desc&limit=200'+(f&&f.value?'&action=eq.'+f.value:'');
   let rows=[];try{rows=await sbGet('audit_log',q);}catch(e){el.innerHTML='<div class="empty">Audit log needs admin mode.</div>';return;}
-  // An actor/target may not be in players or pendingPlayers yet (e.g. someone who signed in on the
-  // new login but has no linked players row) — admin_member_emails is the fallback name source.
-  let emailNames={};try{(await sbRpc('admin_member_emails',{})||[]).forEach(r=>{emailNames[r.player_id]=r.name;});}catch(e){}
-  const nm=id=>id==null?'—':(players.find(p=>p.id===id)||pendingPlayers.find(p=>p.id===id))?.name||emailNames[id]||('#'+id);
-  el.innerHTML=rows.length?`<div class="rt-wrap"><table class="rt"><thead><tr><th>When</th><th>Who</th><th>What</th><th>Whom</th><th>Detail</th></tr></thead><tbody>${rows.map(r=>`<tr><td style="white-space:nowrap">${new Date(r.at).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}</td><td>${nm(r.actor_player_id)}</td><td>${AUDIT_LABELS[r.action]||r.action}</td><td>${nm(r.target_player_id)}</td><td style="font-family:'DM Mono',monospace;font-size:0.75rem">${r.details?Object.entries(r.details).map(([k,v])=>k+': '+escHtml(v)).join(', '):''}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">No entries yet.</div>';
+  const nm=id=>id==null?'—':(players.find(p=>p.id===id)||pendingPlayers.find(p=>p.id===id))?.name||('#'+id);
+  el.innerHTML=rows.length?`<div class="rt-wrap"><table class="rt"><thead><tr><th>When</th><th>Who</th><th>What</th><th>Whom</th><th>Detail</th></tr></thead><tbody>${rows.map(r=>`<tr><td style="white-space:nowrap">${new Date(r.at).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}</td><td>${escHtml(nm(r.actor_player_id))}</td><td>${AUDIT_LABELS[r.action]||r.action}</td><td>${escHtml(nm(r.target_player_id))}</td><td style="font-family:'DM Mono',monospace;font-size:0.75rem">${r.details?Object.entries(r.details).map(([k,v])=>k+': '+escHtml(v)).join(', '):''}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">No entries yet.</div>';
 }
 async function renderMoveOverList(){
   const el=document.getElementById('moveOverList');if(!el)return;
   let rows=[];try{rows=await sbRpc('admin_member_emails',{});}catch(e){el.innerHTML='<div class="empty">Needs admin mode.</div>';return;}
   const todo=rows.filter(r=>!r.linked);
-  el.innerHTML=todo.length?`<div style="font-size:0.8rem;color:rgba(255,255,255,0.45);margin-bottom:0.5rem">${todo.length} of ${rows.length} members still on the old PIN login. Release B can go ahead when this list is empty.</div>`+todo.map(r=>`<div style="display:flex;justify-content:space-between;padding:4px 0"><span>${r.name}</span><span style="font-family:'DM Mono',monospace;font-size:0.78rem;color:rgba(255,255,255,0.5)">${r.email?escHtml(r.email):'no email on file'}</span></div>`).join('')
+  el.innerHTML=todo.length?`<div style="font-size:0.8rem;color:rgba(255,255,255,0.45);margin-bottom:0.5rem">${todo.length} of ${rows.length} members still on the old PIN login. Release B can go ahead when this list is empty.</div>`+todo.map(r=>`<div style="display:flex;justify-content:space-between;padding:4px 0"><span>${escHtml(r.name)}</span><span style="font-family:'DM Mono',monospace;font-size:0.78rem;color:rgba(255,255,255,0.5)">${r.email?escHtml(r.email):'no email on file'}</span></div>`).join('')
     :'<div class="empty">Everyone has moved to the new login ✓ — release B can go ahead.</div>';
 }
 
