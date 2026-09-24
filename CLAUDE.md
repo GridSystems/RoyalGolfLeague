@@ -61,6 +61,18 @@ holes        jsonb  [{hole, score, par, hcp}] × 18
 created_at   timestamptz
 ```
 
+**season_entries**
+```
+id           bigint (database-assigned)
+player_id    bigint (FK → players.id)
+season_id    int (FK → SEASONS index in index.html)
+amount       numeric (DKK paid; null = unpaid)
+created_at   timestamptz
+```
+Members enter and withdraw (unpaid) themselves; marking paid needs admin mode; audited as
+season_entered / entry_paid / entry_unpaid / season_withdrawn. SQL: `supabase/season_entries.sql`,
+rollback: `season_entries_rollback.sql`.
+
 **RLS:** Phase 2 release A (2026-09-24, `supabase/phase2a_auth.sql`) added real
 permission rules for logged-in members — `p2_*` policies `TO authenticated`, e.g.
 members read/write their own rounds and sign-ups, admins (admin mode) everything,
@@ -166,7 +178,8 @@ Admin bulk entry is **completely separate** from HE. One player at a time. Full 
 - **Admin player:** determined by `is_admin=true` flag in DB. Falls back to `players[0]` if none set.
 - **SQL to set up:** `ALTER TABLE players ADD COLUMN IF NOT EXISTS is_admin boolean DEFAULT false;` then set your row to `true` in Supabase Table Editor.
 - **Admin PIN (old route only):** stored in `localStorage` key `sl_admin_pin`. Default: `saturday`. Session auth in `sessionStorage` key `admin_auth`. Only reached when there's no Supabase Auth session (`_session` is null, i.e. the player hasn't moved to the new login yet); removed in release B. See **Supabase Auth** in Key design decisions for the real login and admin mode.
-- **Admin can:** add/remove players, edit any round, delete any round, manage HCP history for all players, bulk enter rounds, change PIN, reassign admin role — destructive actions need admin mode (below), not just `is_admin`.
+- **Sign out:** Header shows a Sign out button for every signed-in user (both PIN and Supabase Auth routes).
+- **Admin can:** add/remove players, edit any round, delete any round, manage HCP history for all players, bulk enter rounds, change PIN, reassign admin role, record season entry payments (Admin → <season> entries) — destructive actions need admin mode (below), not just `is_admin`.
 - **Players can:** log rounds, view leaderboards, update their own HCP, and set
   their own name and DGU membership number (My Profile). An admin can edit any
   player's DGU number — needed for players who predate the field.
@@ -192,6 +205,13 @@ Each `SEASONS` row carries its own **eclectic allowance** (95% Summer 2026, 60%
 from Winter 2027). Everything else — season points, Today, Log Round — plays off
 `PLAYING_ALLOWANCE` (95%). Pass the allowance to `calcPlayingHcp`; never change
 its default to adjust the eclectic, as that rescores the whole app.
+
+Each `SEASONS` row also carries `best` (rounds counted in the Season standings), `buyIn` (DKK) and
+`entry`. `entry:false` (Summer 2026): every approved non-social member is in. `entry:true` (Winter
+2027 onwards): only players with a `season_entries` row are in the prizes — `inPrizes(p, season)`
+treats a non-entrant exactly like a social member, and an unpaid entrant carries an "unpaid" tag. The
+pot for an opt-in season is the sum of paid `amount`s. `entrySeason()` is the season taking entries:
+the current one if it needs entry, else the next — so entries open before a season starts.
 
 ### Hall of Fame
 Winners per season: Eclectic (complete 18-hole cards only, social members
