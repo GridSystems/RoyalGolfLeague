@@ -581,6 +581,13 @@ select option { background: #1a3a2a; }
       <div class="pb" id="pendingApprovalsList"></div>
     </div>
     <div class="panel"><div class="ph"><span class="pt">New login — not set up yet</span></div><div class="pb" id="moveOverList"></div></div>
+    <div class="panel" id="adminEntriesPanel">
+      <div class="ph" onclick="toggleAdminSection('adminEntriesBody','achev-entries')" style="cursor:pointer;user-select:none">
+        <span class="pt" id="adminEntriesTitle">Season entries</span>
+        <span id="achev-entries" style="color:rgba(255,255,255,0.35);font-size:1.2rem;transition:transform 0.2s;display:inline-block;line-height:1">›</span>
+      </div>
+      <div class="pb" id="adminEntriesBody" style="display:none"></div>
+    </div>
     <div class="panel" id="bulkEntryPanel">
       <div class="ph" onclick="toggleAdminSection('bulkEntryBody','achev-bulk')" style="cursor:pointer;user-select:none">
         <span class="pt">Bulk Round Entry</span>
@@ -1530,7 +1537,7 @@ function showView(id,btn){
   if(id==='players'){renderGrid();}
   if(id==='profile'){renderProfile();}
   if(id==='log'){buildPlayerCheckboxes();checkForResumableRounds();applySaturdayDraw();}
-  if(id==='admin'){renderPendingApprovals();renderAdmin();renderBulkEntry();renderAdminFines();renderSaturdayAdmin();renderAdminTournament();renderMoveOverList();}
+  if(id==='admin'){renderPendingApprovals();renderAdmin();renderBulkEntry();renderAdminFines();renderSaturdayAdmin();renderAdminTournament();renderMoveOverList();renderAdminEntries();}
   if(id==='rules')renderRules();
   if(id==='track')renderTrackView();
   if(id==='signup')renderSaturdayView();
@@ -5339,6 +5346,35 @@ async function withdrawEntry(){
   catch(err){toast('Couldn\'t withdraw — '+err.message);}
   refreshEntryViews();
 }
+// Admin: who entered the season taking entries, who has paid, and entering someone on their behalf.
+function renderAdminEntries(){
+  const body=document.getElementById('adminEntriesBody'),title=document.getElementById('adminEntriesTitle');if(!body||!title)return;
+  const s=entrySeason();
+  if(!s){title.textContent='Season entries';body.innerHTML='<div class="empty">No season is taking entries.</div>';return;}
+  title.textContent=`${s.name} entries`;
+  const es=seasonEntries.filter(e=>e.season===s.name),paid=es.filter(e=>e.paid_at),unpaid=es.filter(e=>!e.paid_at);
+  const received=paid.reduce((t,e)=>t+Number(e.amount||0),0);
+  const nm=id=>escHtml(players.find(p=>p.id===id)?.name||'#'+id);
+  const line=(e,right)=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0"><span>${nm(e.player_id)}</span><span style="display:flex;gap:6px;align-items:center">${right}</span></div>`;
+  const head=t=>`<div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.08em;color:rgba(255,255,255,0.4);margin:0.75rem 0 4px">${t}</div>`;
+  const others=activePlayers().filter(p=>!p.is_social&&!entryOf(p.id,s.name));
+  body.innerHTML=`<div style="font-size:0.85rem;color:var(--gold-l)">${es.length} entered · ${paid.length} paid · DKK ${received} received</div>`
+    +head('Awaiting payment')+(unpaid.length?unpaid.map(e=>line(e,`<button class="btn btn-warn btn-sm" onclick="markEntryPaid(${e.id})">Mark paid</button><button class="btn btn-danger btn-sm" onclick="removeEntry(${e.id})">Remove</button>`)).join(''):'<div class="empty">Nobody.</div>')
+    +head('Paid')+(paid.length?paid.map(e=>line(e,`<span style="font-size:0.75rem;color:rgba(255,255,255,0.4)">${fd(e.paid_at.slice(0,10))}</span><button class="btn btn-ghost btn-sm" onclick="undoEntryPaid(${e.id})">Undo</button>`)).join(''):'<div class="empty">Nobody yet.</div>')
+    +(others.length?`<div style="display:flex;gap:6px;margin-top:0.9rem"><select id="entryForPlayer">${others.map(p=>`<option value="${p.id}">${escHtml(p.name)}</option>`).join('')}</select><button class="btn btn-ghost btn-sm" onclick="enterPlayerFor()">Enter player</button></div>`:'');
+}
+// Every admin write: admin mode first, then save, then redraw what depends on entries.
+async function adminEntryWrite(save,done){
+  if(!await requireAdminMode())return;
+  try{await save();toast(done);}catch(e){toast('Couldn\'t save — '+e.message);}
+  renderAdminEntries();renderEntryBanner();renderSeasonLb();
+}
+const replaceEntry=row=>{if(row)seasonEntries=seasonEntries.map(e=>e.id===row.id?row:e);};
+function markEntryPaid(id){const s=entrySeason();return adminEntryWrite(async()=>{const [row]=await sbUpdate('season_entries',id,{paid_at:new Date().toISOString(),amount:s.buyIn,recorded_by:activeId});replaceEntry(row);},'Marked paid');}
+function undoEntryPaid(id){return adminEntryWrite(async()=>{const [row]=await sbUpdate('season_entries',id,{paid_at:null,amount:null,recorded_by:null});replaceEntry(row);},'Payment undone');}
+function removeEntry(id){if(!confirm('Remove this entry?'))return;return adminEntryWrite(async()=>{await sbDelete('season_entries',id);seasonEntries=seasonEntries.filter(e=>e.id!==id);},'Entry removed');}
+function enterPlayerFor(){const s=entrySeason(),pid=+document.getElementById('entryForPlayer').value;
+  return adminEntryWrite(async()=>{const [row]=await sbInsert('season_entries',{season:s.name,player_id:pid});seasonEntries.push(row);},'Player entered');}
 function inSeason(date,season){return !!date&&seasonOf(date)===season;}
 function getSeasons(){const used=new Set(allRounds.map(r=>seasonOf(r.date)));const s=SEASONS.map(x=>x.name).filter(n=>used.has(n)).reverse();return s.length?s:[seasonOf(today())];}
 function populateYearSelects(){const seasons=getSeasons();['seasonYear','dreamYear','finesYear','myDreamYear'].forEach(id=>{const sel=document.getElementById(id);if(!sel)return;const cur=sel.value;sel.innerHTML=seasons.map(y=>`<option value="${y}">${y}</option>`).join('');if(cur&&seasons.includes(cur))sel.value=cur;});}

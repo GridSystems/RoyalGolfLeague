@@ -89,6 +89,32 @@ setTimeout(async function(){
     const saved2=SEASONS.splice(1,1);activeId=1;renderEntryBanner();T('no banner when no season takes entries',ban()==='');SEASONS.push(...saved2);
     activeId=1;seasonEntries=[];renderProfile();
     T('My Profile shows the entry status',/Enter Winter 2027/.test(document.getElementById('profileBody').innerHTML));
+    // ── Task 5: admin entries ──
+    today=()=>'2026-10-10';_session=null;activeId=1;
+    players=[P(1,'Ann',{is_admin:true}),P(2,'<b>Bo</b>'),P(3,'Cy'),P(4,'Di',{is_social:true})];
+    seasonEntries=[{id:21,season:'Winter 2027',player_id:2,paid_at:null,amount:null},{id:22,season:'Winter 2027',player_id:1,paid_at:'2026-10-05T10:00:00Z',amount:175}];
+    renderAdminEntries();const adm=()=>document.getElementById('adminEntriesBody').innerHTML;
+    T('title names the entry season',document.getElementById('adminEntriesTitle').textContent==='Winter 2027 entries');
+    T('summary: 2 entered · 1 paid · DKK 175 received',/2 entered · 1 paid · DKK 175 received/.test(adm()));
+    T('names are escaped',!document.getElementById('adminEntriesBody').querySelector('b')&&/&lt;b&gt;Bo/.test(adm()));
+    T('enter-for lists non-social members without an entry',/value="3"/.test(adm())&&!/value="4"/.test(adm())&&!/value="2"/.test(adm()));
+    reset((u,b,m)=>m==='PATCH'&&u.includes('season_entries')?[{id:21,season:'Winter 2027',player_id:2,paid_at:b.paid_at,amount:b.amount,recorded_by:b.recorded_by}]:[]);
+    await markEntryPaid(21);
+    const patch=calls.find(c=>c.method==='PATCH');
+    T('Mark paid sets paid_at, the season buy-in and who recorded it',patch&&patch.body.amount===175&&patch.body.recorded_by===1&&!!patch.body.paid_at);
+    T('after Mark paid: 2 paid, DKK 350',/2 entered · 2 paid · DKK 350 received/.test(adm()));
+    reset((u,b,m)=>m==='PATCH'?[{id:21,season:'Winter 2027',player_id:2,paid_at:null,amount:null,recorded_by:null}]:[]);
+    await undoEntryPaid(21);
+    T('Undo clears the payment and the pot drops back',calls.some(c=>c.method==='PATCH'&&c.body.paid_at===null&&c.body.amount===null)&&/1 paid · DKK 175/.test(adm()));
+    renderSeasonLb();
+    reset((u,b,m)=>m==='POST'?[{id:23,season:b.season,player_id:b.player_id,paid_at:null,amount:null}]:[]);
+    document.getElementById('entryForPlayer').value='3';await enterPlayerFor();
+    T('Enter player posts that player for the entry season',calls.some(c=>c.method==='POST'&&c.body.player_id===3&&c.body.season==='Winter 2027')&&!!entryOf(3,'Winter 2027'));
+    reset((u,b,m)=>m==='DELETE'?[{id:23}]:[]);
+    await removeEntry(23);
+    T('Remove deletes the entry',calls.some(c=>c.method==='DELETE'&&c.url.includes('season_entries?id=eq.23'))&&!entryOf(3,'Winter 2027'));
+    const saved3=SEASONS.splice(1,1);today=()=>'2026-09-20';renderAdminEntries();
+    T('no season taking entries: says so',/No season is taking entries/.test(adm()));SEASONS.push(...saved3);
     // ── end ──
   }catch(e){out.push('FAIL EXCEPTION :: '+e.stack);}
   await new Promise(r=>setTimeout(r,150));
