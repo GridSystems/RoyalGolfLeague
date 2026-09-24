@@ -238,6 +238,7 @@ select option { background: #1a3a2a; }
         <button class="sub-tab" onclick="showLb('season',this)">Season</button>
         <button class="sub-tab" onclick="showLb('dreamcard',this)">Eclectic</button>
         <button class="sub-tab" onclick="showLb('fines',this)">🚨 Fines</button>
+        <button class="sub-tab" onclick="showLb('fame',this)">🏆 Hall of Fame</button>
       </div>
       <div class="lb-view active" id="lb-today">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:8px">
@@ -281,6 +282,10 @@ select option { background: #1a3a2a; }
         <div id="finesPot" style="margin-bottom:1rem"></div>
         <div id="finesToday" style="margin-bottom:1rem"></div>
         <div id="finesTable" style="margin-bottom:1.5rem"></div>
+      </div>
+      <div class="lb-view" id="lb-fame">
+        <div style="font-size:0.8rem;color:rgba(255,255,255,0.4);margin-bottom:1rem">Champions of every season. Tied players share the title.</div>
+        <div id="fameBody"></div>
       </div>
     </div>
   </div>
@@ -1080,7 +1085,8 @@ function currentHcp(player){const hist=player.hcp_history||[];if(!hist.length)re
 // (900-1831, 1-123456), so the hyphen must be typed — it cannot be inferred.
 function isValidDgu(v){const s=(v||'').trim();return s.length<=20&&/^\d+-\d+$/.test(s);}
 function calcCourseHcp(index,tee){return Math.round(index*(tee.slope/113)+(tee.rating-COURSE_PAR));}
-function calcPlayingHcp(index,tee){return Math.round(calcCourseHcp(index,tee)*0.95);}
+const PLAYING_ALLOWANCE=0.95; // WHS competition allowance. Only the eclectic overrides it, per season (SEASONS).
+function calcPlayingHcp(index,tee,allowance=PLAYING_ALLOWANCE){return Math.round(calcCourseHcp(index,tee)*allowance);}
 function strokesOnHole(phcp,i){if(phcp<=0)return 0;let s=phcp>=18?1:(HOLE_HCP[i]<=phcp?1:0);if(phcp>18&&HOLE_HCP[i]<=(phcp-18))s++;return s;}
 function stablefordPts(gross,par,strokes){if(!gross)return null;return Math.max(0,2+par+strokes-gross);}
 // Standard competition ranking: equal scores share a place, and the next player
@@ -2439,7 +2445,7 @@ function moveBagClub(idx,dir){
   [bag[idx],bag[target]]=[bag[target],bag[idx]];
   saveBag(bag);
 }
-function showLb(id,btn){document.querySelectorAll('#view-leaderboard .lb-view').forEach(v=>v.classList.remove('active'));document.querySelectorAll('#view-leaderboard .sub-tab').forEach(t=>t.classList.remove('active'));document.getElementById('lb-'+id).classList.add('active');if(btn)btn.classList.add('active');if(id==='today')renderTodayLb();if(id==='season')renderSeasonLb();if(id==='dreamcard'){renderDreamCard();}if(id==='fines')renderFinesLb();if(id==='saturday')renderSaturdayView();}
+function showLb(id,btn){document.querySelectorAll('#view-leaderboard .lb-view').forEach(v=>v.classList.remove('active'));document.querySelectorAll('#view-leaderboard .sub-tab').forEach(t=>t.classList.remove('active'));document.getElementById('lb-'+id).classList.add('active');if(btn)btn.classList.add('active');if(id==='today')renderTodayLb();if(id==='season')renderSeasonLb();if(id==='dreamcard'){renderDreamCard();}if(id==='fines')renderFinesLb();if(id==='fame')renderHallOfFame();if(id==='saturday')renderSaturdayView();}
 function showHistorySub(id,btn){
   document.querySelectorAll('#view-history .lb-view').forEach(v=>v.classList.remove('active'));
   document.querySelectorAll('#view-history .sub-tab').forEach(t=>t.classList.remove('active'));
@@ -4998,8 +5004,21 @@ function scrollToMyEclectic(){
 }
 
 // ── Leaderboards ──────────────────────────────────────────────────────────────
-function getSeasons(){const y=[...new Set(allRounds.map(r=>r.date.slice(0,4)))].sort().reverse();return y.length?y:[new Date().getFullYear().toString()];}
-function populateYearSelects(){const seasons=getSeasons();['seasonYear','dreamYear','finesYear'].forEach(id=>{const sel=document.getElementById(id);if(!sel)return;const cur=sel.value;sel.innerHTML=seasons.map(y=>`<option value="${y}">${y}</option>`).join('');if(cur&&seasons.includes(cur))sel.value=cur;});}
+// Competition editions, oldest first. A season runs from its `from` date (inclusive) until
+// the next one starts. Rounds, fines and payments all belong to the season their date falls in.
+// `eclectic` is that season's eclectic handicap allowance (60% from Winter 2027: the 95% card
+// rewarded high handicaps — see the rank-bias analysis of 2026-09-10).
+const SEASONS=[
+  {name:'Summer 2026',from:'0000-01-01',eclectic:0.95},
+  {name:'Winter 2027',from:'2026-10-04',eclectic:0.60}, // day after the Summer 2026 final (3 Oct)
+];
+function seasonOf(date){let s=SEASONS[0];for(const x of SEASONS)if(date>=x.from)s=x;return s.name;}
+function seasonInfo(season){return SEASONS.find(s=>s.name===season);}
+// Finished once the next season has started.
+function seasonDone(season){const next=SEASONS[SEASONS.indexOf(seasonInfo(season))+1];return !!next&&today()>=next.from;}
+function inSeason(date,season){return !!date&&seasonOf(date)===season;}
+function getSeasons(){const used=new Set(allRounds.map(r=>seasonOf(r.date)));const s=SEASONS.map(x=>x.name).filter(n=>used.has(n)).reverse();return s.length?s:[seasonOf(today())];}
+function populateYearSelects(){const seasons=getSeasons();['seasonYear','dreamYear','finesYear','myDreamYear'].forEach(id=>{const sel=document.getElementById(id);if(!sel)return;const cur=sel.value;sel.innerHTML=seasons.map(y=>`<option value="${y}">${y}</option>`).join('');if(cur&&seasons.includes(cur))sel.value=cur;});}
 
 function renderTodayLb(){
   const td=today();document.getElementById('todayDateLabel').textContent=new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
@@ -5012,20 +5031,35 @@ function renderTodayLb(){
   document.getElementById('todayTable').innerHTML=`<div class="rt-wrap"><table class="rt"><thead><tr><th></th><th>Player</th><th>Tee</th><th>Playing HCP</th><th>Holes</th><th>Progress</th><th>Points</th></tr></thead><tbody>${rows.map((row,i)=>{const pr=_prizeRanks[i];const rc=pr?(pr===1?'rank gold':pr===2?'rank silver':pr===3?'rank bronze':'rank'):'rank';const med=pr?(pr===1?'1st':pr===2?'2nd':pr===3?'3rd':`${pr}th`):`<span class="tag tag-social" style="font-size:0.6rem">Social</span>`;const pct=Math.round((row.completed/18)*100);return`<tr><td class="${rc}">${med}</td><td><div style="display:flex;align-items:center;gap:8px">${row.p?`<div class="av" style="background:${clr(row.p)}">${ini(row.p.name)}</div>${row.p.name}${row.p.is_social?'<span class="tag tag-social" style="font-size:0.6rem;padding:1px 5px">Social</span>':''}`:'Unknown'}</div></td><td><span style="display:inline-flex;align-items:center;gap:4px;font-size:0.76rem"><span class="tee-dot" style="background:${row.r.tee_color||'#888'}"></span>${row.r.tee_name||'—'}</span></td><td style="font-family:'DM Mono',monospace;color:rgba(255,255,255,0.5)">${row.phcp!=null?row.phcp:'—'}</td><td style="font-family:'DM Mono',monospace">${row.completed}<span style="color:rgba(255,255,255,0.3)">/18</span></td><td><div class="prog-bar"><div class="prog-fill" style="width:${pct}%"></div></div></td><td style="font-family:'DM Mono',monospace;font-weight:600;font-size:1.1rem;color:#82aaf0">${row.pts}</td></tr>`;}).join('')}</tbody></table></div>`;
   document.getElementById('todayScoreboards').innerHTML=rows.map(row=>{if(!row.p)return'';const F=[0,1,2,3,4,5,6,7,8],B=[9,10,11,12,13,14,15,16,17];const hp=row.holePts;function cell(i){const h=row.r.holes[i];if(!h)return`<td style="color:rgba(255,255,255,0.2)">·</td>`;if(h.pickup)return`<td style="font-family:'DM Mono',monospace;font-size:0.82rem;font-weight:700;color:#f0a030">P</td>`;if(h.score==null)return`<td style="color:rgba(255,255,255,0.2)">·</td>`;const d=h.score-h.par;return`<td style="font-family:'DM Mono',monospace;font-size:0.82rem;font-weight:500;color:${vpC(d)}">${h.score}</td>`;}function ptsCell(i){const x=hp[i];if(!x)return`<td style="color:rgba(255,255,255,0.18)">·</td>`;return`<td style="font-family:'DM Mono',monospace;font-size:0.78rem;font-weight:500;color:${ptC(x.pts)}">${x.pts}</td>`;}const fPts=F.map(i=>hp[i]?.pts||0).reduce((a,b)=>a+b,0),bPts=B.map(i=>hp[i]?.pts||0).reduce((a,b)=>a+b,0);return`<div style="margin-top:1rem;padding-top:1rem;border-top:1px solid rgba(255,255,255,0.06)"><div style="display:flex;align-items:center;gap:9px;margin-bottom:0.6rem"><div class="av" style="background:${clr(row.p)};width:22px;height:22px;font-size:0.6rem">${ini(row.p.name)}</div><span style="font-weight:500;font-size:0.88rem">${row.p.name}</span><span style="font-size:0.75rem;color:rgba(255,255,255,0.38)">${row.completed} holes · HCP ${row.phcp!=null?row.phcp:'—'}</span></div><div class="scorecard-wrap"><table class="sc-table" style="min-width:500px"><thead><tr><th class="left">Hole</th>${F.map(i=>`<th>${i+1}</th>`).join('')}<th>Out</th><th class="sep"></th>${B.map(i=>`<th>${i+1}</th>`).join('')}<th>In</th><th>Total</th></tr></thead><tbody><tr><td class="left muted">Par</td>${F.map(i=>`<td class="mono muted">${HOLE_PARS[i]}</td>`).join('')}<td class="tot mono muted">35</td><td class="sep"></td>${B.map(i=>`<td class="mono muted">${HOLE_PARS[i]}</td>`).join('')}<td class="tot mono muted">37</td><td class="tot mono muted">72</td></tr><tr><td class="left" style="font-weight:500;color:var(--gold-l);font-size:0.77rem">Score</td>${F.map(i=>cell(i)).join('')}<td class="tot">${F.some(i=>row.r.holes[i]?.score)?tS(row.r.holes.slice(0,9).filter(h=>h?.score)):''}</td><td class="sep"></td>${B.map(i=>cell(i)).join('')}<td class="tot">${B.some(i=>row.r.holes[i]?.score)?tS(row.r.holes.slice(9).filter(h=>h?.score)):''}</td><td class="tot" style="font-weight:600">${row.completed?tS(row.r.holes.filter(h=>h?.score)):''}</td></tr><tr><td class="left" style="color:#82aaf0;font-size:0.77rem">Points</td>${F.map(i=>ptsCell(i)).join('')}<td class="tot" style="color:#82aaf0;font-weight:600">${fPts||'—'}</td><td class="sep"></td>${B.map(i=>ptsCell(i)).join('')}<td class="tot" style="color:#82aaf0;font-weight:600">${bPts||'—'}</td><td class="tot" style="color:#82aaf0;font-weight:700;font-size:1rem">${row.pts}</td></tr></tbody></table></div>`;}).join('');}
 
+// Best 4 IPS standings, highest first. Social members excluded.
+function seasonStandings(season){
+  const sr=allRounds.filter(r=>inSeason(r.date,season));
+  return players.filter(p=>!p.is_social).map(p=>{const pr=sr.filter(r=>r.player_id===p.id);if(!pr.length)return null;const rpts=pr.map(r=>({r,pts:calcRoundPoints(r,p)||0})).sort((a,b)=>b.pts-a.pts);const best4=rpts.slice(0,4);const total=best4.reduce((s,x)=>s+x.pts,0);const avg=rpts.length?(rpts.reduce((s,x)=>s+x.pts,0)/rpts.length).toFixed(1):null;return{p,rounds:pr.length,total,best4,avg};}).filter(Boolean).sort((a,b)=>b.total-a.total);
+}
 function renderSeasonLb(){
-  const season=document.getElementById('seasonYear')?.value||new Date().getFullYear().toString();
-  const sr=allRounds.filter(r=>r.date.startsWith(season));
-  const standings=players.filter(p=>!p.is_social).map(p=>{const pr=sr.filter(r=>r.player_id===p.id);if(!pr.length)return null;const rpts=pr.map(r=>({r,pts:calcRoundPoints(r,p)||0})).sort((a,b)=>b.pts-a.pts);const best4=rpts.slice(0,4);const total=best4.reduce((s,x)=>s+x.pts,0);const avg=rpts.length?(rpts.reduce((s,x)=>s+x.pts,0)/rpts.length).toFixed(1):null;return{p,rounds:pr.length,total,best4,avg};}).filter(Boolean).sort((a,b)=>b.total-a.total);
+  const season=document.getElementById('seasonYear')?.value||seasonOf(today());
+  const standings=seasonStandings(season);
   if(!standings.length){document.getElementById('seasonTable').innerHTML='<div class="empty">No rounds for '+season+' yet.</div>';return;}
   const _seasonPlaces=sharedPlaces(standings,s=>s.total);
   document.getElementById('seasonTable').innerHTML=`<div class="rt-wrap"><table class="rt"><thead><tr><th></th><th>Player</th><th>Rounds</th><th>HCP</th><th>Avg Pts</th><th>Best 4 Rounds</th><th style="color:#82aaf0">Season Total</th></tr></thead><tbody>${standings.map((s,i)=>{const pl=_seasonPlaces[i];const rc=pl===1?'rank gold':pl===2?'rank silver':pl===3?'rank bronze':'rank';const med=ordinal(pl);const hcp=currentHcp(s.p);const b4=s.best4.map(x=>`<span style="display:inline-flex;align-items:center;background:rgba(130,170,240,0.12);border:1px solid rgba(130,170,240,0.25);border-radius:6px;padding:1px 7px;font-family:'DM Mono',monospace;font-size:0.78rem;color:#82aaf0;margin:1px">${x.pts}<span style="font-size:0.6rem;color:rgba(255,255,255,0.3);margin-left:3px">${fd(x.r.date).replace(/\s\d{4}/,'')}</span></span>`).join(' ');return`<tr><td class="${rc}">${med}</td><td><div style="display:flex;align-items:center;gap:8px"><div class="av" style="background:${clr(s.p)}">${ini(s.p.name)}</div>${s.p.name}</div></td><td style="font-family:'DM Mono',monospace">${s.rounds}</td><td style="font-family:'DM Mono',monospace;color:rgba(255,255,255,0.5)">${hcp!=null?hcp:'—'}</td><td style="font-family:'DM Mono',monospace;color:rgba(255,255,255,0.5)">${s.avg}</td><td>${b4}</td><td style="font-family:'DM Mono',monospace;font-weight:700;font-size:1.1rem;color:#82aaf0">${s.total}</td></tr>`;}).join('')}</tbody></table></div>`;}
 
+// One player's eclectic: best nett per hole across `rounds`, at the given handicap allowance.
+function eclecticCard(p,rounds,allowance){
+  const F=[0,1,2,3,4,5,6,7,8],B=[9,10,11,12,13,14,15,16,17];
+  const bestPerHole=Array.from({length:18},(_,hi)=>{let best=null;for(const r of rounds){const h=r.holes[hi];if(!h||h.score==null)continue;const tee=getTee(r.tee_id||'platinum');const index=hcpOnDate(p,r.date);if(index==null)continue;const phcp=calcPlayingHcp(index,tee,allowance);const str=strokesOnHole(phcp,hi);const nett=h.score-str;const pts=stablefordPts(h.score,h.par,str);if(best===null||nett<best.nett||(nett===best.nett&&(pts||0)>(best.pts||0)))best={nett,gross:h.score,pts:pts||0,str,par:HOLE_PARS[hi],date:r.date};}return best;});
+  const filled=bestPerHole.filter(Boolean).length;const fN=F.reduce((s,i)=>s+(bestPerHole[i]?.nett??0),0),bN=B.reduce((s,i)=>s+(bestPerHole[i]?.nett??0),0);const fP=F.reduce((s,i)=>s+(bestPerHole[i]?.pts??0),0),bP=B.reduce((s,i)=>s+(bestPerHole[i]?.pts??0),0);const fF=F.filter(i=>bestPerHole[i]).length,bF=B.filter(i=>bestPerHole[i]).length;
+  return{p,bestPerHole,filled,fN,bN,fP,bP,fF,bF,totalNett:fN+bN,totalPts:fP+bP,completedPar:bestPerHole.reduce((s,b)=>s+(b?b.par:0),0)};
+}
+// Eclectic standings for a season, lowest nett first, at that season's eclectic allowance.
+function eclecticStandings(season){
+  const sr=allRounds.filter(r=>inSeason(r.date,season));const allowance=seasonInfo(season).eclectic;
+  return players.map(p=>{const pr=sr.filter(r=>r.player_id===p.id);return pr.length?eclecticCard(p,pr,allowance):null;}).filter(Boolean).sort((a,b)=>{if(a.filled===0&&b.filled===0)return 0;if(a.filled===0)return 1;if(b.filled===0)return -1;return a.totalNett!==b.totalNett?a.totalNett-b.totalNett:b.totalPts-a.totalPts;});
+}
 function renderDreamCard(){
-  const season=document.getElementById('dreamYear')?.value||new Date().getFullYear().toString();
-  const sr=allRounds.filter(r=>r.date.startsWith(season));
+  const season=document.getElementById('dreamYear')?.value||seasonOf(today());
   const F=[0,1,2,3,4,5,6,7,8],B=[9,10,11,12,13,14,15,16,17];
   const pF=HOLE_PARS.slice(0,9).reduce((a,b)=>a+b,0),pB=HOLE_PARS.slice(9).reduce((a,b)=>a+b,0);
-  const playerEclectics=players.map(p=>{const pr=sr.filter(r=>r.player_id===p.id);if(!pr.length)return null;const bestPerHole=Array.from({length:18},(_,hi)=>{let best=null;for(const r of pr){const h=r.holes[hi];if(!h||h.score==null)continue;const tee=getTee(r.tee_id||'platinum');const index=hcpOnDate(p,r.date);if(index==null)continue;const phcp=calcPlayingHcp(index,tee);const str=strokesOnHole(phcp,hi);const nett=h.score-str;const pts=stablefordPts(h.score,h.par,str);if(best===null||nett<best.nett||(nett===best.nett&&(pts||0)>(best.pts||0)))best={nett,gross:h.score,pts:pts||0,str,par:HOLE_PARS[hi],date:r.date};}return best;});const filled=bestPerHole.filter(Boolean).length;const fN=F.reduce((s,i)=>s+(bestPerHole[i]?.nett??0),0),bN=B.reduce((s,i)=>s+(bestPerHole[i]?.nett??0),0);const fP=F.reduce((s,i)=>s+(bestPerHole[i]?.pts??0),0),bP=B.reduce((s,i)=>s+(bestPerHole[i]?.pts??0),0);const fF=F.filter(i=>bestPerHole[i]).length,bF=B.filter(i=>bestPerHole[i]).length;return{p,bestPerHole,filled,fN,bN,fP,bP,fF,bF,totalNett:fN+bN,totalPts:fP+bP,completedPar:bestPerHole.reduce((s,b)=>s+(b?b.par:0),0)};}).filter(Boolean).sort((a,b)=>{if(a.filled===0&&b.filled===0)return 0;if(a.filled===0)return 1;if(b.filled===0)return -1;return a.totalNett!==b.totalNett?a.totalNett-b.totalNett:b.totalPts-a.totalPts;});
+  const playerEclectics=eclecticStandings(season);
   if(!playerEclectics.length){document.getElementById('eclecticRankings').innerHTML='<div class="empty">No rounds for '+season+' yet.</div>';document.getElementById('eclecticScorecards').innerHTML='';return;}
   // Rank on nett alone; totalPts stays a sort key so a tie is ordered, not split.
   const _eclPlaces=sharedPlaces(playerEclectics,e=>e.filled?e.totalNett:Infinity);
@@ -5036,6 +5070,58 @@ function renderDreamCard(){
   if(myBtn) myBtn.style.display=playerEclectics.some(e=>e.p.id===activeId)?'inline-block':'none';
 }
 
+// ── Hall of Fame ──────────────────────────────────────────────────────────────
+// Winners come from the same standings as the leaderboards, so the two can't disagree.
+// Ties share the title. A season still in play shows its current leaders.
+function renderHallOfFame(){
+  const el=document.getElementById('fameBody');if(!el)return;
+  const pct=a=>Math.round(a*100)+'%';
+  const tied=(rows,scoreOf)=>rows.filter(r=>scoreOf(r)===scoreOf(rows[0]));
+  const name=p=>`<div style="display:flex;align-items:center;gap:8px"><div class="av" style="background:${clr(p)}">${ini(p.name)}</div>${p.name}</div>`;
+  const dash='<span style="color:rgba(255,255,255,0.3)">—</span>';
+  // One table row per winner; the competition label only on the first.
+  const rows=(comp,winners)=>(winners.length?winners:[null]).map((w,i)=>`<tr><td style="white-space:nowrap">${i?'':comp}</td><td>${w?.p?name(w.p):dash}</td><td style="font-family:'DM Mono',monospace">${w?w.record:''}</td></tr>`).join('');
+  el.innerHTML=getSeasons().map(season=>{
+    const done=seasonDone(season),allowance=seasonInfo(season).eclectic;
+    const ecl=eclecticStandings(season).filter(e=>!e.p.is_social&&e.filled===18);
+    const ips=seasonStandings(season);
+    const fines=finesStandings(season);
+    // Not summed from `fines`: that skips players no longer on the roster, and the pot must match the Fines tab.
+    const pot=allFines.filter(f=>inSeason(f.date,season)).reduce((s,f)=>s+fineAmount(f),0);
+    const eW=tied(ecl,e=>e.totalNett).map(e=>({p:e.p,record:`${ds(e.totalNett-e.completedPar)} (nett ${e.totalNett}) · ${pct(allowance)} allowance`}));
+    const iW=tied(ips,s=>s.total).map(s=>({p:s.p,record:`${s.total} pts · ${pct(PLAYING_ALLOWANCE)} allowance`}));
+    const fW=tied(fines,f=>f.count).map(f=>({p:f.p,record:`${f.count} fines · DKK ${f.total}`}));
+    // Records: every player counts, social members included — no prize money rides on these.
+    const pOf=id=>players.find(p=>p.id===id);
+    const sr=allRounds.filter(r=>inSeason(r.date,season)&&pOf(r.player_id));
+    const holes=sr.flatMap(r=>r.holes.map((h,i)=>({r,h,i}))).filter(x=>x.h&&x.h.score!=null);
+    const most=(test,noun)=>{const n=new Map();for(const x of holes)if(test(x.h))n.set(x.r.player_id,(n.get(x.r.player_id)||0)+1);
+      return tied([...n].sort((a,b)=>b[1]-a[1]),e=>e[1]).map(([id,c])=>({p:pOf(id),record:`${c} ${noun}${c===1?'':'s'}`}));};
+    const birdies=most(h=>h.score===h.par-1,'birdie'),eagles=most(h=>h.score<=h.par-2,'eagle');
+    const aces=holes.filter(x=>x.h.score===1).map(x=>({p:pOf(x.r.player_id),record:`Hole ${x.i+1} · ${fd(x.r.date)}`}));
+    // Longest day: fewest stableford points in a finished round (partial live rounds don't count).
+    const full=sr.filter(r=>r.holes.length===18&&r.holes.every(h=>h&&(h.score!=null||h.pickup)))
+      .map(r=>({r,p:pOf(r.player_id),pts:calcRoundPoints(r,pOf(r.player_id))})).filter(x=>x.pts!=null).sort((a,b)=>a.pts-b.pts);
+    const longest=tied(full,x=>x.pts).map(x=>({p:x.p,record:`${x.pts} pts · ${fd(x.r.date)}`}));
+    return`<div style="margin-bottom:1.75rem">
+      <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:0.6rem">
+        <span style="font-family:'Playfair Display',serif;font-size:1.15rem;color:var(--gold-l)">${season}</span>
+        <span style="font-size:0.72rem;color:rgba(255,255,255,0.35)">${done?'Final results':'In progress · current leaders'}</span>
+      </div>
+      <div class="rt-wrap"><table class="rt"><thead><tr><th>Competition</th><th>${done?'Winner':'Leader'}</th><th>Record</th></tr></thead><tbody>
+        ${rows('🏆 Eclectic',eW)}
+        ${rows('🏆 Best 4 IPS',iW)}
+        ${rows('🐦 Most birdies',birdies)}
+        ${rows('🦅 Most eagles',eagles)}
+        ${rows('⛳ Hole in one',aces)}
+        ${rows('🥵 Longest day',longest)}
+        ${rows('🚨 Most fined',fW)}
+        ${rows('💰 Fine pot',pot?[{record:'DKK '+pot}]:[])}
+      </tbody></table></div>
+    </div>`;
+  }).join('');
+}
+
 // ── My Dream Card ─────────────────────────────────────────────────────────────
 function renderMyDreamCard(){
   const p=players.find(x=>x.id===activeId);
@@ -5043,32 +5129,14 @@ function renderMyDreamCard(){
   const body=document.getElementById('myDreamCardBody');
   if(!p||!panel||!body){if(panel)panel.style.display='none';return;}
   const sel=document.getElementById('myDreamYear');
-  const season=sel?.value||new Date().getFullYear().toString();
-  const pr=allRounds.filter(r=>r.player_id===p.id&&r.date.startsWith(season));
+  const season=sel?.value||seasonOf(today());
+  const pr=allRounds.filter(r=>r.player_id===p.id&&inSeason(r.date,season));
   if(!pr.length){panel.style.display='none';return;}
   panel.style.display='block';
   const F=[0,1,2,3,4,5,6,7,8],B=[9,10,11,12,13,14,15,16,17];
   const pF=HOLE_PARS.slice(0,9).reduce((a,b)=>a+b,0),pB=HOLE_PARS.slice(9).reduce((a,b)=>a+b,0);
-  const bestPerHole=Array.from({length:18},(_,hi)=>{
-    let best=null;
-    for(const r of pr){
-      const h=r.holes[hi];if(!h||h.score==null)continue;
-      const tee=getTee(r.tee_id||'57');
-      const index=hcpOnDate(p,r.date);if(index==null)continue;
-      const phcp=calcPlayingHcp(index,tee);
-      const str=strokesOnHole(phcp,hi);
-      const nett=h.score-str;
-      const pts=stablefordPts(h.score,h.par,str);
-      if(best===null||nett<best.nett||(nett===best.nett&&(pts||0)>(best.pts||0)))
-        best={nett,gross:h.score,pts:pts||0,str,par:HOLE_PARS[hi],date:r.date};
-    }
-    return best;
-  });
-  const filled=bestPerHole.filter(Boolean).length;
-  const fN=F.reduce((s,i)=>s+(bestPerHole[i]?.nett??0),0),bN=B.reduce((s,i)=>s+(bestPerHole[i]?.nett??0),0);
-  const fP=F.reduce((s,i)=>s+(bestPerHole[i]?.pts??0),0),bP=B.reduce((s,i)=>s+(bestPerHole[i]?.pts??0),0);
-  const fF=F.filter(i=>bestPerHole[i]).length,bF=B.filter(i=>bestPerHole[i]).length;
-  const totalNett=fN+bN,totalPts=fP+bP,completedPar=bestPerHole.reduce((s,b)=>s+(b?b.par:0),0),nd=totalNett-completedPar;
+  const {bestPerHole,filled,fN,bN,fP,bP,fF,bF,totalNett,totalPts,completedPar}=eclecticCard(p,pr,seasonInfo(season).eclectic);
+  const nd=totalNett-completedPar;
   function hc(i){const b=bestPerHole[i];if(!b)return`<td style="color:rgba(255,255,255,0.2)">—</td>`;const diff=b.nett-b.par;return`<td title="${fd(b.date)} · Gross ${b.gross}${b.str?' −'+b.str:''} = Nett ${b.nett} (${b.pts}pts)" style="font-family:'DM Mono',monospace;font-size:0.88rem;font-weight:600;color:${vpC(diff)};cursor:default">${b.nett}</td>`;}
   function pc(i){const b=bestPerHole[i];if(!b)return`<td style="color:rgba(255,255,255,0.2)">—</td>`;return`<td style="font-family:'DM Mono',monospace;font-size:0.78rem;font-weight:500;color:${ptC(b.pts)}">${b.pts}</td>`;}
   body.innerHTML=`<div style="padding:1rem 1.25rem">
@@ -5107,27 +5175,32 @@ function fineAmount(f){
 }
 // Total a player has paid back, optionally restricted to a season (by payment date).
 function paidByPlayer(pid,season){
-  return finePayments.filter(pm=>pm.player_id===pid&&(!season||(pm.date&&pm.date.startsWith(season))))
+  return finePayments.filter(pm=>pm.player_id===pid&&(!season||inSeason(pm.date,season)))
     .reduce((s,pm)=>s+Number(pm.amount||0),0);
 }
-function renderFinesLb(){
-  const season=document.getElementById('finesYear')?.value||new Date().getFullYear().toString();
-  const sf=allFines.filter(f=>f.date&&f.date.startsWith(season));
-  const total=sf.reduce((s,f)=>s+fineAmount(f),0);
-  const paid=finePayments.filter(pm=>pm.date&&pm.date.startsWith(season)).reduce((s,pm)=>s+Number(pm.amount||0),0);
-  const outstanding=total-paid;
-  const potEl=document.getElementById('finesPot');
-  const card=(label,val,col)=>`<div style="background:rgba(240,160,48,0.07);border:1px solid rgba(240,160,48,0.25);border-radius:10px;padding:0.85rem"><div style="font-size:0.6rem;text-transform:uppercase;letter-spacing:0.1em;color:rgba(240,160,48,0.5);margin-bottom:4px">${label}</div><div style="font-family:'DM Mono',monospace;font-size:1.2rem;color:${col};font-weight:600">${val}</div></div>`;
-  if(potEl)potEl.innerHTML=`<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;text-align:center">${card('Fine Pot','DKK '+total,'#f0a030')}${card('Total Fines',sf.length,'#f0a030')}${card('Paid','DKK '+paid,'#7fcc9e')}${card('Outstanding','DKK '+outstanding,outstanding>0?'#f08080':'#7fcc9e')}</div>`;
-  renderFinesToday();
-  if(!sf.length){document.getElementById('finesTable').innerHTML='<div class="empty">No fines issued in '+season+' 🎉</div>';return;}
-  const byPlayer=players.map(p=>{
+// Per-player fines for a season, most fined (by count) first.
+function finesStandings(season){
+  const sf=allFines.filter(f=>inSeason(f.date,season));
+  return players.map(p=>{
     const pf=sf.filter(f=>f.player_id===p.id);if(!pf.length)return null;
     const total=pf.reduce((s,f)=>s+fineAmount(f),0);
     const pd=paidByPlayer(p.id,season);
     const breakdown=fineTypes.map(ft=>{const cnt=pf.filter(f=>f.fine_type_id===ft.id).length;return cnt?{ft,cnt}:null;}).filter(Boolean).sort((a,b)=>b.cnt-a.cnt);
     return{p,count:pf.length,total,paid:pd,owes:total-pd,breakdown};
   }).filter(Boolean).sort((a,b)=>b.count-a.count);
+}
+function renderFinesLb(){
+  const season=document.getElementById('finesYear')?.value||seasonOf(today());
+  const sf=allFines.filter(f=>inSeason(f.date,season));
+  const total=sf.reduce((s,f)=>s+fineAmount(f),0);
+  const paid=finePayments.filter(pm=>inSeason(pm.date,season)).reduce((s,pm)=>s+Number(pm.amount||0),0);
+  const outstanding=total-paid;
+  const potEl=document.getElementById('finesPot');
+  const card=(label,val,col)=>`<div style="background:rgba(240,160,48,0.07);border:1px solid rgba(240,160,48,0.25);border-radius:10px;padding:0.85rem"><div style="font-size:0.6rem;text-transform:uppercase;letter-spacing:0.1em;color:rgba(240,160,48,0.5);margin-bottom:4px">${label}</div><div style="font-family:'DM Mono',monospace;font-size:1.2rem;color:${col};font-weight:600">${val}</div></div>`;
+  if(potEl)potEl.innerHTML=`<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;text-align:center">${card('Fine Pot','DKK '+total,'#f0a030')}${card('Total Fines',sf.length,'#f0a030')}${card('Paid','DKK '+paid,'#7fcc9e')}${card('Outstanding','DKK '+outstanding,outstanding>0?'#f08080':'#7fcc9e')}</div>`;
+  renderFinesToday();
+  if(!sf.length){document.getElementById('finesTable').innerHTML='<div class="empty">No fines issued in '+season+' 🎉</div>';return;}
+  const byPlayer=finesStandings(season);
   document.getElementById('finesTable').innerHTML=`<div class="rt-wrap"><table class="rt"><thead><tr><th></th><th>Player</th><th>Fines</th><th>DKK</th><th>Paid</th><th>Owes</th><th>Breakdown</th></tr></thead><tbody>${byPlayer.map((row,i)=>{
     const rc=i===0?'rank gold':i===1?'rank silver':i===2?'rank bronze':'rank';
     const medal=i===0?'1st':i===1?'2nd':i===2?'3rd':`${i+1}th`;
@@ -5335,9 +5408,7 @@ async function reactivateFineType(id){
 // ── My Rounds ─────────────────────────────────────────────────────────────────
 function renderMyRounds(){
   const p=players.find(x=>x.id===activeId);document.getElementById('myTitle').textContent=p?p.name+"'s Rounds":"My Rounds";
-  // Populate dream card year selector
-  const myDreamYearEl=document.getElementById('myDreamYear');
-  if(myDreamYearEl&&!myDreamYearEl.options.length){const cy=new Date().getFullYear();[cy,cy-1].forEach(y=>{const o=document.createElement('option');o.value=y;o.textContent=y;myDreamYearEl.appendChild(o);});}
+  populateYearSelects();
   const mr=activeId?allRounds.filter(r=>r.player_id===activeId):[];
   if(!mr.length){document.getElementById('myStats').innerHTML='';document.getElementById('myTable').innerHTML=activeId?'<div class="empty">No rounds yet.</div>':'<div class="empty">Select your player profile (top right).</div>';return;}
   const diffs=mr.map(r=>tS(r.holes)-tP(r.holes));const pts=mr.map(r=>calcRoundPoints(r,p)).filter(x=>x!=null);const best=Math.min(...diffs);const avg=(diffs.reduce((a,b)=>a+b,0)/diffs.length).toFixed(1);const bPts=pts.length?Math.max(...pts):null;const aPts=pts.length?(pts.reduce((a,b)=>a+b,0)/pts.length).toFixed(1):null;

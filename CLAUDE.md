@@ -163,7 +163,29 @@ Admin bulk entry is **completely separate** from HE. One player at a time. Full 
 Live rounds for today's date. Shows holes completed, progress bar, stableford points. Per-player hole-by-hole scorecard below. Includes partial rounds (live scoring).
 
 ### Season
-Best 4 stableford rounds per player, summed. Filterable by year.
+Best 4 stableford rounds per player, summed. Filterable by season.
+
+Seasons are named editions ("Summer 2026", "Winter 2027"), not calendar years —
+defined by start date in the `SEASONS` array in `index.html`. Season, Eclectic,
+My Dream Card and Fines all filter through `seasonOf(date)` / `inSeason()`. To
+start a new edition, add a row to `SEASONS`.
+
+Each `SEASONS` row carries its own **eclectic allowance** (95% Summer 2026, 60%
+from Winter 2027). Everything else — season points, Today, Log Round — plays off
+`PLAYING_ALLOWANCE` (95%). Pass the allowance to `calcPlayingHcp`; never change
+its default to adjust the eclectic, as that rescores the whole app.
+
+### Hall of Fame
+Winners per season: Eclectic (complete 18-hole cards only, social members
+excluded), Best 4 IPS, most fined (by count) and the season's fine pot. Computed
+live from `seasonStandings` / `eclecticStandings` / `finesStandings` — the same
+functions the leaderboards use — so there is no winners table to keep in sync.
+Ties share the title. The current season shows as "In progress · current leaders".
+
+Records rows (all players, social included — no prize money): most gross birdies
+(par−1), most gross eagles (par−2 or better, so an ace on a par 3 also counts),
+every hole in one, and the longest day — fewest stableford points in a *finished*
+round (all 18 holes scored or picked up).
 
 ### Eclectic
 Per-player best nett score per hole across the season. Ranked by total nett. "My Card ↓" button scrolls to active player's card (highlighted with their colour). Each card has `id="eclectic_{pid}"`.
