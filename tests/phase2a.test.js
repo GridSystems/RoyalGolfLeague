@@ -15,8 +15,10 @@ setTimeout(async function(){
     resetPasswordForEmail:async(e,o)=>{authCalls.push(['reset',e,o]);return{data:{},error:null};},
     updateUser:async a=>{authCalls.push(['update',a]);return{data:{},error:null};},
     signOut:async()=>{authCalls.push(['signOut']);return{error:null};},
-    mfa:{listFactors:async()=>({data:{totp:authState.factors||[]},error:null}),
-         enroll:async a=>{authCalls.push(['enroll',a]);return{data:{id:'f1',totp:{qr_code:'<svg/>',secret:'S'}},error:null};},
+    // As supabase-js: `all` lists every factor, `totp` only the verified TOTP ones.
+    mfa:{listFactors:async()=>{const f=authState.factors||[];return{data:{all:f,totp:f.filter(x=>x.status==='verified')},error:null};},
+         enroll:async a=>{authCalls.push(['enroll',a]);return authState.enroll||{data:{id:'f1',totp:{qr_code:'<svg/>',secret:'S'}},error:null};},
+         unenroll:async a=>{authCalls.push(['unenroll',a]);return{data:{},error:null};},
          challengeAndVerify:async a=>{authCalls.push(['verify',a]);return authState.verify||{data:{},error:null};}}}};
   window.supabase={createClient:()=>fakeClient};
   const now=Math.floor(Date.now()/1000);
@@ -278,6 +280,75 @@ setTimeout(async function(){
     await renderMoveOverList();
     await new Promise(r=>setTimeout(r,50));
     T('move-over list escapes a malicious player name (no <img>, no script run)',!document.getElementById('moveOverList').querySelector('img')&&window.__xss9===undefined);
+
+    // ── Final review ──
+    // Finding 7: resetTournament gets admin mode before any delete (a pre-admin-mode DELETE
+    // silently removes nothing, then the PATCH would prompt and reset the status anyway).
+    players=[{id:1,name:'Ann',user_id:'u-1',is_admin:true,color:0,hcp_history:[],approved:true}];activeId=1;
+    _session=sessionFor('u-1');authState.factors=[{id:'f1',factor_type:'totp',status:'verified'}];
+    tournaments=[{id:7,status:'active'}];tournamentMatches=[{id:70,tournament_id:7}];tournamentScores=[];
+    document.getElementById('mfaModal').style.display='none';
+    reset((u,b,mth)=>mth==='PATCH'?[{id:7}]:u.includes('/rpc/log_admin_mode')?true:[]);
+    const rt=resetTournament(7);await new Promise(r=>setTimeout(r,50));
+    T('reset tournament opens the admin-mode prompt before any DELETE is sent',document.getElementById('mfaModal').style.display!=='none'&&!calls.some(c=>c.method==='DELETE'),JSON.stringify(calls.map(c=>c.method)));
+    await verifyAndUpgrade();await rt;
+    T('…and after the code, the deletes and the reset proceed',calls.filter(c=>c.method==='DELETE').length===2&&calls.some(c=>c.method==='PATCH'));
+
+    // Finding 10: an abandoned (unverified) enrolment is removed before enrolling again; an enrol
+    // error gives a friendly message instead of a TypeError.
+    _session=sessionFor('u-1');document.getElementById('mfaModal').style.display='none';
+    authState.factors=[{id:'stale',factor_type:'totp',status:'unverified'}];authCalls.length=0;
+    const ra=requireAdminMode();await new Promise(r=>setTimeout(r,50));
+    const ui=authCalls.findIndex(c=>c[0]==='unenroll'&&c[1].factorId==='stale'),ei=authCalls.findIndex(c=>c[0]==='enroll');
+    T('an unverified factor is unenrolled before a new enroll',ui>=0&&ei>ui,JSON.stringify(authCalls));
+    cancelMfa();await ra;
+    const toasts=[];const origToast=window.toast;window.toast=m=>toasts.push(m);
+    authState.factors=[];authState.enroll={data:null,error:{message:'A factor with the friendly name "Saturday League" already exists'}};
+    let enrolRes,enrolThrew=null;try{enrolRes=await requireAdminMode();}catch(e){enrolThrew=e;}
+    T('an enroll error resolves false with a friendly message, no TypeError',enrolThrew===null&&enrolRes===false&&toasts.some(m=>/couldn.t start two-factor/i.test(m)),String(enrolThrew)+' '+JSON.stringify(toasts));
+    window.toast=origToast;authState.enroll=null;
+
+    // Finding 5: new members see the DKK 250 pay-in, after sign-up and while pending.
+    const PAY_URL='https://qr.mobilepay.dk/box/53592791-c6e9-4588-976f-8b187c98c76d/pay-in';
+    showLockPanel('lockSignupPanel');['signupName','signupEmail','signupDgu','signupHcp','signupPassword','signupPassword2'].forEach(id=>field(id,''));
+    field('signupName','Di');field('signupEmail','di@x.dk');field('signupDgu','900-3');field('signupPassword','longenough1');field('signupPassword2','longenough1');
+    await submitSignup();
+    const ce=document.getElementById('lockCheckEmailPanel');
+    T('after sign-up the check-email screen shows the DKK 250 pay instruction and link',shown('lockCheckEmailPanel')&&/DKK 250/.test(ce.textContent)&&!!ce.querySelector(`a[href="${PAY_URL}"]`));
+    players=[];pendingPlayers=[{id:40,name:'Di',user_id:'u-40',approved:false,color:0,hcp_history:[]}];activeId=40;
+    applyPendingUI();
+    const pb=document.getElementById('pendingBanner');
+    T('a signed-in pending player sees the pay instruction',pb.style.display!=='none'&&/DKK 250/.test(pb.textContent)&&!!pb.querySelector(`a[href="${PAY_URL}"]`));
+    pendingPlayers=[];
+
+    // Finding 2: a confirmation/reset link opened in another browser (no PKCE verifier) has
+    // ?code= but yields no session — explain it instead of a silent login screen.
+    localStorage.clear();sessionStorage.clear();authState.session=null;reset(()=>[]);
+    history.replaceState(null,'','?code=abc123');
+    await boot();
+    const le=document.getElementById('loginError');
+    T('a link opened in a different browser or app explains itself',shown('lockLoginPanel')&&shown('loginError')&&/different browser or app/i.test(le.textContent)&&/sign in with your password/i.test(le.textContent)&&/request a new link/i.test(le.textContent),le.textContent);
+    T('…and ?code is dropped from the URL',!new URLSearchParams(location.search).has('code'),location.search);
+
+    // Finding 1: a password-reset link — supabase-js emits PASSWORD_RECOVERY while it initialises
+    // (inside getSession), and again on a timer that on a real network also fires long before
+    // init() finishes. The stub fires both before getSession resolves (a timer here would land
+    // after the stubbed, instant init and re-show the panel, hiding the bug); the new-password
+    // panel must survive boot().
+    localStorage.clear();sessionStorage.clear();
+    authState.session=sessionFor('u-2');
+    reset(u=>u.includes('/players?')?[{id:2,name:'Bo',user_id:'u-2',color:0,hcp_history:[],approved:true}]:[]);
+    document.getElementById('lockScreen').style.display='flex';
+    const origGetSession=fakeClient.auth.getSession;
+    fakeClient.auth.getSession=async()=>{authState.cb('PASSWORD_RECOVERY',authState.session);await null;authState.cb('PASSWORD_RECOVERY',authState.session);return{data:{session:authState.session},error:null};};
+    await boot();await new Promise(r=>setTimeout(r,50));
+    fakeClient.auth.getSession=origGetSession;
+    T('a reset link shows "choose a new password" after boot, over the lock screen',shown('lockNewPwPanel')&&document.getElementById('lockScreen').style.display!=='none');
+    field('newPassword','longenough3');field('newPassword2','longenough3');authCalls.length=0;await submitNewPassword();
+    T('…and after the new password the app starts',authCalls.some(c=>c[0]==='update'&&c[1].password==='longenough3')&&document.getElementById('lockScreen').style.display==='none'&&activeId===2);
+
+    // Ponytail cuts: the thin wrappers are gone.
+    T('showSignup, showLockLogin and showLockSignup are removed',typeof window.showSignup==='undefined'&&typeof window.showLockLogin==='undefined'&&typeof window.showLockSignup==='undefined');
     // ── end ──
   }catch(e){out.push('FAIL EXCEPTION :: '+e.stack);}
   await new Promise(r=>setTimeout(r,150));

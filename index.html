@@ -232,7 +232,7 @@ select option { background: #1a3a2a; }
         <div id="lockSetPinError" style="color:#f08080;font-size:0.78rem;display:none"></div>
       </div>
       <button class="btn btn-primary" style="width:100%" onclick="submitLockSetPin()">Set PIN & Enter</button>
-      <div style="margin-top:1.25rem;font-size:0.8rem;color:rgba(240,213,140,0.5)"><span onclick="showLockLogin()" style="color:var(--gold-l);cursor:pointer;text-decoration:underline">← Back</span></div>
+      <div style="margin-top:1.25rem;font-size:0.8rem;color:rgba(240,213,140,0.5)"><span onclick="showLockPanel('lockLoginPanel')" style="color:var(--gold-l);cursor:pointer;text-decoration:underline">← Back</span></div>
     </div>
     <!-- Sign-up panel -->
     <div id="lockSignupPanel" style="display:none">
@@ -247,12 +247,6 @@ select option { background: #1a3a2a; }
       </div>
       <button class="btn btn-primary" style="width:100%" onclick="submitSignup()">Register</button>
       <div style="margin-top:1.25rem;font-size:0.8rem;color:rgba(240,213,140,0.5)"><span class="lock-link" onclick="showLockPanel('lockLoginPanel')">← Back to login</span></div>
-    </div>
-    <!-- MobilePay panel -->
-    <div id="lockPayPanel" style="display:none">
-      <div style="font-size:0.88rem;color:rgba(255,255,255,0.75);line-height:1.6;margin-bottom:1.5rem;text-align:left">Your registration is pending admin approval.<br><br>Please pay <strong style="color:var(--gold-l)">DKK 250</strong> to access the season at the link below. The pot is split 50/50 between the Eclectic tournament and the best 4 IPS Scores at end of Season.</div>
-      <a href="https://qr.mobilepay.dk/box/53592791-c6e9-4588-976f-8b187c98c76d/pay-in" target="_blank" style="display:block;background:rgba(201,168,76,0.12);border:1px solid rgba(201,168,76,0.35);border-radius:12px;padding:1rem;text-align:center;text-decoration:none;color:var(--gold-l);font-size:0.9rem;font-weight:500;margin-bottom:1.25rem">Pay DKK 250 via MobilePay →</a>
-      <button class="btn btn-ghost" style="width:100%" onclick="showLockLogin()">Back to Login</button>
     </div>
   </div>
 </div>
@@ -270,7 +264,7 @@ select option { background: #1a3a2a; }
   </div>
 </header>
 <div class="main">
-  <div id="pendingBanner" style="display:none;background:rgba(201,168,76,0.08);border:1px solid rgba(201,168,76,0.25);border-radius:10px;padding:0.7rem 1rem;font-size:0.82rem;color:rgba(240,213,140,0.8);margin-bottom:1rem">Your account is pending admin approval. You can log rounds in the meantime.</div>
+  <div id="pendingBanner" style="display:none;background:rgba(201,168,76,0.08);border:1px solid rgba(201,168,76,0.25);border-radius:10px;padding:0.7rem 1rem;font-size:0.82rem;color:rgba(240,213,140,0.8);margin-bottom:1rem">Your account is pending admin approval. You can log rounds in the meantime.<div id="pendingPay" style="margin-top:0.6rem"></div></div>
   <div class="nav">
     <button class="nav-tab active" id="tabLeaderboard" onclick="showView('leaderboard',this)">Leaderboards</button>
     <button class="nav-tab" onclick="showView('log',this)">Log Round</button>
@@ -899,10 +893,13 @@ async function sbCheck(r,retry){
 }
 // Supabase Auth, used only for login. The data helpers below stay plain fetch calls; when someone is
 // signed in they carry that person's token, so the database's permission rules know who is asking.
-let _auth=null,_session=null;
+// _recoveryPending: a password-reset link signed us in. supabase-js reports it while it starts up
+// (before boot() has its session), so boot() and init() check this flag rather than start the app
+// over the "choose a new password" panel; submitNewPassword() clears it.
+let _auth=null,_session=null,_recoveryPending=false;
 function authClient(){
   if(!_auth){_auth=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{flowType:'pkce',detectSessionInUrl:true,persistSession:true,autoRefreshToken:true}});
-    _auth.auth.onAuthStateChange((event,session)=>{_session=session;if(event==='PASSWORD_RECOVERY')showLockPanel('lockNewPwPanel');});}
+    _auth.auth.onAuthStateChange((event,session)=>{_session=session;if(event==='PASSWORD_RECOVERY'){_recoveryPending=true;showLockPanel('lockNewPwPanel');}});}
   return _auth;
 }
 function hdr(extra){return{...H,...(_session?{Authorization:'Bearer '+_session.access_token}:{}),...(extra||{})};}
@@ -930,10 +927,17 @@ async function requireAdminMode(){
   // sbUpdate calls) — join it instead of opening a second one and orphaning the first.
   if(_mfaPending)return _mfaPending;
   _mfaPending=(async()=>{
-    const {data}=await authClient().auth.mfa.listFactors();
+    const mfaApi=authClient().auth.mfa,failed=()=>{toast('Couldn\'t start two-factor — try again.');return false;};
+    const {data,error}=await mfaApi.listFactors();if(error)return failed();
     let factor=(data.totp||[]).find(f=>f.status==='verified');
     document.getElementById('mfaEnroll').style.display='none';
-    if(!factor){const e=await authClient().auth.mfa.enroll({factorType:'totp',friendlyName:'Saturday League'});
+    if(!factor){
+      // An enrolment abandoned before its first code stays behind unverified, and a second one with the
+      // same name may be refused — clear it out first.
+      for(const f of (data.all||[]).filter(f=>f.factor_type==='totp'&&f.status!=='verified'))
+        if((await mfaApi.unenroll({factorId:f.id})).error)return failed();
+      const e=await mfaApi.enroll({factorType:'totp',friendlyName:'Saturday League'});
+      if(e.error||!e.data)return failed();
       factor={id:e.data.id};
       // e.data.totp.qr_code is an SVG string returned by Supabase's own auth server, never user text — innerHTML is safe here.
       document.getElementById('mfaQr').innerHTML=e.data.totp.qr_code;document.getElementById('mfaEnroll').style.display='block';}
@@ -973,25 +977,21 @@ async function sbInsert(t,b){const go=()=>fetch(`${SUPABASE_URL}/rest/v1/${t}?${
 // prompt on that too. If the prompt is cancelled we throw rather than return the empty result, so a
 // caller can't mistake a blocked write for a successful no-op; a retry that's genuinely still empty
 // (the id just doesn't match anything) is returned unchanged.
+async function retryEmptyInAdminMode(rows,go){
+  if(rows.length||!_session||!isAdminAccount()||adminModeActive())return rows;
+  if(!await requireAdminMode())throw new Error('Admin mode is needed for that.');
+  return (await sbCheck(await go(),null)).json();
+}
 async function sbUpdate(t,id,b){
   const go=()=>fetch(`${SUPABASE_URL}/rest/v1/${t}?id=eq.${id}&${sbSel(t)}`,{method:'PATCH',headers:hdr({'Prefer':'return=representation'}),body:JSON.stringify(b)});
-  let rows=await (await sbCheck(await go(),go)).json();
-  if(!rows.length&&_session&&isAdminAccount()&&!adminModeActive()){
-    if(!await requireAdminMode())throw new Error('Admin mode is needed for that.');
-    rows=await (await sbCheck(await go(),null)).json();
-  }
-  return rows;
+  return retryEmptyInAdminMode(await (await sbCheck(await go(),go)).json(),go);
 }
 async function sbRpc(fn,args){const go=()=>fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`,{method:'POST',headers:hdr(),body:JSON.stringify(args)});const r=await sbCheck(await go(),go);const t=await r.text();return t?JSON.parse(t):null;}
 // select=id: every table grants SELECT on id, but players' column-level grants stop there — asking
 // Prefer:return=representation without naming a column set would try to return every column and 42501.
 async function sbDelete(t,id){
   const go=()=>fetch(`${SUPABASE_URL}/rest/v1/${t}?id=eq.${id}&select=id`,{method:'DELETE',headers:hdr({'Prefer':'return=representation'})});
-  const rows=await (await sbCheck(await go(),go)).json();
-  if(!rows.length&&_session&&isAdminAccount()&&!adminModeActive()){
-    if(!await requireAdminMode())throw new Error('Admin mode is needed for that.');
-    await sbCheck(await go(),null);
-  }
+  await retryEmptyInAdminMode(await (await sbCheck(await go(),go)).json(),go);
 }
 async function sbDeleteWhere(t,filter){
   const go=()=>fetch(`${SUPABASE_URL}/rest/v1/${t}?${filter}`,{method:'DELETE',headers:hdr()});
@@ -1294,7 +1294,7 @@ function applyPendingUI(){const p=players.find(x=>x.id===activeId)||pendingPlaye
 
 // ── Login ─────────────────────────────────────────────────────────────────────
 let lockLoginPlayer=null;
-const LOCK_PANELS=['lockLoginPanel','lockPinPanel','lockSetPinPanel','lockSetupPanel','lockForgotPanel','lockNewPwPanel','lockCheckEmailPanel','lockUnlinkedPanel','lockSignupPanel','lockPayPanel'];
+const LOCK_PANELS=['lockLoginPanel','lockPinPanel','lockSetPinPanel','lockSetupPanel','lockForgotPanel','lockNewPwPanel','lockCheckEmailPanel','lockUnlinkedPanel','lockSignupPanel'];
 // Shows one lock-screen panel and hides the rest.
 function showLockPanel(id){
   document.getElementById('lockScreen').style.display='flex';
@@ -1308,7 +1308,6 @@ function showLockDbError(){
   const err=document.getElementById('loginError');
   if(err){err.textContent="Can't reach the league database — check your signal and reload.";err.style.display='block';}
 }
-function showLockLogin(){showLockPanel('lockLoginPanel');}
 function lockError(id,msg){const e=document.getElementById(id);e.textContent=msg;e.style.display='block';}
 const pwProblem=(a,b)=>!a||a.length<8?'Password must be at least 8 characters.':a!==b?'Passwords do not match.':null;
 // prefix/suffix are our own fixed copy (may contain simple HTML like <strong>); the typed email is
@@ -1357,7 +1356,7 @@ async function submitNewPassword(){
   const p=pwProblem(a,b);if(p){lockError('newPwError',p);return;}
   const {error}=await authClient().auth.updateUser({password:a});
   if(error){lockError('newPwError',error.message);return;}
-  toast('Password changed ✓');await startApp();
+  _recoveryPending=false;toast('Password changed ✓');await startApp();
 }
 // Links that fail (expired, used, or opened on another device — PKCE) come back with ?error=…
 function handleAuthRedirectError(){
@@ -1421,8 +1420,10 @@ async function loginAs(p){                       // old PIN route (removed in re
 }
 
 // ── Sign-up ───────────────────────────────────────────────────────────────────
-function showLockSignup(){showLockPanel('lockSignupPanel');}
-function showSignup(){showLockSignup();}
+// The season fee: shown after sign-up and on the pending banner until an admin approves.
+const SEASON_PAY_HTML='Please pay <strong style="color:var(--gold-l)">DKK 250</strong> to access the season at the link below. The pot is split 50/50 between the Eclectic tournament and the best 4 IPS Scores at end of Season.'
+  +'<a href="https://qr.mobilepay.dk/box/53592791-c6e9-4588-976f-8b187c98c76d/pay-in" target="_blank" rel="noopener" style="display:block;background:rgba(201,168,76,0.12);border:1px solid rgba(201,168,76,0.35);border-radius:12px;padding:1rem;text-align:center;text-decoration:none;color:var(--gold-l);font-size:0.9rem;font-weight:500;margin-top:0.75rem">Pay DKK 250 via MobilePay →</a>';
+document.getElementById('pendingPay').innerHTML=SEASON_PAY_HTML;
 async function submitSignup(){
   const v=id=>document.getElementById(id).value.trim();
   const name=v('signupName'),email=v('signupEmail').toLowerCase(),dgu=v('signupDgu'),hcpRaw=v('signupHcp'),a=document.getElementById('signupPassword').value,b=document.getElementById('signupPassword2').value;
@@ -1434,7 +1435,7 @@ async function submitSignup(){
   const {error}=await authClient().auth.signUp({email,password:a,options:{emailRedirectTo:SITE_URL,
     data:{name,dgu_number:dgu,handicap,color:Math.floor(Math.random()*COLORS.length)}}});
   if(authSignupError('signupError',error))return;
-  checkEmail('Nearly there: we\'ve sent a confirmation link to ',email,'. After you click it, your registration waits for admin approval.');
+  checkEmail('Nearly there: we\'ve sent a confirmation link to ',email,'. After you click it, your registration waits for admin approval.<br><br>'+SEASON_PAY_HTML);
 }
 function renderPendingApprovals(){
   const panel=document.getElementById('pendingApprovalsPanel');
@@ -4493,6 +4494,8 @@ async function advanceTournamentStatus(tournId){
 }
 async function resetTournament(id){
   if(!confirm('Delete all match and score data for this tournament? The tournament record stays.'))return;
+  // Admin mode up front, as rejectPlayer does: before it, the deletes would silently remove nothing.
+  if(!await requireAdminMode())return;
   try{
     const mIds=tournamentMatches.filter(m=>m.tournament_id===id).map(m=>m.id);
     if(mIds.length>0){
@@ -6188,7 +6191,7 @@ async function init(){
   setLoading(false);
   const _initView=new URLSearchParams(location.search).get('view');
   if(_initView==='track'){showView('track',document.getElementById('tabTrack'));history.replaceState(null,'',location.href.split('?')[0]);}
-  document.getElementById('lockScreen').style.display='none';
+  if(!_recoveryPending)document.getElementById('lockScreen').style.display='none';
 }
 // ── Update check ───────────────────────────────────────────────────────
 // iOS tabs live for weeks, and sessionStorage keeps them signed in, so players
@@ -6223,12 +6226,19 @@ window.addEventListener('pageshow',checkForUpdate);   // also fires on iOS bfcac
 // the data and the player are all resolved, then the app appears once, already as you.
 async function boot(){
   handleAuthRedirectError();
+  const hadCode=new URLSearchParams(location.search).has('code');   // a confirmation or reset link
   let session=null;
   try{session=(await authClient().auth.getSession()).data.session;}catch(e){/* login service unreachable: old route still works */}
   _session=session;
+  if(_recoveryPending){setLoading(false);showLockPanel('lockNewPwPanel');return;}
   if(session){await startApp();return;}
+  // The link's one-time code needs the verifier this browser stored when the link was requested; in
+  // another browser or app (the Gmail app vs Safari, the home-screen app vs Safari) there is none, so
+  // no session and no error either. Say so rather than show a plain login screen.
+  if(hadCode){const u=new URL(location.href);u.searchParams.delete('code');history.replaceState(null,'',u.pathname+u.search+u.hash);}
   if(sessionStorage.getItem('sl_session_player')){await init();return;}
   setLoading(false);showLockPanel('lockLoginPanel');
+  if(hadCode)lockError('loginError','That link was opened in a different browser or app than the one that asked for it. If you were confirming your email, that part is done — sign in with your password here. If you were resetting your password, request a new link and open it in this same browser.');
 }
 async function startApp(){
   await init();
