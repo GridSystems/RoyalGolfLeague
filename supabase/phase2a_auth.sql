@@ -219,13 +219,22 @@ CREATE POLICY p2_signups_read  ON public.saturday_signups FOR SELECT TO authenti
 CREATE POLICY p2_signups_write ON public.saturday_signups FOR ALL TO authenticated
   USING ((private.is_member() AND player_id = private.current_player()) OR private.is_admin())
   WITH CHECK ((private.is_member() AND player_id = private.current_player()) OR private.is_admin());
--- The draw fields (group_num, tee_time, date, player_id) change only in admin mode or via run_draw
--- itself; a member editing their own row keeps early_tee_request/early_tee_reason. run_draw is
--- SECURITY DEFINER and sets a transaction-local flag (app.drawing) so its own write passes through
--- without the trigger having to depend on the definer's role name, which differs across environments.
+-- The draw fields (group_num, tee_time, date, player_id) are set only in admin mode or via run_draw
+-- itself; a member signing up supplies neither, and editing their own row afterward keeps only
+-- early_tee_request/early_tee_reason. Without the INSERT half, a member could INSERT their own row
+-- with group_num/tee_time already populated — sailing past the UPDATE-only guard entirely, and
+-- tripping run_draw's "already drawn" check for everyone. run_draw is SECURITY DEFINER and sets a
+-- transaction-local flag (app.drawing) so its own write passes through without the trigger having
+-- to depend on the definer's role name, which differs across environments.
 CREATE FUNCTION private.protect_signup_fields() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
 BEGIN
   IF auth.uid() IS NULL OR private.is_admin() OR coalesce(current_setting('app.drawing', true), '') = 'on' THEN RETURN NEW; END IF;
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.group_num IS NOT NULL OR NEW.tee_time IS NOT NULL THEN
+      RAISE EXCEPTION 'Only an admin in admin mode can set the draw.' USING ERRCODE = '42501';
+    END IF;
+    RETURN NEW;
+  END IF;
   IF NEW.group_num IS DISTINCT FROM OLD.group_num OR NEW.tee_time IS DISTINCT FROM OLD.tee_time
      OR NEW.date IS DISTINCT FROM OLD.date OR NEW.player_id IS DISTINCT FROM OLD.player_id THEN
     RAISE EXCEPTION 'Only an admin in admin mode can change the draw.' USING ERRCODE = '42501';
@@ -233,7 +242,7 @@ BEGIN
   RETURN NEW;
 END $$;
 REVOKE ALL ON FUNCTION private.protect_signup_fields() FROM PUBLIC, anon, authenticated;
-CREATE TRIGGER protect_signup_fields BEFORE UPDATE ON public.saturday_signups FOR EACH ROW EXECUTE FUNCTION private.protect_signup_fields();
+CREATE TRIGGER protect_signup_fields BEFORE INSERT OR UPDATE ON public.saturday_signups FOR EACH ROW EXECUTE FUNCTION private.protect_signup_fields();
 -- gps_shots: location data — own only; admins
 CREATE POLICY p2_gps ON public.gps_shots FOR ALL TO authenticated
   USING (player_id = private.current_player() OR private.is_admin()) WITH CHECK (player_id = private.current_player() OR private.is_admin());

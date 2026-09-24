@@ -60,6 +60,8 @@ const MATRIX = [
   ['member',     'edit own early_tee_reason',    `UPDATE public.saturday_signups SET early_tee_reason='home early' WHERE player_id=2 AND date='2026-11-07'`, 1],
   ['admin',      "move a player's group",        `UPDATE public.saturday_signups SET group_num=2 WHERE player_id=3 AND date='2026-11-07'`, 1],
   ['pending',    'sign self up',                 `INSERT INTO public.saturday_signups(player_id,date) VALUES (5,'2026-10-10')`, 'denied'],
+  ['member',     'sign up with a group already set', `INSERT INTO public.saturday_signups(player_id,date,group_num,tee_time) VALUES (2,'2026-12-05',7,'08:00')`, 'denied'],
+  ['admin',      'add a player with a group',    `INSERT INTO public.saturday_signups(player_id,date,group_num,tee_time) VALUES (3,'2026-12-05',7,'08:00')`, 1],
 ];
 
 for (const [who, what, sql, want] of MATRIX) {
