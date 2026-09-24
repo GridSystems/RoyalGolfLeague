@@ -142,6 +142,9 @@ setTimeout(async function(){
     T('shown while an admin views as someone else',so().style.display!=='none');
     activeId=1;renderProfile();
     T('My Profile keeps Change email but no longer has Sign out',/submitEmailChange/.test(document.getElementById('profileBody').innerHTML)&&!/signOut\(\)/.test(document.getElementById('profileBody').innerHTML));
+    const mediaRule=Array.from(document.styleSheets).flatMap(ss=>{try{return Array.from(ss.cssRules||[]);}catch(e){return[];}}).find(r=>r.media&&r.media.mediaText.includes('640px'));
+    const txt=mediaRule?mediaRule.cssText.replace(/\s+/g,''):'';
+    T('mobile media query hides db-status.db-ok and wraps hdr-right',mediaRule&&txt.includes('.db-status.db-ok{display:none')&&txt.includes('flex-wrap:wrap'));
     _session=null;
     // ── end ──
   }catch(e){out.push('FAIL EXCEPTION :: '+e.stack);}
