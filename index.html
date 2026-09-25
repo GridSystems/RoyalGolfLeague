@@ -1344,6 +1344,30 @@ function mlDrawGroups(entrants){
   const pots=[0,1,2,3].map(k=>shuffleDraw(s.slice(k*4,k*4+4).map(e=>e.pid)));
   return[0,1,2,3].map(g=>pots.map(pot=>pot[g]));
 }
+// Pot membership only — deterministic (index rank, ties by sign-up order), no shuffle. mlDrawGroupsResume
+// uses this so a retry recomputes exactly the same four pots every time, whatever is already saved.
+const mlSeedPots=entrants=>{const s=[...entrants].sort((x,y)=>x.index-y.index);return[0,1,2,3].map(k=>s.slice(k*4,k*4+4).map(e=>e.pid));};
+// Resume-safe draw for the admin's draw button: a player already saved (group_num/seed_pot from an
+// earlier, partly-failed draw) keeps that exact spot; only the rest of each pot is randomly assigned,
+// among the groups that pot still has free. Throws — nothing is written by the caller — if the saved
+// placements don't fit the deterministic pots: a seed_pot that doesn't match, or two players of the
+// same pot claiming the same group.
+function mlDrawGroupsResume(entrants,placed){
+  const groups=[[],[],[],[]];
+  mlSeedPots(entrants).forEach((pot,k)=>{
+    const free=[0,1,2,3],rest=[];
+    for(const pid of pot){
+      const p=placed[pid];
+      if(!p){rest.push(pid);continue;}
+      if(p.seed_pot!==k+1)throw new Error('A saved placement doesn\'t match the draw pots — check the entries and try again.');
+      if(groups[p.group_num-1][k]!==undefined)throw new Error('Two players are saved in the same group and pot — check the entries and try again.');
+      groups[p.group_num-1][k]=pid;
+      free.splice(free.indexOf(p.group_num-1),1);
+    }
+    shuffleDraw(free).forEach((g,i)=>{groups[g][k]=rest[i];});
+  });
+  return groups;
+}
 // Round robin in pot order: round 1 1v4 2v3, round 2 1v3 4v2, round 3 1v2 3v4.
 const ML_PAIRS=[[[0,3],[1,2]],[[0,2],[3,1]],[[0,1],[2,3]]];
 // Every league match, created together at the draw: 24 group matches (round 1–3, match_num 2g-1 and
@@ -5134,7 +5158,7 @@ function mlAdminHtml(t){
     +entriesPanelHtml({es:before?es:inn,buyIn:Number(t.buy_in||0),cap:before?(t.max_players||16):0,selId:'mlEntryFor',
       fn:{paid:'mlMarkPaid',undo:'mlUndoPaid',remove:before?'mlRemoveEntry':null,enterFor:before?'mlEnterFor':null,moveIn:before?'mlMoveIn':null},
       others:before?activePlayers().filter(p=>!entered.has(p.id)):[]});
-  if(before)html+=`<div style="margin-top:1rem"><button class="btn btn-primary btn-sm" onclick="mlDraw(${t.id})"${inn.length===16?'':' disabled'}>Draw groups (${inn.length}/16 in)</button></div>`;
+  if(before)html+=`<div style="margin-top:1rem"><button class="btn btn-primary btn-sm" onclick="mlDraw(${t.id})"${inn.length===16&&!mlDrawing?'':' disabled'}>${mlDrawing?'Drawing…':'Draw groups ('+inn.length+'/16 in)'}</button></div>`;
   html+=sub('Play-by dates')+`<div style="display:grid;gap:0.4rem">${ML_ROUND_KEYS.map(k=>`<label style="${mlLabelStyle}">${ML_ROUND_LABELS[k]} <input id="mlEd_${k}" type="date" class="input" value="${dl[k]||''}"></label>`).join('')}<button class="btn btn-ghost btn-sm" onclick="mlSaveDeadlines(${t.id})">Save dates</button></div>`;
   if(!before){
     const recs=mlRecords(t);
@@ -5178,19 +5202,26 @@ async function mlSaveDeadlines(tid){
   catch(e){alert('Couldn\'t save — '+e.message);}
   mlRedraw();
 }
+let mlDrawing=false;   // true while a draw is in flight — guards a double-click or two admins racing
 // The draw: pots by handicap index today, groups, then all 40 matches in one request, then 'drawn'.
-// Pressing it again after a failure resumes: players already placed keep their group and pot.
+// Pressing it again after a failure resumes: mlDrawGroupsResume keeps every player already saved
+// exactly where they were and only (re)randomises the rest, so a retry never reshuffles a placed player.
 async function mlDraw(tid){
   const t=tournaments.find(x=>x.id===tid);if(!t||t.status!=='entry')return;
+  if(mlDrawing){toast('A draw is already running — wait for it to finish.');return;}
   const {in:inn}=mlEntries(t);
   if(inn.length!==16){alert('The draw needs exactly 16 players in.');return;}
   if(!confirm('Draw the groups? Entries close and all the league matches are created.'))return;
-  if(!await requireAdminMode())return;
+  mlDrawing=true;mlRedraw();
   try{
+    if(!await requireAdminMode())return;
     if(!inn.every(e=>e.group_num!=null)){
       const idx=pid=>hcpOnDate(players.find(p=>p.id===pid)||{hcp_history:[]},today())??54;   // no handicap → last pot
-      const groups=mlDrawGroups(inn.map(e=>({pid:e.player_id,index:idx(e.player_id)})));
+      const entrants=inn.map(e=>({pid:e.player_id,index:idx(e.player_id)}));
+      const placed={};for(const e of inn)if(e.group_num!=null)placed[e.player_id]={group_num:e.group_num,seed_pot:e.seed_pot};
+      const groups=mlDrawGroupsResume(entrants,placed);
       for(const [gi,g] of groups.entries())for(const [k,pid] of g.entries()){
+        if(placed[pid])continue;   // already saved from an earlier attempt — kept exactly as it was
         const [row]=await sbUpdate('tournament_players',inn.find(e=>e.player_id===pid).id,{group_num:gi+1,seed_pot:k+1});
         if(!row)throw new Error('not saved');replaceTp(row);
       }
@@ -5203,6 +5234,7 @@ async function mlDraw(tid){
     const [tr]=await sbUpdate('tournaments',t.id,{status:'drawn'});if(!tr)throw new Error('not saved');
     t.status='drawn';toast('Groups drawn 🏆');
   }catch(e){alert('The draw didn\'t finish — '+e.message+'. Press Draw groups again to complete it.');}
+  finally{mlDrawing=false;}
   mlRedraw();
 }
 // Admin decisions on a league match — edits like any other, through mlChange and the edit rules.

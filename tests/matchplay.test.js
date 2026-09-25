@@ -696,6 +696,55 @@ setTimeout(async function(){
       T('audit log names the league actions',AUDIT_LABELS.match_outcome==='Match outcome recorded'&&AUDIT_LABELS.league_entered==='Entered matchplay league');
       activeId=2;
     }
+    // ── Task 9 fix round 1: resume without re-randomising, and a re-entrancy guard ──
+    {
+      const seedHcp=()=>{[5,30,12,1,22,8,17,3,26,14,9,20,2,28,11,6].forEach((v,i)=>players[i].hcp_history=[{date:'2026-01-01',value:v,note:''}]);players[15].hcp_history=[];};
+      // (a) the write loop fails on the 9th player: retry must not re-write or re-randomise the 8
+      // already saved, must still place the rest so every group has one per pot, then finish the draw.
+      entryLeague(16);activeId=1;seedHcp();
+      let n=0;
+      reset((u,b,m)=>{
+        if(m==='PATCH'&&u.includes('tournament_players')){n++;return n===9?[]:[{...tournamentPlayers.find(e=>e.id===+u.match(/id=eq\.(\d+)/)[1]),...b}];}
+        return [];
+      });
+      await mlDraw(900);
+      const placedIds=tournamentPlayers.filter(e=>e.group_num!=null).map(e=>e.id);
+      T('a failure on the 9th write leaves exactly the 8 before it placed, nothing else',placedIds.length===8&&tournamentMatches.length===0);
+      const savedSpots=Object.fromEntries(placedIds.map(id=>{const e=tournamentPlayers.find(x=>x.id===id);return[id,e.group_num+'-'+e.seed_pot];}));
+      reset((u,b,m)=>m==='PATCH'&&u.includes('tournament_players')?[{...tournamentPlayers.find(e=>e.id===+u.match(/id=eq\.(\d+)/)[1]),...b}]
+        :m==='POST'&&u.includes('tournament_matches')?b.map((r,i)=>({id:i+1,...r})):m==='PATCH'?[{...tournaments[0],...b}]:[]);
+      await mlDraw(900);
+      const retryPatched=calls.filter(c=>c.method==='PATCH'&&c.url.includes('tournament_players')).map(c=>+c.url.match(/id=eq\.(\d+)/)[1]);
+      T('retry: no write for the already-placed 8, and their saved group/pot is unchanged',
+        placedIds.every(id=>!retryPatched.includes(id))
+        &&placedIds.every(id=>{const e=tournamentPlayers.find(x=>x.id===id);return e.group_num+'-'+e.seed_pot===savedSpots[id];}));
+      const pairs=tournamentPlayers.filter(e=>e.tournament_id===900).map(e=>e.group_num+'-'+e.seed_pot);
+      T('retry: everyone is placed, one player per group per pot',new Set(pairs).size===16);
+      T('retry: the 40 matches follow and the league is drawn',tournamentMatches.filter(m=>m.tournament_id===900).length===40&&tournaments[0].status==='drawn');
+
+      // (b) a second call fired while the first is still awaiting: refused immediately, no extra writes.
+      entryLeague(16);activeId=1;seedHcp();
+      const toasts=[];const origToast=window.toast;window.toast=m=>toasts.push(m);
+      reset((u,b,m)=>m==='PATCH'&&u.includes('tournament_players')?[{...tournamentPlayers.find(e=>e.id===+u.match(/id=eq\.(\d+)/)[1]),...b}]
+        :m==='POST'&&u.includes('tournament_matches')?b.map((r,i)=>({id:i+1,...r})):m==='PATCH'?[{...tournaments[0],...b}]:[]);
+      const p1=mlDraw(900),p2=mlDraw(900);
+      T('a second draw fired while the first is in flight: toasts at once, no writes from it yet',toasts.length===1&&calls.length===0);
+      await Promise.all([p1,p2]);
+      window.toast=origToast;
+      const tpPatches=calls.filter(c=>c.method==='PATCH'&&c.url.includes('tournament_players'));
+      const matchPosts=calls.filter(c=>c.method==='POST'&&c.url.includes('tournament_matches'));
+      const drawnPatches=calls.filter(c=>c.method==='PATCH'&&c.url.includes('/tournaments?')&&c.body&&c.body.status==='drawn');
+      T('the overlapping call did no extra writes: 16 players, one set of matches, drawn once',tpPatches.length===16&&matchPosts.length===1&&drawnPatches.length===1);
+
+      // (c) saved placements that don't fit the deterministic pots: refused, nothing written.
+      entryLeague(16);activeId=1;seedHcp();
+      const e4=tournamentPlayers.find(e=>e.player_id===4),e13=tournamentPlayers.find(e=>e.player_id===13);
+      Object.assign(e4,{group_num:1,seed_pot:1});Object.assign(e13,{group_num:1,seed_pot:1});   // both saved into group 1, pot 1
+      window.__alert=null;reset(()=>[]);
+      await mlDraw(900);
+      T('inconsistent saved placements: refused, nothing written, the admin is told',calls.length===0&&!!window.__alert);
+      activeId=2;
+    }
     // ── end ──
   }catch(e){out.push('FAIL EXCEPTION :: '+e.stack);}
   await new Promise(r=>setTimeout(r,150));
