@@ -1396,6 +1396,53 @@ function mlStandings(pids,recs,seeds){
   return byPts.flatMap(v=>rank(pids.filter(p=>row[p].pts===v))).map((p,i)=>{const{phs,...pub}=row[p];return{...pub,pos:i+1};});
 }
 
+// Who should be in each playoff slot, from the match records alone. Semis once every group match is
+// decided (bracket b: Group A b-th v Group B b-th, Group C b-th v Group D b-th); a bracket's final
+// (the semi winners) and 3rd/4th (the losers) once both its semis are decided with the players the
+// plan puts there. want: {matchId: {a, b}} — nulls = not yet decided.
+function mlPlan(recs,groups,seeds){
+  const want={},group=recs.filter(r=>r.stage==='group');
+  const tables=groups.map((g,gi)=>mlStandings(g,group.filter(r=>mlGroupOf(r)===gi+1),seeds));
+  const groupsDone=group.length===24&&group.every(r=>r.decided);
+  for(let b=1;b<=4;b++){
+    const pos=gi=>groupsDone?(tables[gi][b-1]?.pid??null):null;
+    const s=[{a:pos(0),b:pos(1)},{a:pos(2),b:pos(3)}];
+    const semis=recs.filter(r=>r.stage==='semi'&&r.bracket===b).sort((x,y)=>x.match_num-y.match_num);
+    semis.forEach((r,i)=>want[r.id]=s[i]);
+    const ok=(r,i)=>s[i].a!=null&&r.a===s[i].a&&r.b===s[i].b&&r.decided&&(r.winner==='a'||r.winner==='b');
+    const both=semis.length===2&&semis.every(ok);
+    const W=r=>r[r.winner],L=r=>r[r.winner==='a'?'b':'a'];
+    for(const r of recs.filter(r=>r.bracket===b&&(r.stage==='final'||r.stage==='place')))
+      want[r.id]=!both?{a:null,b:null}:r.stage==='final'?{a:W(semis[0]),b:W(semis[1])}:{a:L(semis[0]),b:L(semis[1])};
+  }
+  return{want,tables,groupsDone};
+}
+// Final places 1–16 from the finals and 3rd/4th matches — derived every time, never stored.
+function mlPlaces(recs){
+  const out=[];
+  for(const r of recs)if((r.stage==='final'||r.stage==='place')&&r.decided&&(r.winner==='a'||r.winner==='b')){
+    const p=(r.bracket-1)*4+(r.stage==='final'?1:3);
+    out.push({place:p,pid:r[r.winner]},{place:p+1,pid:r[r.winner==='a'?'b':'a']});
+  }
+  return out.sort((x,y)=>x.place-y.place);
+}
+const mlChampion=recs=>mlPlaces(recs).find(x=>x.place===1)?.pid??null;
+// THE EDIT RULES. before/after: every record of the league without and with a proposed change to
+// match `id`. What the edit may move: a group match every playoff slot; a semi its own bracket's final
+// and 3rd/4th; a final or 3rd/4th nothing (it only moves places). If any of those has started the edit
+// is refused → {blocker}: nothing may be written. Otherwise {updates}: the slots among them (same rows,
+// in place) that the new plan fills, re-fills or empties — never a slot outside that scope.
+function mlGate(before,after,id,groups,seeds){
+  const m=before.find(r=>r.id===id);
+  const dep=r=>m.stage==='group'?r.stage!=='group'
+    :m.stage==='semi'&&r.bracket===m.bracket&&(r.stage==='final'||r.stage==='place');
+  const blocker=before.find(r=>dep(r)&&r.started);
+  if(blocker)return{blocker};
+  const {want}=mlPlan(after,groups,seeds);
+  return{updates:after.filter(r=>dep(r)&&(want[r.id].a!==r.a||want[r.id].b!==r.b))
+    .map(r=>({id:r.id,team_a_p1_id:want[r.id].a,team_b_p1_id:want[r.id].b}))};
+}
+
 function currentHcp(player){const hist=player.hcp_history||[];if(!hist.length)return player.handicap;return[...hist].sort((a,b)=>b.date.localeCompare(a.date))[0].value;}
 // DGU membership number: digits, one hyphen, digits. Segments are variable-length
 // (900-1831, 1-123456), so the hyphen must be typed — it cannot be inferred.

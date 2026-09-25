@@ -151,6 +151,144 @@ setTimeout(async function(){
       T('standings rows expose the public shape only — no internal phs array',
         mlStandings([1,2,3,4],[rec(1,2,'a')],{1:1,2:2,3:3,4:4}).every(s=>!('phs' in s)));
     }
+    // ── Task 5: playoffs, places and the edit rules ──
+    const G=[[1,2,3,4],[5,6,7,8],[9,10,11,12],[13,14,15,16]],SEEDS={};G.forEach(g=>g.forEach((p,i)=>SEEDS[p]=i+1));
+    {
+      const fresh=()=>mlFixtures(G).map((m,i)=>({id:i+1,stage:m.stage,round:m.round,match_num:m.match_num,bracket:m.bracket,a:m.team_a_p1_id,b:m.team_b_p1_id,decided:false,winner:null,holes:{a:0,b:0},ph:null,started:false,label:'—'}));
+      const win=(r,w)=>Object.assign(r,{decided:true,started:true,winner:w,holes:w==='a'?{a:3,b:0}:w==='b'?{a:0,b:3}:{a:1,b:1}});
+      const better=r=>SEEDS[r.a]<SEEDS[r.b]?'a':'b';
+      const grouped=()=>{const rs=fresh();rs.filter(r=>r.stage==='group').forEach(r=>win(r,better(r)));return rs;};
+      const put=(rs,ups)=>{for(const u of ups){const r=rs.find(x=>x.id===u.id);r.a=u.team_a_p1_id;r.b=u.team_b_p1_id;}return rs;};
+      const settle=rs=>put(rs,Object.entries(mlPlan(rs,G,SEEDS).want).filter(([id,w])=>{const r=rs.find(x=>x.id===+id);return w.a!==r.a||w.b!==r.b;}).map(([id,w])=>({id:+id,team_a_p1_id:w.a,team_b_p1_id:w.b})));
+      const clone=rs=>rs.map(r=>({...r,holes:{...r.holes}}));
+      const find=(rs,stage,b,n)=>rs.find(r=>r.stage===stage&&r.bracket===b&&(n==null||r.match_num===n));
+      const slots=r=>r.a+'v'+r.b;
+      const semisPlayed=()=>{const rs=settle(grouped());for(let b=1;b<=4;b++){win(find(rs,'semi',b,b*2-1),'a');win(find(rs,'semi',b,b*2),'a');}return settle(rs);};
+      const full=()=>{const rs=semisPlayed();for(let b=1;b<=4;b++){win(find(rs,'final',b),'a');win(find(rs,'place',b),'a');}return rs;};
+      const stA=rs=>mlStandings(G[0],rs.filter(r=>r.stage==='group'&&mlGroupOf(r)===1),SEEDS).map(x=>x.pid).join(',');
+      // progression
+      let before=grouped();const lastG=before.filter(r=>r.stage==='group').pop();Object.assign(lastG,{decided:false,winner:null});
+      let after=clone(before);win(after.find(r=>r.id===lastG.id),better(lastG));
+      let g=mlGate(before,after,lastG.id,G,SEEDS);
+      T('last group match decided: all 8 semis filled',!g.blocker&&g.updates.length===8);
+      put(after,g.updates);
+      T('Winners semis: A1 v B1 and C1 v D1',slots(find(after,'semi',1,1))==='1v5'&&slots(find(after,'semi',1,2))==='9v13');
+      T('Fourths semis: A4 v B4 and C4 v D4',slots(find(after,'semi',4,7))==='4v8'&&slots(find(after,'semi',4,8))==='12v16');
+      T('finals wait for the semis',g.updates.every(u=>after.find(r=>r.id===u.id).stage==='semi'));
+      const fl=full(),pl=mlPlaces(fl);
+      T('places 1–16: each once, 16 different players',pl.map(x=>x.place).join()===[...Array(16)].map((_,i)=>i+1).join()&&new Set(pl.map(x=>x.pid)).size===16);
+      T('Winners bracket gives places 1–4: 1, 9, 5, 13',pl.slice(0,4).map(x=>x.pid).join()==='1,9,5,13');
+      T('champion: the Winners final winner',mlChampion(fl)===1);
+      T('everyone plays exactly 5 matches',[...Array(16)].every((_,i)=>fl.filter(r=>r.decided&&(r.a===i+1||r.b===i+1)).length===5));
+      T('group edit before the playoffs exist: nothing else changes',(()=>{const b0=fresh();win(b0[0],'a');const a0=clone(b0);win(a0[0],'b');const x=mlGate(b0,a0,1,G,SEEDS);return !x.blocker&&x.updates.length===0;})());
+      // E1 — group edit, playoffs filled, none started → brackets rebuilt in place
+      const b1=settle(grouped()),ab=b1.find(r=>r.stage==='group'&&r.round===3&&r.a===1&&r.b===2);
+      T('E1 before: group A order 1,2,3,4',stA(b1)==='1,2,3,4');
+      const a1=clone(b1);win(a1.find(r=>r.id===ab.id),'b');
+      T('E1 after: 2 tops group A',stA(a1)==='2,1,3,4');
+      g=mlGate(b1,a1,ab.id,G,SEEDS);
+      T('E1: group edit with no playoff match started rebuilds the brackets',!g.blocker&&g.updates.length===2);
+      put(a1,g.updates);
+      T('E1: Winners semi 1 now 2 v 5; Runners-up semi 1 now 1 v 6',slots(find(a1,'semi',1,1))==='2v5'&&slots(find(a1,'semi',2,3))==='1v6');
+      T('E1: the same match rows are updated (ids kept)',g.updates.every(u=>b1.some(r=>r.id===u.id&&r.stage==='semi')));
+      // E2 — group edit once ANY playoff match has started → refused, nothing changes
+      const b2=settle(grouped());find(b2,'semi',4,7).started=true;
+      const a2=clone(b2);win(a2.find(r=>r.id===ab.id),'b');
+      g=mlGate(b2,a2,ab.id,G,SEEDS);
+      T('E2: group edit refused once any playoff match has started (even another bracket)',!!g.blocker&&!g.updates);
+      T('E2: the refusal names the blocking match',mlMatchName(g.blocker)==='Fourths semi-final 1');
+      // E3 — a group match re-opened (no longer decided) → every semi emptied
+      const b3=settle(grouped()),a3=clone(b3);Object.assign(a3.find(r=>r.id===ab.id),{decided:false,winner:null});
+      g=mlGate(b3,a3,ab.id,G,SEEDS);
+      T('E3: re-opened group match empties all 8 semis',!g.blocker&&g.updates.length===8&&g.updates.every(u=>u.team_a_p1_id==null&&u.team_b_p1_id==null));
+      T('E3: group A table drops the re-opened match',mlStandings(G[0],a3.filter(r=>r.stage==='group'&&mlGroupOf(r)===1),SEEDS).find(x=>x.pid===1).P===2);
+      // E4 — semi edit, final and 3rd/4th unstarted → exactly those two rebuilt
+      const b4=semisPlayed(),sf1=find(b4,'semi',1,1);
+      T('E4 before: Winners final 1 v 9, 3rd/4th 5 v 13',slots(find(b4,'final',1))==='1v9'&&slots(find(b4,'place',1))==='5v13');
+      const a4=clone(b4);win(a4.find(r=>r.id===sf1.id),'b');
+      g=mlGate(b4,a4,sf1.id,G,SEEDS);
+      T('E4: semi edit rebuilds its final and 3rd/4th only',!g.blocker&&g.updates.length===2);
+      put(a4,g.updates);
+      T('E4: Winners final now 5 v 9; 3rd/4th 1 v 13',slots(find(a4,'final',1))==='5v9'&&slots(find(a4,'place',1))==='1v13');
+      T('E4: other brackets untouched',[2,3,4].every(b=>slots(find(a4,'final',b))===slots(find(b4,'final',b))));
+      // E5 — semi edit refused once its final or 3rd/4th has started; another bracket doesn't block
+      let b5=semisPlayed();find(b5,'final',1).started=true;let a5=clone(b5);win(a5.find(r=>r.id===sf1.id),'b');
+      g=mlGate(b5,a5,sf1.id,G,SEEDS);
+      T('E5: semi edit refused once its final has started, naming it',!!g.blocker&&mlMatchName(g.blocker)==='Winners final');
+      b5=semisPlayed();find(b5,'place',1).started=true;a5=clone(b5);win(a5.find(r=>r.id===sf1.id),'b');
+      g=mlGate(b5,a5,sf1.id,G,SEEDS);
+      T('E5: refused when only its 3rd/4th has started',!!g.blocker&&mlMatchName(g.blocker)==='Winners 3rd/4th');
+      b5=semisPlayed();find(b5,'final',2).started=true;a5=clone(b5);win(a5.find(r=>r.id===sf1.id),'b');
+      g=mlGate(b5,a5,sf1.id,G,SEEDS);
+      T('E5: another bracket\'s final having started does not block',!g.blocker&&g.updates.length===2);
+      // E6 — semi re-opened (now needs sudden death) → final and 3rd/4th emptied
+      const b6=semisPlayed(),a6=clone(b6);Object.assign(a6.find(r=>r.id===sf1.id),{decided:false,winner:null});
+      g=mlGate(b6,a6,sf1.id,G,SEEDS);
+      T('E6: a re-opened semi empties its final and 3rd/4th',!g.blocker&&g.updates.length===2&&g.updates.every(u=>u.team_a_p1_id==null&&u.team_b_p1_id==null));
+      // E7 — final edit: places and champion only
+      const b7=full(),fin1=find(b7,'final',1),a7=clone(b7);win(a7.find(r=>r.id===fin1.id),'b');
+      g=mlGate(b7,a7,fin1.id,G,SEEDS);
+      T('E7: final edit changes no playoff slot',!g.blocker&&g.updates.length===0);
+      T('E7: places 1 and 2 swap; places 3–16 unchanged',mlPlaces(a7).slice(0,4).map(x=>x.pid).join()==='9,1,5,13'&&mlPlaces(a7).slice(4).map(x=>x.pid).join()===mlPlaces(b7).slice(4).map(x=>x.pid).join());
+      T('E7: the champion follows the final',mlChampion(b7)===1&&mlChampion(a7)===9);
+      Object.assign(a7.find(r=>r.id===fin1.id),{decided:false,winner:null});
+      T('E7: an undecided final leaves places 1–2 and the champion empty',mlChampion(a7)===null&&!mlPlaces(a7).some(x=>x.place<=2)&&mlPlaces(a7).length===14);
+      // E8 — 3rd/4th edit
+      const pl1=find(b7,'place',1),a8=clone(b7);win(a8.find(r=>r.id===pl1.id),'b');
+      g=mlGate(b7,a8,pl1.id,G,SEEDS);
+      T('E8: 3rd/4th edit: no slot changes, places 3 and 4 swap, champion unchanged',!g.blocker&&g.updates.length===0&&mlPlaces(a8).slice(2,4).map(x=>x.pid).join()==='13,5'&&mlChampion(a8)===1);
+      // E9 — playoff double forfeit naming who goes through
+      const b9=settle(grouped());win(find(b9,'semi',1,1),'a');
+      const sf2=find(b9,'semi',1,2),a9=clone(b9);Object.assign(a9.find(r=>r.id===sf2.id),{decided:true,started:true,winner:'b',holes:{a:0,b:0}});
+      g=mlGate(b9,a9,sf2.id,G,SEEDS);put(a9,g.updates);
+      T('E9: playoff double forfeit: the named player goes through to the final',slots(find(a9,'final',1))==='1v13'&&slots(find(a9,'place',1))==='5v9');
+      // ── strict extras: every edit rule both ways; "refused" means nothing is written ──
+      const snap=rs=>JSON.stringify(rs),wo=(r,w)=>Object.assign(r,{decided:true,started:true,winner:w,holes:{a:0,b:0}});
+      {const b=settle(grouped());find(b,'semi',2,3).started=true;const a=clone(b);win(a.find(r=>r.id===ab.id),'b');
+       const sb=snap(b),sa=snap(a),x=mlGate(b,a,ab.id,G,SEEDS);
+       T('X: a refusal carries only the blocker (no updates) and mutates neither side',!!x.blocker&&!('updates' in x)&&snap(b)===sb&&snap(a)===sa);}
+      {const b=settle(grouped()),a=clone(b);win(a.find(r=>r.id===ab.id),'b');const sb=snap(b),sa=snap(a);mlGate(b,a,ab.id,G,SEEDS);
+       T('X: an allowed rebuild mutates neither side either (the caller writes)',snap(b)===sb&&snap(a)===sa);}
+      {const b=settle(grouped()),a=clone(b);Object.assign(a.find(r=>r.id===ab.id),{holes:{a:5,b:0}});
+       const x=mlGate(b,a,ab.id,G,SEEDS);
+       T('X: a group edit that moves nobody passes cleanly with no slot updates',stA(a)==='1,2,3,4'&&!x.blocker&&x.updates.length===0);
+       find(b,'semi',3,5).started=true;const y=mlGate(b,a,ab.id,G,SEEDS);
+       T('X: …but once any playoff match has started even that edit is refused (rule 1)',!!y.blocker&&mlMatchName(y.blocker)==='Thirds semi-final 1');}
+      {const b=settle(grouped());find(b,'semi',1,1).started=true;const a=clone(b);Object.assign(a.find(r=>r.id===ab.id),{decided:false,winner:null});
+       const x=mlGate(b,a,ab.id,G,SEEDS);
+       T('X: re-opening a group match is refused once a playoff match has started',!!x.blocker&&!x.updates&&mlMatchName(x.blocker)==='Winners semi-final 1');}
+      // admin outcomes are edits
+      {const b=settle(grouped()),a=clone(b);wo(a.find(r=>r.id===ab.id),'b');const x=mlGate(b,a,ab.id,G,SEEDS);
+       T('X: a group walkover is an edit: rebuilds the brackets like a score',stA(a)==='2,1,3,4'&&!x.blocker&&x.updates.length===2);
+       find(b,'semi',4,8).started=true;const y=mlGate(b,a,ab.id,G,SEEDS);
+       T('X: …and is refused once any playoff match has started',!!y.blocker&&!y.updates&&mlMatchName(y.blocker)==='Fourths semi-final 2');}
+      {const b=settle(grouped()),a=clone(b);Object.assign(a.find(r=>r.id===ab.id),{decided:true,started:true,winner:'half',holes:{a:0,b:0}});
+       const x=mlGate(b,a,ab.id,G,SEEDS);
+       T('X: a group halve by decision that moves nobody passes with no slot updates',stA(a)==='1,2,3,4'&&!x.blocker&&x.updates.length===0);}
+      {const b=semisPlayed(),a=clone(b);wo(a.find(r=>r.id===sf1.id),'b');const x=mlGate(b,a,sf1.id,G,SEEDS);put(a,x.updates);
+       T('X: a semi walkover is an edit: rebuilds its final and 3rd/4th',!x.blocker&&x.updates.length===2&&slots(find(a,'final',1))==='5v9'&&slots(find(a,'place',1))==='1v13');
+       const b2=semisPlayed();find(b2,'place',1).started=true;const a2=clone(b2);wo(a2.find(r=>r.id===sf1.id),'b');const y=mlGate(b2,a2,sf1.id,G,SEEDS);
+       T('X: …refused once its 3rd/4th has started',!!y.blocker&&!y.updates&&mlMatchName(y.blocker)==='Winners 3rd/4th');}
+      {const b=full(),f=find(b,'final',1),a=clone(b);wo(a.find(r=>r.id===f.id),'b');const x=mlGate(b,a,f.id,G,SEEDS);
+       T('X: a final walkover changes no slot, only the champion',!x.blocker&&x.updates.length===0&&mlChampion(a)===9);}
+      {const b=semisPlayed();find(b,'final',1).started=true;const a=clone(b);Object.assign(a.find(r=>r.id===sf1.id),{decided:false,winner:null});
+       const x=mlGate(b,a,sf1.id,G,SEEDS);
+       T('X: re-opening a semi (now needs sudden death) is refused once its final has started',!!x.blocker&&!x.updates&&mlMatchName(x.blocker)==='Winners final');}
+      // scope: a semi edit touches only its own bracket; a final or 3rd/4th edit touches no slot at all
+      {const b=semisPlayed();Object.assign(find(b,'final',2),{a:null,b:null});const a=clone(b);win(a.find(r=>r.id===sf1.id),'b');
+       const x=mlGate(b,a,sf1.id,G,SEEDS);
+       T('X: a semi edit updates only its own bracket, even with another bracket out of step',!x.blocker&&x.updates.length===2&&x.updates.every(u=>a.find(r=>r.id===u.id).bracket===1));}
+      {const b=full();Object.assign(find(b,'place',3),{started:false,decided:false,winner:null,a:null,b:null});const f=find(b,'final',1),a=clone(b);win(a.find(r=>r.id===f.id),'b');
+       const x=mlGate(b,a,f.id,G,SEEDS);
+       T('X: a final edit writes no slot, even with another bracket out of step',!x.blocker&&x.updates.length===0);}
+      // places and champion: derived from the current records on every call
+      {const rs=full(),p0=mlPlaces(rs).map(x=>x.pid).join(),f4=find(rs,'final',4);f4.winner='b';
+       T('X: places are re-derived from the current records on every call',mlPlaces(rs).find(x=>x.place===13).pid===f4.b&&mlPlaces(rs).map(x=>x.pid).join()!==p0);
+       const r2=semisPlayed();win(find(r2,'final',3),'a');
+       T('X: a bracket with only its final decided gives just those two places',mlPlaces(r2).map(x=>x.place).join()==='9,10');
+       const r3=semisPlayed();for(let b=2;b<=4;b++)win(find(r3,'final',b),'a');win(find(r3,'place',1),'a');
+       T('X: no champion until the Winners final is decided, whatever else is',mlChampion(r3)===null);}
+    }
     // ── end ──
   }catch(e){out.push('FAIL EXCEPTION :: '+e.stack);}
   await new Promise(r=>setTimeout(r,150));
