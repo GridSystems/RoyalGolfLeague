@@ -4601,6 +4601,7 @@ async function checkTournamentStatusAdvance(tourn){
 function renderAdminTournament(){
   const el=document.getElementById('adminTournamentBody');if(!el)return;
   const tourn=(activeTournamentId&&tournaments.find(t=>t.id===activeTournamentId))||tournaments[0]||null;
+  if(tourn&&tourn.format==='league'){el.innerHTML=mlAdminHtml(tourn);return;}
 
   const createHtml=`
   <div style="margin-bottom:1rem">
@@ -4917,13 +4918,13 @@ function renderLeagueHtml(t){
   const tee=tees.find(x=>x.id===t.tee_id)?.name||t.tee_id;
   const head=`<div style="margin-bottom:0.75rem"><h2 style="font-family:'Playfair Display',serif;font-size:1.3rem;margin:0 0 0.25rem">${escHtml(t.name)}</h2>
     <div style="font-size:0.8rem;color:rgba(255,255,255,0.5)">Matchplay league · ${escHtml(tee)} unless both players agree another · 90% handicap, the lower player off 0${Number(t.buy_in)>0?' · DKK '+Number(t.buy_in):''}</div></div>`;
-  if(t.status==='entry')return head+mlEntryHtml(t);
+  if(t.status==='entry')return head+mlEntryBoxHtml(t)+mlEntryHtml(t);
   const recs=mlRecords(t),{groups,seeds}=mlGroups(t);
   const tab=(k,l)=>`<button class="sub-tab${mlTab===k?' active':''}" onclick="mlTab='${k}';renderTournament()">${l}</button>`;
   const body=mlTab==='playoffs'?mlPlayoffsHtml(t,recs):mlTab==='results'?mlResultsHtml(t,recs):mlGroupsHtml(t,recs,groups,seeds);
   const fix=mlSlotRepairs(t,recs),canFix=fix.length&&(isAdmin()||fix.every(x=>x.fill));
   const warn=fix.length?`<div style="font-size:0.78rem;margin-bottom:0.75rem;padding:0.5rem 0.65rem;background:rgba(240,160,48,0.08);border:1px solid rgba(240,160,48,0.3);border-radius:8px">Playoff draw out of step with the results: ${fix.map(x=>escHtml(mlMatchName(x.m))).join(', ')}. ${canFix?'<button class="btn btn-ghost btn-sm" onclick="mlHealAll(true).then(renderTournament)">Repair</button>':'An admin needs to repair it.'}</div>`:'';
-  return head+warn+`<div style="display:flex;gap:0.5rem;margin-bottom:0.75rem">${tab('groups','Groups')}${tab('playoffs','Playoffs')}${tab('results','Results')}</div>`+body;
+  return head+mlEntryBoxHtml(t)+warn+`<div style="display:flex;gap:0.5rem;margin-bottom:0.75rem">${tab('groups','Groups')}${tab('playoffs','Playoffs')}${tab('results','Results')}</div>`+body;
 }
 function mlEntryHtml(t){
   const {in:inn,waiting}=mlEntries(t),cap=t.max_players||16,h=s=>`<h4 style="margin:0.75rem 0 0.3rem;font-size:0.85rem">${s}</h4>`;
@@ -5085,6 +5086,49 @@ async function teSetStart(h){
   const r=await mlChange(TE.matchId,{patch:{start_hole:h}});teLive();
   if(!r.ok)alert(r.msg);else{if(r.warn)alert(r.warn);TE.currentHole=h;TE.currentPlayerIdx=0;}
   renderMatchScoring();
+}
+// ── Matchplay league: entries ──────────────────────────────────────────────
+const mlT=()=>tournaments.find(t=>t.id===activeTournamentId);
+const mlRedraw=()=>{renderAdminTournament();renderTournament();};
+const replaceTp=row=>{if(row)tournamentPlayers=tournamentPlayers.map(x=>x.id===row.id?row:x);};
+function mlEntryBoxHtml(t){
+  if(!players.some(p=>p.id===activeId))return'';   // pending sign-ups aren't in players
+  const open=t.status==='entry',e=mlEntryRows(t).find(x=>x.player_id===activeId),{waiting}=mlEntries(t);
+  return entryBoxHtml({name:escHtml(t.name),e,buyIn:Number(t.buy_in||0),blurb:`${t.max_players||16} places, then a waiting list`,
+    enter:open?`mlJoin(${t.id})`:null,withdraw:open&&e&&!e.paid_at?`mlWithdraw(${t.id})`:null,waiting:e?waiting.indexOf(e)+1:0});
+}
+async function mlJoin(tid){
+  const t=tournaments.find(x=>x.id===tid);if(!t||t.status!=='entry'||mlEntryRows(t).some(e=>e.player_id===activeId))return;
+  try{const [row]=await sbInsert('tournament_players',{tournament_id:tid,player_id:activeId,team:'league'});if(!row)throw new Error('not saved');tournamentPlayers.push(row);toast(`Entered ${t.name}`);}
+  catch(e){toast('Couldn\'t enter — '+e.message);}
+  renderTournament();
+}
+async function mlWithdraw(tid){
+  const t=tournaments.find(x=>x.id===tid),e=t&&mlEntryRows(t).find(x=>x.player_id===activeId);
+  if(!e||e.paid_at||t.status!=='entry')return;
+  if(!confirm(`Withdraw from ${t.name}?`))return;
+  try{const rows=await sbDelete('tournament_players',e.id);
+    if(rows.length){tournamentPlayers=tournamentPlayers.filter(x=>x.id!==e.id);toast('Entry withdrawn');}
+    else toast('Couldn\'t withdraw — the entry may already be marked paid, or the draw made.');}
+  catch(err){toast('Couldn\'t withdraw — '+err.message);}
+  renderTournament();
+}
+function mlMarkPaid(id){const t=mlT();return adminEntryWrite(()=>sbUpdate('tournament_players',id,{paid_at:new Date().toISOString(),amount:Number(t.buy_in||0),recorded_by:activeId}),r=>replaceTp(r[0]),'Marked paid',mlRedraw);}
+function mlUndoPaid(id){return adminEntryWrite(()=>sbUpdate('tournament_players',id,{paid_at:null,amount:null,recorded_by:null}),r=>replaceTp(r[0]),'Payment undone',mlRedraw);}
+function mlRemoveEntry(id){if(!confirm('Remove this entry?'))return;return adminEntryWrite(()=>sbDelete('tournament_players',id),()=>{tournamentPlayers=tournamentPlayers.filter(x=>x.id!==id);},'Entry removed',mlRedraw);}
+function mlEnterFor(){const pid=+document.getElementById('mlEntryFor').value,t=mlT();
+  return adminEntryWrite(()=>sbInsert('tournament_players',{tournament_id:t.id,player_id:pid,team:'league'}),r=>tournamentPlayers.push(r[0]),'Player entered',mlRedraw);}
+// Move a waiting-list player in: one write puts them just ahead of the last player in, who drops to
+// the top of the waiting list.
+function mlMoveIn(id){const {in:inn}=mlEntries(mlT()),last=inn[inn.length-1];if(!last)return;
+  return adminEntryWrite(()=>sbUpdate('tournament_players',id,{entered_at:new Date(Date.parse(last.entered_at)-1).toISOString()}),r=>replaceTp(r[0]),'Moved in',mlRedraw);}
+// Admin panel for a league (Task 9 adds the draw, deadlines and outcomes).
+function mlAdminHtml(t){
+  const {es,in:inn}=mlEntries(t),before=t.status==='entry',entered=new Set(es.map(e=>e.player_id));
+  return`<h4 style="margin:0 0 0.5rem;font-size:0.9rem">${escHtml(t.name)} <span style="font-size:0.7rem;opacity:0.5">${before?'entries open':'drawn'}</span></h4>`
+    +entriesPanelHtml({es:before?es:inn,buyIn:Number(t.buy_in||0),cap:before?(t.max_players||16):0,selId:'mlEntryFor',
+      fn:{paid:'mlMarkPaid',undo:'mlUndoPaid',remove:before?'mlRemoveEntry':null,enterFor:before?'mlEnterFor':null,moveIn:before?'mlMoveIn':null},
+      others:before?activePlayers().filter(p=>!entered.has(p.id)):[]});
 }
 
 function renderSaturdayAdmin(){
@@ -5757,13 +5801,19 @@ function entryOf(pid,season){return seasonEntries.find(e=>e.player_id===pid&&e.s
 function inPrizes(p,season){if(!p||p.is_social)return false;return !seasonInfo(season).entry||!!entryOf(p.id,season);}
 function unpaidTag(p,season){const e=seasonInfo(season).entry&&entryOf(p.id,season);
   return e&&!e.paid_at?'<span class="tag" style="font-size:0.6rem;padding:1px 5px;margin-left:4px;background:rgba(240,160,48,0.15);color:#f0a030">unpaid</span>':'';}
-// Enter / pay / withdraw for the season taking entries. Social and pending members see nothing.
-function entryStatusHtml(p,s){
-  const e=entryOf(p.id,s.name),box=c=>`<div class="info-box" style="margin-bottom:1rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">${c}</div>`;
-  if(!e)return box(`<span><strong>Enter ${s.name}</strong> — DKK ${s.buyIn}, best ${s.best} rounds count.</span><button class="btn btn-warn btn-sm" onclick="enterSeason()">Enter</button>`);
-  if(!e.paid_at)return box(`<span>You're entered in ${s.name} — payment not yet recorded. <a href="${MOBILEPAY_URL}" target="_blank" rel="noopener" style="color:var(--gold-l)">Pay DKK ${s.buyIn} via MobilePay →</a></span><button class="btn btn-ghost btn-sm" onclick="withdrawEntry()">Withdraw</button>`);
-  return box(`<span>You're entered in ${s.name} and paid ✓</span>`);
+// The member's entry box, shared by season entries and matchplay leagues (one view, not a copy).
+// o: {name, e (their entry or undefined), buyIn, blurb, enter/withdraw (onclick code, null = hide),
+//     waiting (their waiting-list position, 0 = in)}.
+function entryBoxHtml(o){
+  const box=c=>`<div class="info-box" style="margin-bottom:1rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">${c}</div>`;
+  const out=o.withdraw?`<button class="btn btn-ghost btn-sm" onclick="${o.withdraw}">Withdraw</button>`:'';
+  const wait=o.waiting?` You're #${o.waiting} on the waiting list.`:'';
+  if(!o.e)return o.enter?box(`<span><strong>Enter ${o.name}</strong> — ${o.buyIn>0?`DKK ${o.buyIn}, `:''}${o.blurb}.</span><button class="btn btn-warn btn-sm" onclick="${o.enter}">Enter</button>`):'';
+  if(!o.e.paid_at&&o.buyIn>0)return box(`<span>You're entered in ${o.name} — payment not yet recorded.${wait} <a href="${MOBILEPAY_URL}" target="_blank" rel="noopener" style="color:var(--gold-l)">Pay DKK ${o.buyIn} via MobilePay →</a></span>${out}`);
+  return box(`<span>You're entered in ${o.name}${o.e.paid_at?' and paid ✓':'.'}${wait}</span>${o.e.paid_at?'':out}`);
 }
+// Enter / pay / withdraw for the season taking entries. Social and pending members see nothing.
+function entryStatusHtml(p,s){return entryBoxHtml({name:s.name,e:entryOf(p.id,s.name),buyIn:s.buyIn,blurb:`best ${s.best} rounds count`,enter:'enterSeason()',withdraw:'withdrawEntry()'});}
 function entryFor(p){const s=entrySeason();return s&&p&&!p.is_social&&p.approved!==false?s:null;}
 function renderEntryBanner(){
   const el=document.getElementById('entryBanner');if(!el)return;
@@ -5789,32 +5839,46 @@ async function withdrawEntry(){
   catch(err){toast('Couldn\'t withdraw — '+err.message);}
   renderSeasonLb();renderProfile();
 }
+// The entries panel, shared by season entries and matchplay leagues (one view, not a copy).
+// o: {es: entries in sign-up order, buyIn, cap: places (the rest are the waiting list; 0 = no cap),
+//     fn: {paid, undo, remove, enterFor, moveIn} — global function names, null hides that action,
+//     others: players who could be entered, selId: id of the enter-for <select>}.
+function entriesPanelHtml(o){
+  const f=o.fn,nm=id=>escHtml(players.find(p=>p.id===id)?.name||'#'+id);
+  const line=(e,right)=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0"><span>${nm(e.player_id)}</span><span style="display:flex;gap:6px;align-items:center">${right}</span></div>`;
+  const head=t=>`<div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.08em;color:rgba(255,255,255,0.4);margin:0.75rem 0 4px">${t}</div>`;
+  const rm=e=>f.remove?`<button class="btn btn-danger btn-sm" onclick="${f.remove}(${e.id})">Remove</button>`:'';
+  const cap=o.cap||o.es.length,inn=o.es.slice(0,cap),waiting=o.es.slice(cap);
+  const paid=o.es.filter(e=>e.paid_at),unpaid=inn.filter(e=>!e.paid_at);
+  const received=paid.reduce((t,e)=>t+Number(e.amount||0),0);
+  const money=o.buyIn>0
+    ?head('Awaiting payment')+(unpaid.length?unpaid.map(e=>line(e,`<button class="btn btn-warn btn-sm" onclick="${f.paid}(${e.id})">Mark paid</button>${rm(e)}`)).join(''):'<div class="empty">Nobody.</div>')
+     +head('Paid')+(paid.length?paid.map(e=>line(e,`<span style="font-size:0.75rem;color:rgba(255,255,255,0.4)">${fd(e.paid_at.slice(0,10))}</span><button class="btn btn-ghost btn-sm" onclick="${f.undo}(${e.id})">Undo</button>`)).join(''):'<div class="empty">Nobody yet.</div>')
+    :head('Entered')+(inn.length?inn.map(e=>line(e,rm(e))).join(''):'<div class="empty">Nobody yet.</div>');
+  return`<div style="font-size:0.85rem;color:var(--gold-l)">${o.es.length} entered · ${paid.length} paid · DKK ${received} received${waiting.length?` · ${waiting.length} waiting`:''}</div>`
+    +money
+    +(waiting.length?head('Waiting list')+waiting.map((e,i)=>line(e,`<span style="font-size:0.75rem;color:rgba(255,255,255,0.4)">#${i+1}</span>${f.moveIn?`<button class="btn btn-ghost btn-sm" onclick="${f.moveIn}(${e.id})">Move in</button>`:''}${rm(e)}`)).join(''):'')
+    +(f.enterFor&&o.others.length?`<div style="display:flex;gap:6px;margin-top:0.9rem"><select id="${o.selId}">${o.others.map(p=>`<option value="${p.id}">${escHtml(p.name)}</option>`).join('')}</select><button class="btn btn-ghost btn-sm" onclick="${f.enterFor}()">Enter player</button></div>`:'');
+}
 // Admin: who entered the season taking entries, who has paid, and entering someone on their behalf.
 function renderAdminEntries(){
   const body=document.getElementById('adminEntriesBody'),title=document.getElementById('adminEntriesTitle');if(!body||!title)return;
   const s=entrySeason();
   if(!s){title.textContent='Season entries';body.innerHTML='<div class="empty">No season is taking entries.</div>';return;}
   title.textContent=`${s.name} entries`;
-  const es=seasonEntries.filter(e=>e.season===s.name),paid=es.filter(e=>e.paid_at),unpaid=es.filter(e=>!e.paid_at);
-  const received=paid.reduce((t,e)=>t+Number(e.amount||0),0);
-  const nm=id=>escHtml(players.find(p=>p.id===id)?.name||'#'+id);
-  const line=(e,right)=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0"><span>${nm(e.player_id)}</span><span style="display:flex;gap:6px;align-items:center">${right}</span></div>`;
-  const head=t=>`<div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.08em;color:rgba(255,255,255,0.4);margin:0.75rem 0 4px">${t}</div>`;
-  const others=activePlayers().filter(p=>!p.is_social&&!entryOf(p.id,s.name));
-  body.innerHTML=`<div style="font-size:0.85rem;color:var(--gold-l)">${es.length} entered · ${paid.length} paid · DKK ${received} received</div>`
-    +head('Awaiting payment')+(unpaid.length?unpaid.map(e=>line(e,`<button class="btn btn-warn btn-sm" onclick="markEntryPaid(${e.id})">Mark paid</button><button class="btn btn-danger btn-sm" onclick="removeEntry(${e.id})">Remove</button>`)).join(''):'<div class="empty">Nobody.</div>')
-    +head('Paid')+(paid.length?paid.map(e=>line(e,`<span style="font-size:0.75rem;color:rgba(255,255,255,0.4)">${fd(e.paid_at.slice(0,10))}</span><button class="btn btn-ghost btn-sm" onclick="undoEntryPaid(${e.id})">Undo</button>`)).join(''):'<div class="empty">Nobody yet.</div>')
-    +(others.length?`<div style="display:flex;gap:6px;margin-top:0.9rem"><select id="entryForPlayer">${others.map(p=>`<option value="${p.id}">${escHtml(p.name)}</option>`).join('')}</select><button class="btn btn-ghost btn-sm" onclick="enterPlayerFor()">Enter player</button></div>`:'');
+  body.innerHTML=entriesPanelHtml({es:seasonEntries.filter(e=>e.season===s.name),buyIn:s.buyIn,cap:0,selId:'entryForPlayer',
+    fn:{paid:'markEntryPaid',undo:'undoEntryPaid',remove:'removeEntry',enterFor:'enterPlayerFor'},
+    others:activePlayers().filter(p=>!p.is_social&&!entryOf(p.id,s.name))});
 }
 // Every admin write: admin mode first, then save, then apply the rows to local state, then redraw
 // what depends on entries. sbUpdate/sbDelete/sbInsert return [] (not an error) when RLS filters the
 // write — treat that the same as a failure, not a silent no-op, so the admin sees "Couldn't save"
 // and local state doesn't drift (apply only runs once rows come back non-empty).
-async function adminEntryWrite(save,apply,done){
+async function adminEntryWrite(save,apply,done,redraw=()=>{renderAdminEntries();renderSeasonLb();}){
   if(!await requireAdminMode())return;
   try{const rows=await save();if(!rows||!rows.length)throw new Error('not saved');apply(rows);toast(done);}
   catch(e){toast('Couldn\'t save — '+e.message);}
-  renderAdminEntries();renderSeasonLb();
+  redraw();
 }
 const replaceEntry=row=>{if(row)seasonEntries=seasonEntries.map(e=>e.id===row.id?row:e);};
 function markEntryPaid(id){const s=entrySeason();return adminEntryWrite(()=>sbUpdate('season_entries',id,{paid_at:new Date().toISOString(),amount:s.buyIn,recorded_by:activeId}),rows=>replaceEntry(rows[0]),'Marked paid');}

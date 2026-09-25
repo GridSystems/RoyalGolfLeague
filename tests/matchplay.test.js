@@ -575,6 +575,48 @@ setTimeout(async function(){
        T('score saved, match status not: the message says exactly that',!res.ok&&res.saved&&/^Score saved/.test(res.msg)&&/match status/.test(res.msg)&&/correct itself on the next change/.test(res.msg)&&tournamentScores.some(s=>s.match_id===m5.id));}
       activeId=2;
     }
+    // ── Task 8: entries — the shared entry box and admin panel ──
+    const adm=()=>document.getElementById('adminTournamentBody').innerHTML;
+    {
+      entryLeague(17);activeId=17;renderTournament();
+      T('17 entries: 16 in, #17 waiting',mlEntries(tournaments[0]).in.length===16&&mlEntries(tournaments[0]).waiting[0].player_id===17);
+      T('member box: entered, #1 on the waiting list, pay link, withdraw',/#1 on the waiting list/.test(tc())&&tc().includes(MOBILEPAY_URL)&&/mlWithdraw\(900\)/.test(tc()));
+      activeId=18;renderTournament();
+      T('not entered: Enter, with the buy-in',/Enter Matchplay 2027/.test(tc())&&/DKK 200/.test(tc())&&/mlJoin\(900\)/.test(tc()));
+      reset((u,b,m)=>m==='POST'&&u.includes('tournament_players')?[{id:400,entered_at:'2027-03-02T10:00:00Z',paid_at:null,amount:null,group_num:null,seed_pot:null,...b}]:[]);
+      await mlJoin(900);
+      const post=calls.find(c=>c.method==='POST');
+      T('Enter posts own player and team league only',post&&post.body.player_id===18&&post.body.team==='league'&&post.body.tournament_id===900&&!('entered_at' in post.body)&&!('paid_at' in post.body));
+      T('…and lands at #2 on the waiting list',/#2 on the waiting list/.test(tc()));
+      activeId=3;reset((u,b,m)=>m==='DELETE'?[{id:303}]:[]);await mlWithdraw(900);
+      T('a withdrawal moves the first waiting player in (derived; nothing else written)',mlEntries(tournaments[0]).in.some(e=>e.player_id===17)&&calls.filter(c=>c.method!=='DELETE').length===0);
+      activeId=4;reset(()=>[]);await mlWithdraw(900);
+      T('an RLS-filtered withdraw (0 rows) keeps the entry',mlEntryRows(tournaments[0]).some(e=>e.player_id===4));
+      entryLeague(3);tournaments[0].buy_in=0;activeId=2;renderTournament();
+      T('free league: entered, no pay link',/entered in Matchplay 2027\./.test(tc())&&!tc().includes(MOBILEPAY_URL));
+      league();activeId=2;renderTournament();
+      T('after the draw: no Withdraw, payment status still shown',!/mlWithdraw/.test(tc())&&/payment not yet recorded/.test(tc()));
+      // admin panel — the same view as season entries
+      entryLeague(17);activeId=1;renderAdminTournament();
+      T('league admin: the shared entries panel, with a waiting list',/17 entered · 0 paid · DKK 0 received · 1 waiting/.test(adm())&&/Waiting list/.test(adm())&&/mlMoveIn\(317\)/.test(adm()));
+      T('enter-for lists members not yet entered',/id="mlEntryFor"/.test(adm())&&/value="18"/.test(adm())&&!/value="17"/.test(adm()));
+      reset((u,b,m)=>m==='PATCH'?[{...tournamentPlayers.find(e=>e.id===+u.match(/id=eq\.(\d+)/)[1]),...b}]:[]);
+      await mlMoveIn(317);
+      const mv=calls.find(c=>c.method==='PATCH'),at=pid=>Date.parse(tournamentPlayers.find(e=>e.player_id===pid).entered_at);
+      T('Move in: one write, just ahead of the last player in',mv&&Date.parse(mv.body.entered_at)<at(16)&&Date.parse(mv.body.entered_at)>at(15));
+      T('…17 is in, 16 tops the waiting list',mlEntries(tournaments[0]).in.some(e=>e.player_id===17)&&mlEntries(tournaments[0]).waiting[0].player_id===16);
+      await mlMarkPaid(301);
+      const mp=calls.filter(c=>c.method==='PATCH').pop();
+      T('Mark paid: the league buy-in and who recorded it',mp.body.amount===200&&mp.body.recorded_by===1&&!!mp.body.paid_at&&!!tournamentPlayers.find(e=>e.id===301).paid_at);
+      reset(()=>[]);await mlUndoPaid(301);
+      T('an RLS-filtered undo (0 rows) leaves the payment',!!tournamentPlayers.find(e=>e.id===301).paid_at);
+      reset((u,b,m)=>m==='POST'?[{id:500,entered_at:'2027-03-03T00:00:00Z',paid_at:null,amount:null,...b}]:[]);
+      document.getElementById('mlEntryFor').value='18';await mlEnterFor();
+      T('Enter player posts that player for the league',calls.some(c=>c.method==='POST'&&c.body.player_id===18&&c.body.tournament_id===900&&c.body.team==='league'));
+      league();activeId=1;renderAdminTournament();
+      T('after the draw: payments only — no Remove, Move in or Enter player',/16 entered/.test(adm())&&!/mlRemoveEntry|mlMoveIn|mlEntryFor/.test(adm()));
+      activeId=2;
+    }
     // ── end ──
   }catch(e){out.push('FAIL EXCEPTION :: '+e.stack);}
   await new Promise(r=>setTimeout(r,150));
