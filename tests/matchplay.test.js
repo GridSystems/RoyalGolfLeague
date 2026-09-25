@@ -357,6 +357,194 @@ setTimeout(async function(){
       T('a tournament without format (before the migration) renders as team day',/Fourballs/.test(tc())&&/Reds/.test(tc()));
       today=()=>'2027-05-10';activeId=2;
     }
+    // ── Task 7: scoring through mlChange — the edit rules on real writes ──
+    {
+      // Players 1 and 4 are level with everyone here (index 18), so gross decides every hole as the
+      // cards below intend (Task 6 gives them 9.3 and 16.4, which would hand out strokes).
+      const level=()=>{for(const i of[0,3])players[i].hcp_history=[{date:'2026-01-01',value:18,note:''}];};
+      const scoreHole=async(m,h,ga,gb)=>{await mlChange(m.id,{score:{hole:h,player_id:m.team_a_p1_id,gross:ga}});return mlChange(m.id,{score:{hole:h,player_id:m.team_b_p1_id,gross:gb}});};
+      league();level();stub();
+      gm().slice(0,23).forEach(m=>decideLocal(m,seedWin(m)));
+      const last=gm()[23];activeId=last.team_a_p1_id;   // a league match is scored by its own players
+      let res=await scoreHole(last,1,...W(seedWin(last)));
+      const p1=calls.find(c=>c.method==='PATCH'&&c.url.includes(`tournament_matches?id=eq.${last.id}`));
+      T('first score: match in progress, played today',res.ok&&p1&&p1.body.status==='in_progress'&&p1.body.played_on==='2027-05-10');
+      T('a score is saved as a tournament_scores row',calls.some(c=>c.method==='POST'&&c.url.includes('tournament_scores')&&c.body.hole===1));
+      for(let h=2;h<=10;h++)res=await scoreHole(last,h,...W(seedWin(last)));
+      T('10 up with 8 to play: closed by itself, result saved',res.ok&&res.rec.label==='10&8'&&last.status==='complete'&&last.result==='a');
+      T('group stage done: the 8 semis are filled (A1 v B1 first)',[1,2,3,4].every(b=>semi(b,1).team_a_p1_id!=null&&semi(b,2).team_b_p1_id!=null)&&semi(1,1).team_a_p1_id===1&&semi(1,1).team_b_p1_id===5);
+      T('the finals wait',tournamentMatches.filter(m=>m.round===5).every(m=>m.team_a_p1_id==null));
+      // refused: a playoff match has a score → a group correction writes nothing
+      tournamentScores.push({id:1,match_id:semi(4,1).id,hole:1,player_id:semi(4,1).team_a_p1_id,gross:4});
+      stub();activeId=1;
+      const g0=gm()[0];
+      res=await mlChange(g0.id,{score:{hole:1,player_id:g0.team_a_p1_id,gross:5}});
+      T('group edit after a playoff match started: refused, naming it',!res.ok&&/Fourths semi-final 1/.test(res.msg));
+      T('refused: nothing written, the old score kept',calls.length===0&&tournamentScores.find(s=>s.match_id===g0.id&&s.hole===1&&s.player_id===g0.team_a_p1_id).gross===3);
+      // re-open: a 3&2 corrected to 2 up with 2 to play; semis filled, none started → all emptied
+      league();level();stub();
+      gm().forEach((m,i)=>{if(i){decideLocal(m,seedWin(m));return;}tournamentScores.push(...card(m,[...holes(1,3,...W(seedWin(m))),...holes(4,16,4,4)]));Object.assign(m,{status:'complete',result:seedWin(m),played_on:'2027-05-01'});});
+      fillLocal();
+      const Y=gm()[0];activeId=1;
+      res=await mlChange(Y.id,{score:{hole:1,player_id:Y.team_a_p1_id,gross:5}});   // hole 1 now halved
+      T('a correction re-opens a 3&2: in progress, no result',res.ok&&!res.rec.decided&&Y.status==='in_progress'&&Y.result===null);
+      T('re-opened group match: all 8 semis emptied in place',tournamentMatches.filter(m=>m.stage==='semi').every(m=>m.team_a_p1_id==null&&m.team_b_p1_id==null)&&calls.filter(c=>c.method==='PATCH'&&c.body.team_a_p1_id===null).length===8);
+      // a playoff 1UP corrected to level → sudden death; its final and 3rd/4th emptied, then refilled
+      league();level();stub();gm().forEach(m=>decideLocal(m,seedWin(m)));fillLocal();
+      const S=semi(1,1);tournamentScores.push(...card(S,[...holes(1,17,4,4),[18,3,4]]));Object.assign(S,{status:'complete',result:'a',played_on:'2027-08-01'});
+      decideLocal(semi(1,2),'a');fillLocal();
+      T('before: Winners final 1 v 9',fin(1).team_a_p1_id===1&&fin(1).team_b_p1_id===9);
+      activeId=1;res=await mlChange(S.id,{score:{hole:18,player_id:S.team_a_p1_id,gross:4}});
+      T('a semi corrected to level after 18 re-opens for sudden death',res.ok&&!res.rec.decided&&S.status==='in_progress'&&S.result===null&&/sudden death/.test(res.rec.label));
+      T('its final and 3rd/4th are emptied',fin(1).team_a_p1_id==null&&fin(1,'place').team_a_p1_id==null);
+      await scoreHole(S,19,4,4);res=await scoreHole(S,20,3,4);
+      T('sudden death: won at the 20th; extra_holes 2 saved; final refilled',res.rec.label==='won at the 20th'&&S.status==='complete'&&S.result==='a'&&S.extra_holes===2&&fin(1).team_a_p1_id===1&&fin(1).team_b_p1_id===9);
+      // an RLS-filtered update (200, []) is a failure
+      league();level();reset((u,b,m)=>m==='POST'?[{id:++sid,...b}]:[]);activeId=2;
+      const own=gm().find(m=>m.team_a_p1_id===2||m.team_b_p1_id===2);
+      res=await mlChange(own.id,{score:{hole:1,player_id:2,gross:4}});
+      T('an RLS-filtered update (0 rows) is reported, not silently accepted',!res.ok&&/Couldn't save/.test(res.msg)&&own.status==='pending');
+      // Review Focus: admin mode cancelled while correcting a finished match
+      league();level();gm().forEach(m=>decideLocal(m,seedWin(m)));stub();activeId=1;
+      const keepRAM=requireAdminMode;window.requireAdminMode=async()=>false;
+      res=await mlChange(gm()[0].id,{score:{hole:1,player_id:gm()[0].team_a_p1_id,gross:5}});
+      T('admin mode cancelled: refused, nothing written',!res.ok&&calls.length===0);
+      window.requireAdminMode=keepRAM;
+      // Review Focus: the 30-second refresh replaces every match object while someone is scoring
+      league();level();stub();activeId=2;const mine=gm().find(m=>m.team_a_p1_id===2||m.team_b_p1_id===2);
+      teOpenMatch(mine.id);
+      tournamentMatches=tournamentMatches.map(m=>({...m}));
+      _teBuffer='4';await teEnter();
+      T('after a refresh, scoring updates the live match object, not a stale copy',byId(mine.id).status==='in_progress'&&TE.match===byId(mine.id)&&TE.currentPlayerIdx===1);
+      TE.matchId=null;
+      // the scoring screen
+      league();level();stub();activeId=1;const st10=semi(1,1);Object.assign(st10,{team_a_p1_id:1,team_b_p1_id:5,start_hole:10});
+      teOpenMatch(st10.id);let html=tc();
+      T('opens on the 10th for a match started there, without marking it started',TE.currentHole===10&&calls.length===0&&st10.status==='pending');
+      T('scoring screen: player names, no team names, no Close match button',/P1/.test(html)&&/P5/.test(html)&&!/Team A/.test(html)&&!/teCloseMatchPrompt/.test(html));
+      T('an unstarted league match offers the start hole',/teSetStart/.test(html));
+      TE.matchId=null;tournamentScores.push(...card(st10,holes(1,18,4,4)));st10.status='in_progress';
+      teOpenMatch(st10.id);html=tc();
+      T('a level playoff opens on the 19th: sudden death, plays as hole 10',TE.currentHole===19&&/sudden death · plays as 10/.test(html)&&!/teSetStart/.test(html));
+      T('navigation: back from the 19th goes to the 9th (last in play order)',teCanPrev()&&mlPrevHole(TE.match,19)===9);
+      TE.matchId=null;
+      league();players[0].hcp_history=[{date:'2026-01-01',value:2,note:''}];players[3].hcp_history=[{date:'2026-01-01',value:24,note:''}];stub();
+      teOpenMatch(gm()[0].id);   // 1 v 4: 4 v 29 → 25 strokes
+      T('diff over 18: the banner says every hole, two on SI 1–7',/every hole, two on SI 1–7/.test(tc()));
+      TE.matchId=null;
+      tournaments.push({id:901,name:'Cup',date:'2027-05-10',tee_id:'57',status:'round_2',team_a_name:'Reds',team_b_name:'Blues'});
+      tournamentMatches.push({id:77,tournament_id:901,round:2,match_num:1,team_a_p1_id:1,team_b_p1_id:2,team_a_p2_id:null,team_b_p2_id:null,status:'pending',result:null,_teeId:'57'});
+      stub();teOpenMatch(77);html=tc();
+      T('team day untouched: opens on hole 1, marks in progress, team names, Close match',TE.currentHole===1&&calls.some(c=>c.method==='PATCH'&&c.body.status==='in_progress')&&/Reds/.test(html)&&/teCloseMatchPrompt/.test(html));
+      TE.matchId=null;
+      // self-heal: a decided group stage whose semi writes failed gets them filled (fill only)
+      league();level();gm().forEach(m=>decideLocal(m,seedWin(m)));stub();activeId=5;
+      await mlHealAll();
+      T('heal: empty semis filled from the results',calls.filter(c=>c.method==='PATCH').length===8&&semi(1,1).team_a_p1_id===1);
+      stub();await mlHealAll();T('heal again: nothing to do',calls.length===0);
+      // ── strict: exactly which writes each edit makes, in order ──
+      const seq=()=>calls.map(c=>c.method+' '+(c.url.match(/rest\/v1\/(\w+)/)||[])[1]).join(',');
+      const idOf=c=>+(c.url.match(/id=eq\.(\d+)/)||[])[1];
+      const PM='PATCH tournament_matches',SCORE='DELETE tournament_scores,POST tournament_scores';
+      // a player's score closes a match early (3&2): score, then the match's cache, then the 8 semis
+      league();level();stub();gm().slice(0,23).forEach(m=>decideLocal(m,seedWin(m)));
+      const Z=gm()[23];activeId=Z.team_b_p1_id;
+      for(let h=1;h<=3;h++)await scoreHole(Z,h,3,5);for(let h=4;h<=15;h++)await scoreHole(Z,h,4,4);
+      await mlChange(Z.id,{score:{hole:16,player_id:Z.team_a_p1_id,gross:4}});
+      T('holes before the decision fill no playoff slot',!calls.some(c=>c.method==='PATCH'&&idOf(c)!==Z.id));
+      stub();res=await mlChange(Z.id,{score:{hole:16,player_id:Z.team_b_p1_id,gross:4}});
+      T('3&2: the closing score writes the score, the match (complete, a), then the 8 semis — nothing else',res.ok&&res.rec.label==='3&2'
+        &&seq()===[SCORE,...Array(9).fill(PM)].join()&&idOf(calls[2])===Z.id&&JSON.stringify(calls[2].body)==='{"status":"complete","result":"a"}'
+        &&calls.slice(3).every(c=>byId(idOf(c)).stage==='semi'&&c.body.team_a_p1_id!=null));
+      // item 3: the gate sees before/after differing only in the edited match
+      {const keep=mlGate;let seen=null;window.mlGate=(b,a,id,g,s)=>{seen={b,a};return keep(b,a,id,g,s);};
+       league();level();stub();activeId=2;const o=gm().find(m=>m.team_a_p1_id===2||m.team_b_p1_id===2);
+       await mlChange(o.id,{score:{hole:1,player_id:2,gross:4}});window.mlGate=keep;
+       T('the gate\'s "after" is "before" with only the edited match changed',!!seen&&seen.a.length===40
+         &&seen.a.every((r,i)=>(JSON.stringify(r)===JSON.stringify(seen.b[i]))===(r.id!==o.id)));}
+      // semi correction, final and 3rd/4th unstarted → exactly those two re-filled; started → refused, no writes
+      league();level();gm().forEach(m=>decideLocal(m,seedWin(m)));fillLocal();
+      const SF=semi(1,1);tournamentScores.push(...card(SF,[...holes(1,17,4,4),[18,3,4]]));Object.assign(SF,{status:'complete',result:'a',played_on:'2027-08-01'});
+      decideLocal(semi(1,2),'a');fillLocal();stub();activeId=1;
+      res=await mlChange(SF.id,{score:{hole:18,player_id:SF.team_a_p1_id,gross:5}});   // now B wins the 18th: 5 won 1UP
+      T('semi correction: writes the score, the semi\'s result, then its final and 3rd/4th — in that order, nothing else',res.ok&&res.rec.winner==='b'
+        &&seq()===[SCORE,PM,PM,PM].join()&&JSON.stringify(calls[2].body)==='{"result":"b"}'&&idOf(calls[3])===fin(1).id&&idOf(calls[4])===fin(1,'place').id);
+      T('semi correction: Winners final now 5 v 9, 3rd/4th 1 v 13',fin(1).team_a_p1_id===5&&fin(1).team_b_p1_id===9&&fin(1,'place').team_a_p1_id===1&&fin(1,'place').team_b_p1_id===13);
+      tournamentScores.push({id:2,match_id:fin(1).id,hole:1,player_id:5,gross:4});stub();
+      res=await mlChange(SF.id,{score:{hole:18,player_id:SF.team_a_p1_id,gross:3}});
+      T('semi correction once its final has started: refused naming it, no writes, slots kept',!res.ok&&/Winners final/.test(res.msg)&&calls.length===0&&fin(1).team_a_p1_id===5&&SF.result==='b');
+      // final correction: places and champion only
+      league();level();gm().forEach(m=>decideLocal(m,seedWin(m)));fillLocal();
+      for(let b=1;b<=4;b++){decideLocal(semi(b,1),'a');decideLocal(semi(b,2),'a');}fillLocal();
+      const F=fin(1);tournamentScores.push(...card(F,[...holes(1,17,4,4),[18,3,4]]));Object.assign(F,{status:'complete',result:'a',played_on:'2027-09-01'});
+      for(let b=2;b<=4;b++)decideLocal(fin(b),'a');for(let b=1;b<=4;b++)decideLocal(fin(b,'place'),'a');
+      const slotsNow=()=>JSON.stringify(tournamentMatches.map(m=>[m.team_a_p1_id,m.team_b_p1_id]));const sl0=slotsNow();
+      T('before: champion 1',mlChampion(mlRecords(tournaments[0]))===1);
+      stub();activeId=1;res=await mlChange(F.id,{score:{hole:18,player_id:F.team_a_p1_id,gross:5}});
+      T('final correction: writes the score and the final\'s result only; no slot changes',res.ok&&seq()===[SCORE,PM].join()&&idOf(calls[2])===F.id&&slotsNow()===sl0,JSON.stringify(res)+seq()+JSON.stringify([F.team_a_p1_id,F.team_b_p1_id]));
+      T('final correction: champion and places 1–2 follow',mlChampion(mlRecords(tournaments[0]))===9&&mlPlaces(mlRecords(tournaments[0])).slice(0,2).map(x=>x.pid).join()==='9,1');
+      // sudden death from the 10th replays hole 10, 11 … at the same strokes (1 v 5: 12 v 22, 5 receives SI 1–10)
+      const sdFrom=async start=>{league();stub();activeId=1;const s=semi(1,1);Object.assign(s,{team_a_p1_id:1,team_b_p1_id:5,start_hole:start,status:'in_progress',played_on:'2027-08-01'});
+        tournamentScores.push(...card(s,HOLE_HCP.map((si,i)=>[i+1,4,4+strokesOnHole(10,i)])));   // every hole halved nett
+        await scoreHole(s,19,4,5);return scoreHole(s,20,4,4);};
+      res=await sdFrom(10);
+      T('sudden death from the 10th: 19 = hole 10 (halved nett), 20 = hole 11 (SI 7, stroke): won by 5 at the 20th',res.ok&&res.rec.winner==='b'&&res.rec.label==='won at the 20th'&&semi(1,1).extra_holes===2&&semi(1,1).result==='b');
+      res=await sdFrom(1);
+      T('…from the 1st, 20 = hole 2 (SI 14, no stroke): still level, sudden death goes on',res.ok&&!res.rec.decided&&semi(1,1).status==='in_progress');
+      // item 4: a player's correction that would overwrite or empty filled slots is refused whole
+      league();level();gm().forEach(m=>decideLocal(m,seedWin(m)));fillLocal();
+      const P2=gm().find(m=>m.team_a_p1_id===2||m.team_b_p1_id===2);P2.status='in_progress';   // its "complete" write had failed: stored in progress, derived 10&8
+      const P2w=seedWin(P2)==='a'?P2.team_a_p1_id:P2.team_b_p1_id;
+      stub();activeId=2;res=await mlChange(P2.id,{score:{hole:1,player_id:P2w,gross:9}});   // now 8 up with 8 to play: undecided
+      T('a player\'s change that would empty filled playoff slots: refused up front, nothing written, told why',!res.ok&&calls.length===0
+        &&/Only an admin/.test(res.msg)&&/semi-final/.test(res.msg)&&/Nothing was saved/.test(res.msg)&&semi(1,1).team_a_p1_id===1
+        &&tournamentScores.find(s=>s.match_id===P2.id&&s.hole===1&&s.player_id===P2w).gross===3);
+      activeId=1;res=await mlChange(P2.id,{score:{hole:1,player_id:P2w,gross:9}});
+      T('…an admin can: the same change empties the 8 semis',res.ok&&tournamentMatches.filter(m=>m.stage==='semi').every(m=>m.team_a_p1_id==null));
+      // item 5: one slot write fails part-way → the rest still written, that slot keeps its old players, flagged, healed
+      league();level();gm().slice(0,23).forEach(m=>decideLocal(m,seedWin(m)));
+      const L=gm()[23];activeId=L.team_a_p1_id;stub();for(let h=1;h<=9;h++)await scoreHole(L,h,3,5);
+      const bad=semi(2,1).id;
+      reset((u,b,m)=>m==='POST'?[{id:++sid,...b}]:m==='PATCH'&&idOf({url:u})!==bad?[{...b}]:[]);
+      res=await scoreHole(L,10,3,5);
+      T('a slot write that fails: the result is saved and the player told which slot',res.ok&&L.status==='complete'&&/playoff draw couldn't be updated for Runners-up semi-final 1/.test(res.warn||''));
+      T('…that slot keeps its old (empty) players; the other 7 are written',semi(2,1).team_a_p1_id==null&&tournamentMatches.filter(m=>m.stage==='semi'&&m.team_a_p1_id!=null).length===7);
+      renderTournament();
+      T('…the league page flags it, with Repair (a fill: any member)',/out of step with the results: Runners-up semi-final 1/.test(tc())&&/mlHealAll\(true\)/.test(tc()));
+      stub();activeId=5;await mlHealAll();
+      T('…and the heal fills just that slot',seq()===PM&&idOf(calls[0])===bad&&semi(2,1).team_a_p1_id===2&&semi(2,1).team_b_p1_id===6);
+      renderTournament();T('…then the flag is gone',!/out of step/.test(tc()));
+      // item 5: a filled slot with the wrong players (unstarted) — a player's heal leaves it and flags it; an admin's repairs it
+      league();level();gm().forEach(m=>decideLocal(m,seedWin(m)));fillLocal();Object.assign(semi(1,1),{team_a_p1_id:5,team_b_p1_id:1});
+      stub();activeId=5;await mlHealAll();renderTournament();
+      T('wrong players in a filled slot: a player\'s heal writes nothing; the page says an admin must repair it',calls.length===0&&/Winners semi-final 1/.test(tc())&&/An admin needs to repair it/.test(tc()));
+      activeId=1;await mlHealAll();
+      T('…an admin\'s heal repairs it in place',seq()===PM&&idOf(calls[0])===semi(1,1).id&&semi(1,1).team_a_p1_id===1&&semi(1,1).team_b_p1_id===5);
+      tournamentScores.push({id:3,match_id:semi(2,1).id,hole:1,player_id:2,gross:4});Object.assign(semi(2,1),{team_a_p1_id:6,team_b_p1_id:2});stub();await mlHealAll();
+      T('…a started match is never touched by the heal',calls.length===0&&semi(2,1).team_a_p1_id===6);
+      // item 7: [] from the score insert is a failure; someone else's match is refused with no writes
+      league();level();reset(()=>[]);activeId=2;const o7=gm().find(m=>m.team_a_p1_id===2||m.team_b_p1_id===2);
+      res=await mlChange(o7.id,{score:{hole:1,player_id:2,gross:4}});
+      T('an RLS-filtered score insert ([]) is reported, the match not touched',!res.ok&&/Couldn't save/.test(res.msg)&&!calls.some(c=>c.method==='PATCH')&&!tournamentScores.some(s=>s.match_id===o7.id));
+      stub();const other=gm()[23];res=await mlChange(other.id,{score:{hole:1,player_id:other.team_a_p1_id,gross:4}});
+      T('a non-admin scoring someone else\'s match: refused, nothing written',!res.ok&&calls.length===0&&/Only an admin/.test(res.msg));
+      // item 1: strokes on the scoring screen for diff > 18, and a league round-1 match is singles
+      league();players[0].hcp_history=[{date:'2026-01-01',value:2,note:''}];players[3].hcp_history=[{date:'2026-01-01',value:24,note:''}];stub();activeId=1;
+      teOpenMatch(gm()[0].id);html=tc();
+      T('diff 25 on hole 1 (SI 4): two strokes shown; singles, not a fourball',/\+2 strokes/.test(html)&&!/Fourball HCP/.test(html));
+      TE.currentHole=2;renderMatchScoring();T('…hole 2 (SI 14): one stroke',/\+stroke/.test(tc())&&!/\+2 strokes/.test(tc()));
+      TE.matchId=null;
+      // item 6: the start hole after a refresh goes to the live match object too
+      league();level();stub();activeId=1;const s6=semi(1,1);Object.assign(s6,{team_a_p1_id:1,team_b_p1_id:5});
+      teOpenMatch(s6.id);tournamentMatches=tournamentMatches.map(m=>({...m}));await teSetStart(10);
+      T('after a refresh, the start hole is set on the live match object',byId(s6.id).start_hole===10&&TE.match===byId(s6.id)&&TE.currentHole===10&&seq()===PM);
+      TE.matchId=null;
+      // scoring screen names are escaped
+      league();level();players[1].name='<i>Z</i>';stub();teOpenMatch(gm().find(m=>m.team_a_p1_id===2||m.team_b_p1_id===2).id);
+      T('scoring screen: player names are escaped',!document.getElementById('tournamentContent').querySelector('i')&&/&lt;i&gt;Z/.test(tc()));
+      TE.matchId=null;
+      activeId=2;
+    }
     // ── end ──
   }catch(e){out.push('FAIL EXCEPTION :: '+e.stack);}
   await new Promise(r=>setTimeout(r,150));
