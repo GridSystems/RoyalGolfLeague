@@ -3897,6 +3897,7 @@ function renderTournament(){
 
   const tourn=tournaments.find(t=>t.id===activeTournamentId)||tournaments[0];
   activeTournamentId=tourn.id;
+  if(tourn.format==='league'){el.innerHTML=selectorHtml+renderLeagueHtml(tourn);return;}
 
   // Draw phase — show draw screen for captains, read-only for others
   if(tourn.status==='fourball_draw'||tourn.status==='singles_draw'){
@@ -4862,6 +4863,88 @@ function tmSetPlayersTab(btn){
   btn.classList.add('active');
   const tourn=tournaments.find(t=>t.id===activeTournamentId);
   document.getElementById('tmRoundContent').innerHTML=tourn?renderTournamentIndividualHtml(tourn):'';
+}
+
+// ── Matchplay league: live data and the Tournament tab ────────────────────────
+// One match's record for the pure rules (mlStandings, mlPlan, mlGate), derived from its scores and
+// outcome every time. ph: both players' playing handicaps (90%, match tee and day) when it was played.
+function mlRecord(m,t,scores){
+  const mm={...m,_teeId:m.tee_id||t.tee_id},both=m.team_a_p1_id!=null&&m.team_b_p1_id!=null;
+  const hcp=both?tmMatchHcpInfo(mm,m.played_on||today()):null;
+  const d=both?mlDecide(mm,hcp,scores):{decided:false,winner:null,holes:{a:0,b:0},up:0,thru:0,extra:0,started:false,label:'—'};
+  const played=both&&(m.outcome||'played')==='played'&&scores.length>0;
+  return{id:m.id,stage:m.stage,round:m.round,match_num:m.match_num,bracket:m.bracket,a:m.team_a_p1_id,b:m.team_b_p1_id,...d,ph:played?{a:hcp.phA1,b:hcp.phB1}:null};
+}
+function mlRecords(t,ms=tournamentMatches,sc=tournamentScores){
+  return ms.filter(m=>m.tournament_id===t.id&&m.stage).map(m=>mlRecord(m,t,sc.filter(s=>s.match_id===m.id)));
+}
+// Groups A–D from the draw ([[pot-1 pid … pot-4 pid]×4]) and each drawn player's seed pot.
+function mlGroups(t){
+  const groups=[[],[],[],[]],seeds={};
+  for(const e of tournamentPlayers)if(e.tournament_id===t.id&&e.group_num){groups[e.group_num-1][e.seed_pot-1]=e.player_id;seeds[e.player_id]=e.seed_pot;}
+  return{groups,seeds};
+}
+// Entries in sign-up order. Before the draw the first max_players are in and the rest wait, moving up
+// as anyone ahead withdraws; after it, "in" is whoever was drawn into a group.
+const mlEntryRows=t=>tournamentPlayers.filter(e=>e.tournament_id===t.id).sort((x,y)=>Date.parse(x.entered_at)-Date.parse(y.entered_at)||x.id-y.id);
+function mlEntries(t){
+  const es=mlEntryRows(t),cap=t.max_players||16;
+  return t.status==='entry'?{es,in:es.slice(0,cap),waiting:es.slice(cap)}:{es,in:es.filter(e=>e.group_num!=null),waiting:es.filter(e=>e.group_num==null)};
+}
+const mlName=id=>id==null?'—':escHtml(players.find(p=>p.id===id)?.name||'#'+id);
+// Players open their own undecided matches; an admin opens any (to correct it).
+const mlCanOpen=(m,rec)=>m.team_a_p1_id!=null&&m.team_b_p1_id!=null&&(m.outcome||'played')==='played'
+  &&(isAdmin()||(!rec.decided&&(activeId===m.team_a_p1_id||activeId===m.team_b_p1_id)));
+let mlTab='groups';
+function renderLeagueHtml(t){
+  const tee=tees.find(x=>x.id===t.tee_id)?.name||t.tee_id;
+  const head=`<div style="margin-bottom:0.75rem"><h2 style="font-family:'Playfair Display',serif;font-size:1.3rem;margin:0 0 0.25rem">${escHtml(t.name)}</h2>
+    <div style="font-size:0.8rem;color:rgba(255,255,255,0.5)">Matchplay league · ${escHtml(tee)} unless both players agree another · 90% handicap, the lower player off 0${Number(t.buy_in)>0?' · DKK '+Number(t.buy_in):''}</div></div>`;
+  if(t.status==='entry')return head+mlEntryHtml(t);
+  const recs=mlRecords(t),{groups,seeds}=mlGroups(t);
+  const tab=(k,l)=>`<button class="sub-tab${mlTab===k?' active':''}" onclick="mlTab='${k}';renderTournament()">${l}</button>`;
+  const body=mlTab==='playoffs'?mlPlayoffsHtml(t,recs):mlTab==='results'?mlResultsHtml(t,recs):mlGroupsHtml(t,recs,groups,seeds);
+  return head+`<div style="display:flex;gap:0.5rem;margin-bottom:0.75rem">${tab('groups','Groups')}${tab('playoffs','Playoffs')}${tab('results','Results')}</div>`+body;
+}
+function mlEntryHtml(t){
+  const {in:inn,waiting}=mlEntries(t),cap=t.max_players||16,h=s=>`<h4 style="margin:0.75rem 0 0.3rem;font-size:0.85rem">${s}</h4>`;
+  const li=e=>`<li>${mlName(e.player_id)}${Number(t.buy_in)>0&&!e.paid_at?' <span class="tag" style="font-size:0.6rem;padding:1px 5px;background:rgba(240,160,48,0.15);color:#f0a030">unpaid</span>':''}</li>`;
+  return`<div style="font-size:0.85rem;margin-bottom:0.5rem">Entries are open. The first ${cap} are in; after that, a waiting list moves up if anyone withdraws before the draw.</div>`
+    +h(`In (${inn.length}/${cap})`)+(inn.length?`<ol style="margin:0;padding-left:1.4rem">${inn.map(li).join('')}</ol>`:'<div class="empty">Nobody yet.</div>')
+    +(waiting.length?h('Waiting list')+`<ol style="margin:0;padding-left:1.4rem">${waiting.map(li).join('')}</ol>`:'');
+}
+function mlMatchRowHtml(t,m,rec){
+  const dl=mlDeadline(t,m),late=mlOverdue(t,m,rec),click=mlCanOpen(m,rec)?`onclick="teOpenMatch(${m.id})" `:'';
+  const side=(id,s)=>`<span style="${rec.decided&&rec.winner===s?'font-weight:700;color:var(--gold-l)':''}">${mlName(id)}</span>`;
+  return`<div ${click}style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:0.5rem 0.65rem;margin-bottom:0.35rem;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:8px${click?';cursor:pointer':''}">
+    <div><div style="font-size:0.85rem">${side(m.team_a_p1_id,'a')} v ${side(m.team_b_p1_id,'b')}</div>
+    <div style="font-size:0.68rem;color:rgba(255,255,255,0.4)">${m.stage==='group'?'Round '+m.round:escHtml(mlMatchName(m))}${dl?' · play by '+fd(dl):''}</div></div>
+    <div style="font-size:0.78rem;text-align:right;white-space:nowrap">${escHtml(rec.label)}${late?' <span class="tag" style="font-size:0.6rem;padding:1px 5px;background:rgba(220,80,80,0.15);color:#e06060">Overdue</span>':''}</div></div>`;
+}
+function mlGroupsHtml(t,recs,groups,seeds){
+  const f=v=>v%1?`${Math.floor(v)}½`:String(v);
+  return groups.map((g,gi)=>{
+    const rows=mlStandings(g,recs.filter(r=>r.stage==='group'&&mlGroupOf(r)===gi+1),seeds).map(s=>`<tr><td>${s.pos}</td><td class="left">${mlName(s.pid)}</td><td>${s.P}</td><td>${s.W}</td><td>${s.H}</td><td>${s.L}</td><td><strong>${f(s.pts)}</strong></td><td>${s.holes}</td><td>${s.avgPh==null?'—':s.avgPh.toFixed(1)}</td></tr>`).join('');
+    const fx=tournamentMatches.filter(m=>m.tournament_id===t.id&&m.stage==='group'&&mlGroupOf(m)===gi+1).sort((x,y)=>x.round-y.round||x.match_num-y.match_num);
+    return`<div style="margin-bottom:1.25rem"><h3 style="font-family:'Playfair Display',serif;font-size:1rem;margin:0 0 0.4rem">Group ${'ABCD'[gi]}</h3>
+      <div class="rt-wrap"><table class="rt"><thead><tr><th>#</th><th class="left">Player</th><th title="Played">P</th><th title="Won">W</th><th title="Halved">H</th><th title="Lost">L</th><th>Pts</th><th title="Holes won">Holes</th><th title="Average playing handicap">Avg PH</th></tr></thead><tbody>${rows}</tbody></table></div>
+      <div style="margin-top:0.5rem">${fx.map(m=>mlMatchRowHtml(t,m,recs.find(r=>r.id===m.id))).join('')}</div></div>`;
+  }).join('')+`<p style="font-size:0.72rem;color:rgba(255,255,255,0.35)">Win 1 · halve ½ · loss 0. Level on points: the result between the tied players (a mini-table for three or more), then holes won, then the lower average playing handicap.</p>`;
+}
+function mlPlayoffsHtml(t,recs){
+  const ms=tournamentMatches.filter(m=>m.tournament_id===t.id&&m.stage&&m.stage!=='group');
+  return[1,2,3,4].map(b=>{
+    const row=(stage,n)=>{const m=ms.find(x=>x.stage===stage&&x.bracket===b&&(n==null||x.match_num===b*2-2+n));return m?mlMatchRowHtml(t,m,recs.find(r=>r.id===m.id)):'';};
+    const o=ordinal(b);
+    return`<div style="margin-bottom:1.25rem"><h3 style="font-family:'Playfair Display',serif;font-size:1rem;margin:0 0 0.25rem">${ML_BRACKETS[b-1]} — places ${b*4-3}–${b*4}</h3>
+      <div style="font-size:0.7rem;color:rgba(255,255,255,0.4);margin-bottom:0.4rem">Semi-finals: Group A ${o} v Group B ${o} · Group C ${o} v Group D ${o}. A level match goes to sudden death.</div>
+      ${row('semi',1)}${row('semi',2)}${row('final')}${row('place')}</div>`;
+  }).join('');
+}
+function mlResultsHtml(t,recs){
+  const pl=mlPlaces(recs),champ=mlChampion(recs);
+  if(!pl.length)return'<div class="empty">Places appear as the finals and 3rd/4th matches finish.</div>';
+  return`<div class="rt-wrap"><table class="rt"><thead><tr><th>Place</th><th class="left">Player</th></tr></thead><tbody>${pl.map(x=>`<tr><td>${ordinal(x.place)}</td><td class="left">${x.pid===champ?'🏆 ':''}${mlName(x.pid)}</td></tr>`).join('')}</tbody></table></div>`;
 }
 
 function renderSaturdayAdmin(){

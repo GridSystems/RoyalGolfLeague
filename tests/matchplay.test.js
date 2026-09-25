@@ -289,6 +289,70 @@ setTimeout(async function(){
        const r3=semisPlayed();for(let b=2;b<=4;b++)win(find(r3,'final',b),'a');win(find(r3,'place',1),'a');
        T('X: no champion until the Winners final is decided, whatever else is',mlChampion(r3)===null);}
     }
+    // ── Task 6: the Tournament tab for a league ──
+    const LG={id:900,name:'Matchplay 2027',date:'2027-04-01',tee_id:'57',format:'league',status:'drawn',buy_in:200,max_players:16,
+      deadlines:{group_1:'2027-05-15',group_2:'2027-06-15',group_3:'2027-07-31',semi:'2027-08-20',final:'2027-09-10'}};
+    // A drawn league: players 1–16 all index 18 (nett = gross), groups G, 40 matches (ids 1–40), no scores.
+    const league=()=>{tournaments=[{...LG}];activeTournamentId=900;TE.matchId=null;mlTab='groups';
+      players=[...Array(16)].map((_,i)=>P(i+1,'P'+(i+1)));players[0].is_admin=true;activeId=2;
+      tournamentPlayers=G.flatMap((g,gi)=>g.map((pid,k)=>({id:100+pid,tournament_id:900,player_id:pid,team:'league',group_num:gi+1,seed_pot:k+1,entered_at:new Date(Date.UTC(2027,2,1,10,0,pid)).toISOString(),paid_at:null,amount:null})));
+      tournamentMatches=mlFixtures(G).map((r,i)=>({id:i+1,tournament_id:900,status:'pending',result:null,start_hole:1,extra_holes:0,outcome:'played',decided_by:null,played_on:null,tee_id:null,team_a_p2_id:null,team_b_p2_id:null,_teeId:'57',...r}));
+      tournamentScores=[];};
+    // An open league with n entries (players 1–n signed up in that order; 20 players exist).
+    const entryLeague=n=>{tournaments=[{...LG,status:'entry'}];activeTournamentId=900;TE.matchId=null;
+      players=[...Array(20)].map((_,i)=>P(i+1,'P'+(i+1)));players[0].is_admin=true;
+      tournamentPlayers=[...Array(n)].map((_,i)=>({id:300+i+1,tournament_id:900,player_id:i+1,team:'league',entered_at:new Date(Date.UTC(2027,2,1,10,0,i)).toISOString(),paid_at:null,amount:null,group_num:null,seed_pot:null}));
+      tournamentMatches=[];tournamentScores=[];};
+    let sid=1000;
+    const stub=()=>reset((u,b,m)=>m==='POST'&&u.includes('tournament_scores')?[{id:++sid,...b}]:m==='PATCH'?[{...b,id:+(u.match(/id=eq\.(\d+)/)||[])[1]}]:[]);
+    const byId=id=>tournamentMatches.find(m=>m.id===id);
+    const gm=()=>tournamentMatches.filter(m=>m.stage==='group');
+    const semi=(b,n)=>tournamentMatches.find(m=>m.stage==='semi'&&m.bracket===b&&m.match_num===b*2-2+n);
+    const fin=(b,stage='final')=>tournamentMatches.find(m=>m.stage===stage&&m.bracket===b);
+    const W=w=>w==='a'?[3,5]:[5,3];
+    // Decide a match locally, no requests: the winner takes holes 1–10 (10&8).
+    const decideLocal=(m,w)=>{tournamentScores.push(...card(m,holes(1,10,...W(w))));Object.assign(m,{status:'complete',result:w,played_on:'2027-05-01'});};
+    const seedWin=m=>{const s={};tournamentPlayers.forEach(e=>s[e.player_id]=e.seed_pot);return s[m.team_a_p1_id]<s[m.team_b_p1_id]?'a':'b';};
+    // Put the planned players into every playoff slot, locally (what mlChange writes).
+    const fillLocal=()=>{const t=tournaments[0],{groups,seeds}=mlGroups(t),{want}=mlPlan(mlRecords(t),groups,seeds);for(const m of tournamentMatches)if(want[m.id]){m.team_a_p1_id=want[m.id].a;m.team_b_p1_id=want[m.id].b;}};
+    const tc=()=>document.getElementById('tournamentContent').innerHTML;
+    {
+      league();today=()=>'2027-05-16';
+      gm().filter(m=>mlGroupOf(m)===1&&m.round<3).forEach(m=>decideLocal(m,seedWin(m)));
+      T('records: one per league match, decided from the scores',mlRecords(tournaments[0]).length===40&&mlRecords(tournaments[0]).filter(r=>r.decided).length===4&&mlRecords(tournaments[0])[0].label==='10&8');
+      T('records: playing handicaps kept for played matches',mlRecords(tournaments[0])[0].ph.a===mlRecords(tournaments[0])[0].ph.b);
+      T('groups from the draw, in pot order, with seeds',JSON.stringify(mlGroups(tournaments[0]).groups)===JSON.stringify(G)&&mlGroups(tournaments[0]).seeds[7]===3);
+      renderTournament();let html=tc();
+      T('league: Groups, Playoffs and Results tabs; no team-day tabs',/>Groups</.test(html)&&/>Playoffs</.test(html)&&/>Results</.test(html)&&!/Fourballs/.test(html));
+      T('four group tables with P W H L Pts Holes Avg PH',(html.match(/>Group [ABCD]</g)||[]).length===4&&/>Pts</.test(html)&&/>Avg PH</.test(html));
+      const blockA=html.split('>Group B<')[0];
+      T('group A ordered by points',blockA.indexOf('>P1<')<blockA.indexOf('>P2<')&&blockA.indexOf('>P2<')<blockA.indexOf('>P3<'));
+      T('fixtures show their round and play-by date',/Round 1 · play by 15 May 2027/.test(html));
+      T('Overdue: the six undecided round-1 matches past 15 May, not the decided ones',(html.match(/>Overdue</g)||[]).length===6);
+      T('decided result shown',/10&amp;8/.test(html));
+      T('rows open for the two players while undecided',html.includes('teOpenMatch(5)')&&!html.includes('teOpenMatch(2)')&&!html.includes('teOpenMatch(6)'));
+      activeId=1;renderTournament();html=tc();
+      T('an admin can open any match, decided ones too',html.includes('teOpenMatch(2)')&&html.includes('teOpenMatch(6)'));
+      mlTab='playoffs';renderTournament();html=tc();
+      T('Playoffs: four brackets with their places',/Winners — places 1–4/.test(html)&&/Fourths — places 13–16/.test(html));
+      T('Playoffs: how the semis are made',/Group A 1st v Group B 1st/.test(html));
+      mlTab='results';renderTournament();
+      T('Results: nothing yet',/Places appear as the finals/.test(tc()));
+      gm().forEach(m=>{if(m.status!=='complete')decideLocal(m,seedWin(m));});fillLocal();
+      for(let b=1;b<=4;b++){decideLocal(semi(b,1),'a');decideLocal(semi(b,2),'a');}fillLocal();
+      for(let b=1;b<=4;b++){decideLocal(fin(b),'a');decideLocal(fin(b,'place'),'a');}
+      renderTournament();html=tc();
+      T('Results: 16 places, the champion marked',(html.match(/<tr><td>\d+(st|nd|rd|th)</g)||[]).length===16&&/🏆 P1</.test(html));
+      mlTab='groups';players[2].name='<b>X</b>';players[3].archived_at='2027-05-01';renderTournament();
+      T('names are escaped',!document.getElementById('tournamentContent').querySelector('b')&&/&lt;b&gt;X/.test(tc()));
+      T('an archived player still shows by name',/>P4</.test(tc()));
+      entryLeague(17);renderTournament();html=tc();
+      T('entry phase: 16 in and a waiting list',/In \(16\/16\)/.test(html)&&/Waiting list/.test(html));
+      tournaments=[{id:5,name:'Cup',date:'2026-07-04',tee_id:'57',status:'round_1',team_a_name:'Reds',team_b_name:'Blues'}];activeTournamentId=5;tournamentMatches=[];
+      renderTournament();
+      T('a tournament without format (before the migration) renders as team day',/Fourballs/.test(tc())&&/Reds/.test(tc()));
+      today=()=>'2027-05-10';activeId=2;
+    }
     // ── end ──
   }catch(e){out.push('FAIL EXCEPTION :: '+e.stack);}
   await new Promise(r=>setTimeout(r,150));
