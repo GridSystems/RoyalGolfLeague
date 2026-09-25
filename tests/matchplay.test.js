@@ -617,6 +617,85 @@ setTimeout(async function(){
       T('after the draw: payments only — no Remove, Move in or Enter player',/16 entered/.test(adm())&&!/mlRemoveEntry|mlMoveIn|mlEntryFor/.test(adm()));
       activeId=2;
     }
+    // ── Task 9: admin — create, draw, deadlines, outcomes ──
+    const setV=(id,v)=>{document.getElementById(id).value=v;};
+    {
+      tournaments=[];tournamentPlayers=[];tournamentMatches=[];tournamentScores=[];activeTournamentId=null;TE.matchId=null;
+      players=[...Array(20)].map((_,i)=>P(i+1,'P'+(i+1)));players[0].is_admin=true;activeId=1;
+      renderAdminTournament();
+      T('admin: the New matchplay league form, tee 57 by default',!!document.getElementById('mlNewName')&&document.getElementById('mlNewTee').value==='57');
+      setV('mlNewName','Matchplay 2027');setV('mlNewDate','2027-04-01');setV('mlNewBuyIn','200');
+      ['2027-05-15','2027-06-15','2027-07-31','2027-08-20','2027-09-10'].forEach((d,i)=>setV('mlDl_'+ML_ROUND_KEYS[i],d));
+      setV('mlDl_semi','');reset(()=>[]);await mlCreate();
+      T('create refuses a missing deadline',calls.length===0);
+      setV('mlDl_semi','2027-07-01');await mlCreate();
+      T('create refuses deadlines out of order',calls.length===0);
+      setV('mlDl_semi','2027-08-20');
+      reset((u,b,m)=>m==='POST'&&u.includes('/tournaments?')?[{id:900,created_at:'x',...b}]:[]);
+      await mlCreate();
+      const cp=calls.find(c=>c.method==='POST');
+      T('create posts a league: format, entry, tee 57, buy-in, five deadlines',cp&&cp.body.format==='league'&&cp.body.status==='entry'&&cp.body.tee_id==='57'&&cp.body.buy_in===200&&Object.keys(cp.body.deadlines).join()===ML_ROUND_KEYS.join()&&tournaments[0].id===900);
+      // draw
+      entryLeague(16);activeId=1;
+      [5,30,12,1,22,8,17,3,26,14,9,20,2,28,11,6].forEach((v,i)=>players[i].hcp_history=[{date:'2026-01-01',value:v,note:''}]);
+      players[15].hcp_history=[];   // Review Focus: no handicap at all
+      const drawStub=()=>reset((u,b,m)=>m==='PATCH'&&u.includes('tournament_players')?[{...tournamentPlayers.find(e=>e.id===+u.match(/id=eq\.(\d+)/)[1]),...b}]
+        :m==='POST'&&u.includes('tournament_matches')?b.map((r,i)=>({id:i+1,...r})):m==='PATCH'?[{...tournaments[0],...b}]:[]);
+      drawStub();await mlDraw(900);
+      const pp=calls.filter(c=>c.method==='PATCH'&&c.url.includes('tournament_players'));
+      T('draw: 16 players each get a group and a pot',pp.length===16&&new Set(pp.map(c=>c.body.group_num+'-'+c.body.seed_pot)).size===16);
+      const potOf2=pid=>tournamentPlayers.find(e=>e.player_id===pid).seed_pot;
+      T('draw: pot 1 is the four lowest indexes',[4,13,8,1].every(pid=>potOf2(pid)===1));
+      T('draw: a player with no handicap lands in the last pot',potOf2(16)===4);
+      const mp2=calls.find(c=>c.method==='POST'&&c.url.includes('tournament_matches'));
+      T('draw: one request creates all 40 matches for this league',mp2&&mp2.body.length===40&&mp2.body.every(r=>r.tournament_id===900&&r.status==='pending'));
+      T('draw: the league is marked drawn',tournaments[0].status==='drawn'&&calls.some(c=>c.method==='PATCH'&&c.url.includes('/tournaments?')&&c.body.status==='drawn'));
+      const placed=JSON.stringify(tournamentPlayers.map(e=>[e.player_id,e.group_num,e.seed_pot]));
+      tournaments[0].status='entry';tournamentMatches=[];drawStub();await mlDraw(900);
+      T('re-pressing Draw after a partial failure keeps the groups',calls.filter(c=>c.url.includes('tournament_players')).length===0&&JSON.stringify(tournamentPlayers.map(e=>[e.player_id,e.group_num,e.seed_pot]))===placed&&tournamentMatches.length===40);
+      entryLeague(15);reset(()=>[]);await mlDraw(900);
+      T('the draw needs exactly 16 in',calls.length===0);
+      renderAdminTournament();
+      T('before the draw: Draw groups disabled until 16 are in',/Draw groups \(15\/16 in\)/.test(adm())&&document.querySelector('#adminTournamentBody button[onclick^="mlDraw"]').disabled);
+      // deadlines
+      league();activeId=1;renderAdminTournament();
+      T('admin panel after the draw: outcome tool listing the matches, dates editor',!!document.getElementById('mlOutMatch')&&document.getElementById('mlOutMatch').options.length===24&&!!document.getElementById('mlEd_group_1'));
+      setV('mlEd_final','2027-09-30');reset((u,b,m)=>m==='PATCH'?[{...tournaments[0],...b}]:[]);
+      await mlSaveDeadlines(900);
+      T('move a deadline: saved',tournaments[0].deadlines.final==='2027-09-30'&&calls.some(c=>c.body&&c.body.deadlines&&c.body.deadlines.final==='2027-09-30'));
+      setV('mlEd_semi','2027-10-01');reset(()=>[]);await mlSaveDeadlines(900);
+      T('deadlines out of order are refused',calls.length===0);
+      // outcomes
+      league();activeId=1;stub();
+      const gA=gm()[0];
+      await mlSetOutcome(gA.id,'walkover');
+      T('a walkover needs a winner: nothing written',calls.length===0);
+      await mlSetOutcome(gA.id,'walkover','b');
+      const op=calls.find(c=>c.method==='PATCH'&&c.url.includes(`id=eq.${gA.id}`));
+      T('group walkover: outcome, winner, who decided, closed',op&&op.body.outcome==='walkover'&&op.body.result==='b'&&op.body.decided_by===1&&op.body.status==='complete');
+      const tblA=()=>mlStandings(G[0],mlRecords(tournaments[0]).filter(r=>r.stage==='group'&&mlGroupOf(r)===1),mlGroups(tournaments[0]).seeds);
+      T('…counts in the table: 1 point to the walkover winner, no holes',tblA().find(s=>s.pid===gA.team_b_p1_id).pts===1&&tblA().find(s=>s.pid===gA.team_b_p1_id).holes===0);
+      stub();await mlSetOutcome(gA.id,'played');
+      T('clearing an outcome re-derives from the scores (none: back to pending)',gA.outcome==='played'&&gA.status==='pending'&&gA.result===null&&gA.decided_by===null);
+      const sA=semi(1,1);Object.assign(sA,{team_a_p1_id:1,team_b_p1_id:5});stub();
+      await mlSetOutcome(sA.id,'halve_decision');
+      T('halve by decision refused in the playoffs',calls.length===0);
+      await mlSetOutcome(sA.id,'double_forfeit');
+      T('a playoff double forfeit must name who goes through',calls.length===0);
+      // outcomes are edits: refused once a playoff started; otherwise the brackets rebuild
+      league();gm().forEach(m=>decideLocal(m,seedWin(m)));fillLocal();activeId=1;
+      tournamentScores.push({id:2,match_id:semi(2,1).id,hole:1,player_id:semi(2,1).team_a_p1_id,gross:4});stub();window.__alert=null;
+      await mlSetOutcome(gm()[5].id,'double_forfeit');
+      T('an outcome on a group match once a playoff started: refused, blocker named, nothing written',calls.length===0&&/Runners-up semi-final 1/.test(window.__alert||''));
+      tournamentScores=tournamentScores.filter(s=>s.id!==2);stub();
+      await mlSetOutcome(gm()[4].id,'walkover','b');   // group A: 1 v 2 → walkover to 2
+      T('an outcome with no playoff started rebuilds the semis from the new table',semi(1,1).team_a_p1_id===2&&semi(2,1).team_a_p1_id===1);
+      decideLocal(semi(1,2),'a');stub();
+      await mlSetOutcome(semi(1,1).id,'double_forfeit','b');
+      T('playoff double forfeit: the named player goes through to the final',fin(1).team_a_p1_id===5&&fin(1).team_b_p1_id===9&&fin(1,'place').team_a_p1_id===2);
+      T('audit log names the league actions',AUDIT_LABELS.match_outcome==='Match outcome recorded'&&AUDIT_LABELS.league_entered==='Entered matchplay league');
+      activeId=2;
+    }
     // ── end ──
   }catch(e){out.push('FAIL EXCEPTION :: '+e.stack);}
   await new Promise(r=>setTimeout(r,150));

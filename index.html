@@ -1673,7 +1673,7 @@ async function rejectPlayer(id){
 }
 
 // ── Audit log & move-over list ─────────────────────────────────────────────────
-const AUDIT_LABELS={login:'Signed in',login_set_up:'Set up new login',signed_up:'Signed up',reset_requested:'Password reset requested',password_changed:'Password changed',email_changed:'Email changed',mfa_enrolled:'Two-factor set up',admin_mode_unlocked:'Admin mode unlocked',admin_granted:'Admin granted',admin_removed:'Admin removed',approved:'Approved',archived:'Archived',restored:'Restored',social_changed:'Social status changed',payment_recorded:'Payment recorded',payment_deleted:'Payment deleted',fine_deleted:'Fine deleted'};
+const AUDIT_LABELS={login:'Signed in',login_set_up:'Set up new login',signed_up:'Signed up',reset_requested:'Password reset requested',password_changed:'Password changed',email_changed:'Email changed',mfa_enrolled:'Two-factor set up',admin_mode_unlocked:'Admin mode unlocked',admin_granted:'Admin granted',admin_removed:'Admin removed',approved:'Approved',archived:'Archived',restored:'Restored',social_changed:'Social status changed',payment_recorded:'Payment recorded',payment_deleted:'Payment deleted',fine_deleted:'Fine deleted',league_entered:'Entered matchplay league',league_withdrawn:'Withdrew from matchplay league',league_paid:'League entry paid',league_unpaid:'League payment undone',league_entry_moved:'Moved in from the waiting list',match_outcome:'Match outcome recorded',match_edited:'Finished match changed',match_players_changed:'Playoff players changed'};
 async function renderAuditPanel(){
   const el=document.getElementById('auditPanel');if(!el)return;
   if(!_session){el.innerHTML='<div class="empty">Sign in with the new email login to see the audit log.</div>';return;}
@@ -4601,7 +4601,6 @@ async function checkTournamentStatusAdvance(tourn){
 function renderAdminTournament(){
   const el=document.getElementById('adminTournamentBody');if(!el)return;
   const tourn=(activeTournamentId&&tournaments.find(t=>t.id===activeTournamentId))||tournaments[0]||null;
-  if(tourn&&tourn.format==='league'){el.innerHTML=mlAdminHtml(tourn);return;}
 
   const createHtml=`
   <div style="margin-bottom:1rem">
@@ -4618,7 +4617,8 @@ function renderAdminTournament(){
     </div>
   </div>`;
 
-  if(!tourn){el.innerHTML=createHtml;return;}
+  if(!tourn){el.innerHTML=createHtml+mlCreateHtml();return;}
+  if(tourn.format==='league'){el.innerHTML=createHtml+mlCreateHtml()+mlPickerHtml()+'<hr style="border-color:rgba(255,255,255,0.08);margin:1rem 0">'+mlAdminHtml(tourn);return;}
 
   const tPlayers=tournamentPlayers.filter(tp=>tp.tournament_id===tourn.id);
   const teamA=tPlayers.filter(tp=>tp.team==='a').map(tp=>players.find(p=>p.id===tp.player_id)).filter(Boolean);
@@ -4642,7 +4642,7 @@ function renderAdminTournament(){
   const canAdvanceR2=tourn.status==='round_1'&&tournamentMatches.filter(m=>m.tournament_id===tourn.id&&m.round===1&&m.status==='complete').length===4;
 
   el.innerHTML=`
-  ${createHtml}
+  ${createHtml}${mlCreateHtml()}${mlPickerHtml()}
   <hr style="border-color:rgba(255,255,255,0.08);margin:1rem 0">
   <h4 style="margin:0 0 0.75rem;font-size:0.9rem">${tourn.name} <span style="font-size:0.7rem;opacity:0.5">${tourn.status}</span></h4>
 
@@ -5122,14 +5122,103 @@ function mlEnterFor(){const pid=+document.getElementById('mlEntryFor').value,t=m
 // the top of the waiting list.
 function mlMoveIn(id){const {in:inn}=mlEntries(mlT()),last=inn[inn.length-1];if(!last)return;
   return adminEntryWrite(()=>sbUpdate('tournament_players',id,{entered_at:new Date(Date.parse(last.entered_at)-1).toISOString()}),r=>replaceTp(r[0]),'Moved in',mlRedraw);}
-// Admin panel for a league (Task 9 adds the draw, deadlines and outcomes).
+const ML_ROUND_LABELS={group_1:'Group round 1',group_2:'Group round 2',group_3:'Group round 3',semi:'Semi-finals',final:'Finals and 3rd/4th'};
+// All five play-by dates set, each after the one before (a summer break is just a longer gap).
+const mlDeadlinesOk=dl=>ML_ROUND_KEYS.every((k,i)=>dl[k]&&(!i||dl[k]>dl[ML_ROUND_KEYS[i-1]]));
+const mlLabelStyle='font-size:0.75rem;color:rgba(255,255,255,0.5)';
+// Admin panel for a league: entries and payments (shared panel), the draw, play-by dates, outcomes.
 function mlAdminHtml(t){
-  const {es,in:inn}=mlEntries(t),before=t.status==='entry',entered=new Set(es.map(e=>e.player_id));
-  return`<h4 style="margin:0 0 0.5rem;font-size:0.9rem">${escHtml(t.name)} <span style="font-size:0.7rem;opacity:0.5">${before?'entries open':'drawn'}</span></h4>`
+  const {es,in:inn}=mlEntries(t),before=t.status==='entry',entered=new Set(es.map(e=>e.player_id)),dl=t.deadlines||{};
+  const sub=s=>`<h4 style="margin:1rem 0 0.5rem;font-size:0.85rem">${s}</h4>`;
+  let html=`<h4 style="margin:0 0 0.5rem;font-size:0.9rem">${escHtml(t.name)} <span style="font-size:0.7rem;opacity:0.5">${before?'entries open':'drawn'}</span></h4>`
     +entriesPanelHtml({es:before?es:inn,buyIn:Number(t.buy_in||0),cap:before?(t.max_players||16):0,selId:'mlEntryFor',
       fn:{paid:'mlMarkPaid',undo:'mlUndoPaid',remove:before?'mlRemoveEntry':null,enterFor:before?'mlEnterFor':null,moveIn:before?'mlMoveIn':null},
       others:before?activePlayers().filter(p=>!entered.has(p.id)):[]});
+  if(before)html+=`<div style="margin-top:1rem"><button class="btn btn-primary btn-sm" onclick="mlDraw(${t.id})"${inn.length===16?'':' disabled'}>Draw groups (${inn.length}/16 in)</button></div>`;
+  html+=sub('Play-by dates')+`<div style="display:grid;gap:0.4rem">${ML_ROUND_KEYS.map(k=>`<label style="${mlLabelStyle}">${ML_ROUND_LABELS[k]} <input id="mlEd_${k}" type="date" class="input" value="${dl[k]||''}"></label>`).join('')}<button class="btn btn-ghost btn-sm" onclick="mlSaveDeadlines(${t.id})">Save dates</button></div>`;
+  if(!before){
+    const recs=mlRecords(t);
+    const opts=tournamentMatches.filter(m=>m.tournament_id===t.id&&m.stage&&m.team_a_p1_id!=null&&m.team_b_p1_id!=null)
+      .map(m=>`<option value="${m.id}">${escHtml(mlMatchName(m))}: ${mlName(m.team_a_p1_id)} v ${mlName(m.team_b_p1_id)} — ${escHtml(recs.find(r=>r.id===m.id).label)}</option>`).join('');
+    html+=sub('Record an outcome')+`<div style="display:grid;gap:0.4rem"><select id="mlOutMatch" class="input">${opts}</select>
+      <select id="mlOutKind" class="input"><option value="played">Played — clear any decision</option><option value="walkover:a">Walkover to the first-named</option><option value="walkover:b">Walkover to the second-named</option><option value="halve_decision">Halve by decision (group only)</option><option value="double_forfeit">Double forfeit (group)</option><option value="double_forfeit:a">Double forfeit — first-named goes through (playoff)</option><option value="double_forfeit:b">Double forfeit — second-named goes through (playoff)</option></select>
+      <button class="btn btn-warn btn-sm" onclick="mlSetOutcomeFromForm()">Record</button></div>
+      <div style="font-size:0.72rem;color:rgba(255,255,255,0.35);margin-top:0.4rem">To correct a score, open the match on the Tournament tab. A change that would move a playoff match already under way is refused.</div>`;
+  }
+  return html;
 }
+function mlCreateHtml(){
+  return`<div style="margin:1rem 0"><h4 style="margin:0 0 0.75rem;font-size:0.9rem">New matchplay league</h4><div style="display:grid;gap:0.5rem">
+    <input id="mlNewName" class="input" placeholder="League name" value="Matchplay ${new Date().getFullYear()+1}">
+    <label style="${mlLabelStyle}">Starts <input id="mlNewDate" type="date" class="input"></label>
+    <label style="${mlLabelStyle}">Buy-in (DKK) <input id="mlNewBuyIn" type="number" min="0" class="input" value="0"></label>
+    <label style="${mlLabelStyle}">Default tee <select id="mlNewTee" class="input">${tees.filter(t=>!t.archived).map(t=>`<option value="${t.id}"${t.id==='57'?' selected':''}>${escHtml(t.name)}</option>`).join('')}</select></label>
+    ${ML_ROUND_KEYS.map(k=>`<label style="${mlLabelStyle}">${ML_ROUND_LABELS[k]} — play by <input id="mlDl_${k}" type="date" class="input"></label>`).join('')}
+    <button class="btn btn-primary btn-sm" onclick="mlCreate()">Create league</button></div></div>`;
+}
+const mlPickerHtml=()=>tournaments.length>1?`<select class="input" style="margin-bottom:0.75rem" onchange="activeTournamentId=+this.value;renderAdminTournament();renderTournament()">${tournaments.map(t=>`<option value="${t.id}"${t.id===activeTournamentId?' selected':''}>${escHtml(t.name)}${t.format==='league'?' (league)':''}</option>`).join('')}</select>`:'';
+async function mlCreate(){
+  const v=id=>document.getElementById(id).value.trim();
+  const deadlines=Object.fromEntries(ML_ROUND_KEYS.map(k=>[k,v('mlDl_'+k)]));
+  if(!v('mlNewName')||!v('mlNewDate')){alert('A name and a start date are needed.');return;}
+  if(!mlDeadlinesOk(deadlines)){alert('Set all five play-by dates, each after the one before.');return;}
+  if(!await requireAdminMode())return;
+  try{
+    const [saved]=await sbInsert('tournaments',{name:v('mlNewName'),date:v('mlNewDate'),tee_id:v('mlNewTee')||'57',format:'league',status:'entry',buy_in:Number(v('mlNewBuyIn')||0),max_players:16,deadlines});
+    if(!saved)throw new Error('not saved');
+    tournaments.unshift(saved);activeTournamentId=saved.id;document.getElementById('tabTournament').style.display='';toast('League created ✅');
+  }catch(e){alert('Error: '+e.message);}
+  mlRedraw();
+}
+async function mlSaveDeadlines(tid){
+  const t=tournaments.find(x=>x.id===tid),dl=Object.fromEntries(ML_ROUND_KEYS.map(k=>[k,document.getElementById('mlEd_'+k).value]));
+  if(!mlDeadlinesOk(dl)){alert('Set all five play-by dates, each after the one before.');return;}
+  if(!await requireAdminMode())return;
+  try{const [row]=await sbUpdate('tournaments',tid,{deadlines:dl});if(!row)throw new Error('not saved');t.deadlines=dl;toast('Dates saved');}
+  catch(e){alert('Couldn\'t save — '+e.message);}
+  mlRedraw();
+}
+// The draw: pots by handicap index today, groups, then all 40 matches in one request, then 'drawn'.
+// Pressing it again after a failure resumes: players already placed keep their group and pot.
+async function mlDraw(tid){
+  const t=tournaments.find(x=>x.id===tid);if(!t||t.status!=='entry')return;
+  const {in:inn}=mlEntries(t);
+  if(inn.length!==16){alert('The draw needs exactly 16 players in.');return;}
+  if(!confirm('Draw the groups? Entries close and all the league matches are created.'))return;
+  if(!await requireAdminMode())return;
+  try{
+    if(!inn.every(e=>e.group_num!=null)){
+      const idx=pid=>hcpOnDate(players.find(p=>p.id===pid)||{hcp_history:[]},today())??54;   // no handicap → last pot
+      const groups=mlDrawGroups(inn.map(e=>({pid:e.player_id,index:idx(e.player_id)})));
+      for(const [gi,g] of groups.entries())for(const [k,pid] of g.entries()){
+        const [row]=await sbUpdate('tournament_players',inn.find(e=>e.player_id===pid).id,{group_num:gi+1,seed_pot:k+1});
+        if(!row)throw new Error('not saved');replaceTp(row);
+      }
+    }
+    if(!tournamentMatches.some(m=>m.tournament_id===t.id)){
+      const saved=await sbInsert('tournament_matches',mlFixtures(mlGroups(t).groups).map(r=>({...r,tournament_id:t.id,status:'pending'})));
+      if(!saved||saved.length!==40)throw new Error('matches not saved');
+      saved.forEach(m=>{m._teeId=m.tee_id||t.tee_id;tournamentMatches.push(m);});
+    }
+    const [tr]=await sbUpdate('tournaments',t.id,{status:'drawn'});if(!tr)throw new Error('not saved');
+    t.status='drawn';toast('Groups drawn 🏆');
+  }catch(e){alert('The draw didn\'t finish — '+e.message+'. Press Draw groups again to complete it.');}
+  mlRedraw();
+}
+// Admin decisions on a league match — edits like any other, through mlChange and the edit rules.
+// kind: 'played' (clear) | 'walkover' | 'halve_decision' (group only) | 'double_forfeit'.
+// side 'a'|'b': the walkover winner, or in a playoff double forfeit who goes through.
+async function mlSetOutcome(matchId,kind,side=null){
+  const m=tournamentMatches.find(x=>x.id===matchId);if(!m)return;
+  const playoff=m.stage!=='group',named=kind==='walkover'||(kind==='double_forfeit'&&playoff);
+  if(kind==='halve_decision'&&playoff){alert('A halve by decision is only for group matches.');return;}
+  if(named&&side!=='a'&&side!=='b'){alert(kind==='walkover'?'Choose who gets the walkover.':'In the playoffs, name who goes through.');return;}
+  const patch={outcome:kind,decided_by:kind==='played'?null:activeId,result:named?side:kind==='halve_decision'?'half':null};
+  const r=await mlChange(matchId,{patch});
+  if(!r.ok)alert(r.msg);else toast(kind==='played'?'Outcome cleared':`Recorded: ${r.rec.label}`);
+  mlRedraw();
+}
+function mlSetOutcomeFromForm(){const [k,s]=document.getElementById('mlOutKind').value.split(':');return mlSetOutcome(+document.getElementById('mlOutMatch').value,k,s||null);}
 
 function renderSaturdayAdmin(){
   const el=document.getElementById('saturdayAdminBody');if(!el)return;
