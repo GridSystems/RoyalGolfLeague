@@ -132,6 +132,24 @@ setTimeout(async function(){
         order([rec(1,2,'a',{holes:{a:2,b:0}}),rec(2,3,'a',{holes:{a:1,b:0}}),rec(3,1,'a',{holes:{a:4,b:0}}),rec(1,4,'a',{holes:{a:3,b:0}}),rec(2,4,'a',{holes:{a:1,b:0}}),rec(3,4,'a',{holes:{a:1,b:0}})])==='3,1,2,4');
       st=mlStandings([1,2,3,4],[rec(1,2,'a',{ph:{a:10,b:20}}),rec(1,3,'a'),rec(1,4,'a',{ph:{a:14,b:2}})],{1:1,2:2,3:3,4:4});
       T('average playing handicap: played matches only (a walkover has none)',row(1).avgPh===12&&row(3).avgPh===null);
+      // 1 beat 2, 2 beat 3, 3 beat 4, 4 beat 1; 1–3 and 2–4 halved — all four on 1½, and the mini-table
+      // among all four is level too (each has one win, one loss, one half within the set), so it falls
+      // to holes won (1=3, 2=2, 3=2, 4=1); 2 and 3 are still tied there and the restart at (a) — their
+      // own match — puts 2 above 3.
+      T('four-way tie: level mini-table falls to holes won, then restarts at (a) for the pair still tied',
+        order([rec(1,2,'a',{holes:{a:3,b:0}}),rec(2,3,'a',{holes:{a:2,b:0}}),rec(3,4,'a',{holes:{a:2,b:0}}),rec(4,1,'a',{holes:{a:1,b:0}}),rec(1,3,'half'),rec(2,4,'half')])==='1,2,3,4');
+      // 1 and 2 are level on points from separate matches; their own match against each other is still
+      // in progress (some holes already won) — undecided, so it contributes nothing anywhere, and the
+      // tie falls straight to holes won from the decided matches only.
+      T('tied players whose own match is still in progress: it counts for nothing, not even its holes',
+        order([rec(1,3,'a',{holes:{a:1,b:0}}),rec(2,4,'a',{holes:{a:3,b:0}}),rec(1,2,undefined,{holes:{a:5,b:0}})])==='2,1,3,4');
+      // 1 and 2 are level on points and holes; 1's only match was an admin outcome (no ph recorded,
+      // avgPh null), 2's had a real ph — even though 1 has the better seed, null ranks below a real average.
+      st=mlStandings([1,2,3,4],[rec(1,3,'a'),rec(2,4,'a',{ph:{a:15,b:20}})],{1:1,2:2,3:3,4:4});
+      T('a null average (all admin outcomes) ranks below a real average, even with the better seed',
+        row(1).avgPh===null&&row(2).avgPh===15&&row(2).pos<row(1).pos);
+      T('standings rows expose the public shape only — no internal phs array',
+        mlStandings([1,2,3,4],[rec(1,2,'a')],{1:1,2:2,3:3,4:4}).every(s=>!('phs' in s)));
     }
     // ── end ──
   }catch(e){out.push('FAIL EXCEPTION :: '+e.stack);}

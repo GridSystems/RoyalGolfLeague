@@ -1393,7 +1393,7 @@ function mlStandings(pids,recs,seeds){
     return ids;
   };
   const byPts=[...new Set(pids.map(p=>row[p].pts))].sort((x,y)=>y-x);
-  return byPts.flatMap(v=>rank(pids.filter(p=>row[p].pts===v))).map((p,i)=>({...row[p],pos:i+1}));
+  return byPts.flatMap(v=>rank(pids.filter(p=>row[p].pts===v))).map((p,i)=>{const{phs,...pub}=row[p];return{...pub,pos:i+1};});
 }
 
 function currentHcp(player){const hist=player.hcp_history||[];if(!hist.length)return player.handicap;return[...hist].sort((a,b)=>b.date.localeCompare(a.date))[0].value;}
