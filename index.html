@@ -1178,7 +1178,16 @@ function hcpOnDate(player,date){const hist=player.hcp_history||[];if(!hist.lengt
 
 // ── Tournament helpers ────────────────────────────────────────────
 // One score per player per hole (tournament_scores_once): every score, team day and league, is one upsert.
-const tmSaveScore=row=>sbInsert('tournament_scores',row,'match_id,hole,player_id');
+// One upsert on the (match, hole, player) key from matchplay_league.sql. Safety net: if the app is live
+// before that SQL has run, the key doesn't exist (42P10) — save the old way, delete then insert.
+const tmSaveScore=async row=>{
+  try{return await sbInsert('tournament_scores',row,'match_id,hole,player_id');}
+  catch(e){
+    if(!/42P10/.test(e.message))throw e;
+    await sbDeleteWhere('tournament_scores',`match_id=eq.${row.match_id}&hole=eq.${row.hole}&player_id=eq.${row.player_id}`);
+    return sbInsert('tournament_scores',row);
+  }
+};
 function tmPlayingHcp(player,tee,date){
   const idx=hcpOnDate(player,date);
   const courseHcp=Math.round(idx*tee.slope/113+(tee.rating-COURSE_PAR));

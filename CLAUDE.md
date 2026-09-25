@@ -345,7 +345,9 @@ A second tournament format beside the one-day team event: `tournaments.format='l
     tournament table loaded (`tmLoaded`) and the draw is a complete 4×4: a failed scores
     load looks like "nothing played" and would otherwise empty every slot.
 - **Scores** (league and team day): one row per match, hole and player
-  (`tournament_scores_once`), written as one upsert (`tmSaveScore`).
+  (`tournament_scores_once`), written as one upsert (`tmSaveScore`). Safety net: if the app is
+  live before `matchplay_league.sql` has run (or after its rollback), the key is missing (42P10)
+  and `tmSaveScore` falls back to delete + insert, so team-day scoring never depends on deploy order.
 - **Permissions:**
   - Trigger `protect_league_match`: nobody — admins and the PIN route included — changes
     who plays in a **started** league match (any score or an outcome); clear it first.

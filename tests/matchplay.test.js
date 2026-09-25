@@ -638,6 +638,18 @@ setTimeout(async function(){
        T('I3: team day uses the same upsert',tp.length===1&&tp[0].method==='POST'&&/on_conflict=match_id,hole,player_id/.test(tp[0].url)&&/merge-duplicates/.test(tp[0].headers.Prefer||''));
        TE.currentPlayerIdx=0;_teBuffer='5';await teEnter();
        T('I3: team day re-entry: still one row for that hole and player, holding the new score',tournamentScores.filter(s=>s.match_id===77&&s.hole===1&&s.player_id===1).map(s=>s.gross).join()==='5');
+       // Safety net: the app pushed before matchplay_league.sql ran — no unique key yet, so the upsert
+       // fails with 42P10. The score must still reach the server the old way (delete, then insert).
+       reset((u,b,m)=>m==='POST'&&u.includes('tournament_scores')&&u.includes('on_conflict')?{__status:400,code:'42P10',message:'there is no unique or exclusion constraint matching the ON CONFLICT specification'}
+         :m==='POST'&&u.includes('tournament_scores')?[{id:++sid,...b}]:m==='PATCH'?[{...b,id:+(u.match(/id=eq\.(\d+)/)||[])[1]}]:[]);
+       TE.currentPlayerIdx=0;_teBuffer='6';await teEnter();
+       const sn=calls.filter(c=>c.url.includes('tournament_scores'));
+       T('safety net: before the SQL, a team-day score falls back to delete + insert and is saved',
+         sn.length===3&&/on_conflict/.test(sn[0].url)&&sn[1].method==='DELETE'&&/match_id=eq\.77/.test(sn[1].url)&&/hole=eq\.1/.test(sn[1].url)&&/player_id=eq\.1/.test(sn[1].url)
+         &&sn[2].method==='POST'&&!/on_conflict/.test(sn[2].url)&&sn[2].body.gross===6,sn.map(c=>c.method+' '+c.url).join(' | '));
+       reset((u,b,m)=>m==='POST'&&u.includes('tournament_scores')?{__status:403,code:'42501',message:'new row violates row-level security policy'}:[]);
+       TE.currentPlayerIdx=0;_teBuffer='7';await teEnter();
+       T('safety net: any other error is not retried as delete + insert',calls.filter(c=>c.url.includes('tournament_scores')&&c.method==='DELETE').length===0);
        TE.matchId=null;}
       // M1: a league match's handicap date is written before its first score
       {league();level();stub();activeId=2;const o1=gm().find(m=>m.team_a_p1_id===2||m.team_b_p1_id===2);
