@@ -53,7 +53,7 @@ const MATRIX = [
   ['member', 'score own finished match',               w => SCORE(w.m.done, 1, 2), 'denied'],
   ['admin',  'score any match, finished too',          w => SCORE(w.m.done, 1, 2), 1],
   ['anon',   'score any match (PIN route)',            w => SCORE(w.m.other, 2, 3), 1],
-  ['member', 'team-day score, not in the match (unchanged)', w => SCORE(w.m.td, 1, 9), 1],
+  ['member', 'team-day score, not in the match (unchanged)', w => SCORE(w.m.td, 2, 9), 1],
   ['member', 'update any team-day score (unchanged)',  w => `UPDATE public.tournament_scores SET gross=5 WHERE match_id=${w.m.td}`, 1],
   ['member', 'delete any team-day score (unchanged)',  w => `DELETE FROM public.tournament_scores WHERE match_id=${w.m.td}`, 1],
   // match status / result / outcome / players
@@ -66,7 +66,14 @@ const MATRIX = [
   ['member', 'fill an empty playoff slot',             w => MATCH(w.m.semiEmpty, `team_a_p1_id=2, team_b_p1_id=9`), 1],
   ['member', 'overwrite a filled playoff slot',        w => MATCH(w.m.semiFilled, `team_a_p1_id=2`), 'denied'],
   ['member', 'empty a filled playoff slot',            w => MATCH(w.m.semiFilled, `team_a_p1_id=NULL`), 'denied'],
-  ['member', 'fill a slot on a playoff match that has already started (a score exists)', w => MATCH(w.m.semiStarted, `team_b_p1_id=9`), 'denied'],
+  // a started match's players are fixed for everyone (P0001, not 42501: no admin-mode prompt can help)
+  ['member', 'fill a slot on a playoff match that has already started (a score exists)', w => MATCH(w.m.semiStarted, `team_b_p1_id=9`), 'P0001'],
+  ['admin',  'change who plays in a started playoff match (a score exists)', w => MATCH(w.m.semiStarted, `team_b_p1_id=9`), 'P0001'],
+  ['admin',  'change who plays in a started group match',  w => MATCH(w.m.other, `team_b_p1_id=9`), 'P0001'],
+  ['anon',   'change who plays in a started match (PIN route)', w => MATCH(w.m.semiStarted, `team_b_p1_id=9`), 'P0001'],
+  ['admin',  'fill an empty, unstarted playoff slot',      w => MATCH(w.m.semiEmpty, `team_a_p1_id=2, team_b_p1_id=9`), 1],
+  ['admin',  'empty a filled, unstarted playoff slot',     w => MATCH(w.m.semiFilled, `team_a_p1_id=NULL, team_b_p1_id=NULL`), 1],
+  ['member', 'team-day match players (unchanged)',         w => MATCH(w.m.td, `team_a_p1_id=2`), 1],
   ['member', 'fill an empty slot despite a stale in_progress status cache (never actually started)', w => MATCH(w.m.semiStaleStatus, `team_a_p1_id=2, team_b_p1_id=9`), 1],
   ['member', 'move a team-day match into a league',    w => MATCH(w.m.td, `tournament_id=${w.L}, stage='group', round=1, match_num=9`), 'denied'],
   ['adminNo2fa', 'record an outcome',                  w => MATCH(w.m.other, `outcome='walkover', result='a'`), 'denied'],
@@ -108,6 +115,90 @@ test('a member withdraws their own league entry only while unpaid and before the
   await su(db); await db.query(`UPDATE public.tournament_players SET paid_at=NULL, amount=NULL WHERE tournament_id=${E} AND player_id=2`);
   await db.query(`UPDATE public.tournaments SET status='drawn' WHERE id=${E}`);
   await as(db, P.member); assert.equal(await tryQ(db, del), 0);                 // drawn: stays
+});
+
+test('an admin outcome starts a match too: its players are fixed until the outcome is cleared', async () => {
+  const { db, P, m } = await world(); await as(db, P.admin);
+  assert.equal(await tryQ(db, MATCH(m.semiFilled, `outcome='double_forfeit', result='b'`)), 1);
+  assert.equal(await tryQ(db, MATCH(m.semiFilled, `team_a_p1_id=8`)), 'P0001');
+  assert.equal(await tryQ(db, MATCH(m.semiFilled, `outcome='played', result=NULL, team_a_p1_id=8`)), 'P0001');   // not in one go either
+  assert.equal(await tryQ(db, MATCH(m.semiFilled, `outcome='played', result=NULL`)), 1);
+  assert.equal(await tryQ(db, MATCH(m.semiFilled, `team_a_p1_id=8`)), 1);
+});
+
+test('clearing a league match (all its scores deleted) is audited once; team day is not', async () => {
+  const { db, P, L, m } = await world(); await as(db, P.admin);
+  await db.query(SCORE(m.other, 2, 4));
+  assert.equal(await tryQ(db, `DELETE FROM public.tournament_scores WHERE match_id=${m.other}`), 2);
+  assert.equal(await tryQ(db, `DELETE FROM public.tournament_scores WHERE match_id=${m.td}`), 1);
+  await su(db);
+  const rows = (await db.query(`SELECT action, actor_player_id, details FROM public.audit_log WHERE action='match_scores_cleared'`)).rows;
+  assert.deepEqual(rows.map(r => [r.actor_player_id, r.details]), [[1, { tournament_id: L, match_id: m.other, scores: 2 }]]);
+});
+
+test('one score per player per hole: a duplicate is refused, re-entry is an upsert (league and team day)', async () => {
+  const { db, P, m } = await world();
+  const UPSERT = (mid, hole, pid, g) => `INSERT INTO public.tournament_scores(match_id,hole,player_id,gross) VALUES (${mid},${hole},${pid},${g})
+    ON CONFLICT (match_id,hole,player_id) DO UPDATE SET gross=EXCLUDED.gross`;
+  await as(db, P.member);
+  assert.equal(await tryQ(db, SCORE(m.own, 1, 3)), 1);
+  assert.equal(await tryQ(db, SCORE(m.own, 1, 3)), '23505');
+  assert.equal(await tryQ(db, UPSERT(m.own, 1, 3, 6)), 1);
+  assert.equal(await tryQ(db, UPSERT(m.td, 1, 9, 7)), 1);        // team day: any member, as before
+  assert.equal(await tryQ(db, UPSERT(m.other, 1, 3, 2)), 'denied'); // not their match
+  await as(db, null);
+  assert.equal(await tryQ(db, UPSERT(m.own, 1, 3, 5)), 1);        // PIN route
+  await su(db);
+  assert.equal((await one(db, `SELECT gross FROM public.tournament_scores WHERE match_id=${m.own} AND hole=1 AND player_id=3`)).gross, 5);
+  assert.equal((await one(db, `SELECT gross FROM public.tournament_scores WHERE match_id=${m.td} AND hole=1 AND player_id=9`)).gross, 7);
+});
+
+test('the migration refuses to run over duplicate scores, changing nothing', async () => {
+  const db = await productionDb();
+  assert.equal(await run(db, REAL('phase2a_auth.sql')), null);
+  const TD = (await one(db, `SELECT min(id) AS id FROM public.tournaments`)).id;
+  const mid = (await one(db, `INSERT INTO public.tournament_matches(tournament_id,round,match_num) VALUES ($1,2,1) RETURNING id`, [TD])).id;
+  await db.query(`INSERT INTO public.tournament_scores(match_id,hole,player_id,gross) VALUES ($1,1,9,4),($1,1,9,5)`, [mid]);
+  assert.match(await run(db, REAL('matchplay_league.sql')), /duplicate score/);
+  assert.equal((await one(db, `SELECT count(*)::int n FROM information_schema.columns WHERE table_name='tournaments' AND column_name='format'`)).n, 0);
+});
+
+test('a member cannot withdraw once placed in a group (a draw part-done)', async () => {
+  const { db, P, E } = await world();
+  await db.query(`INSERT INTO public.tournament_players(tournament_id,player_id,team,group_num,seed_pot) VALUES ($1,2,'league',1,1)`, [E]);
+  await as(db, P.member);
+  assert.equal(await tryQ(db, `DELETE FROM public.tournament_players WHERE tournament_id=${E} AND player_id=2`), 0);
+});
+
+test('team CHECK: production\'s (a, b) is replaced by (a, b, league) whatever its name; rollback restores (a, b)', async () => {
+  const db = await productionDb();
+  assert.equal(await run(db, REAL('phase2a_auth.sql')), null);
+  const TD = (await one(db, `SELECT min(id) AS id FROM public.tournaments`)).id;
+  const JOIN = (tid, team) => `INSERT INTO public.tournament_players(tournament_id,player_id,team) VALUES (${tid},9,'${team}')`;
+  assert.equal(await tryQ(db, JOIN(TD, 'league')), '23514');   // the testbed carries production's CHECK
+  await db.exec(`ALTER TABLE public.tournament_players RENAME CONSTRAINT tournament_players_team_check TO some_other_name`);
+  assert.equal(await run(db, REAL('matchplay_league.sql')), null);
+  const teamChecks = async () => (await db.query(`SELECT pg_get_constraintdef(oid) d FROM pg_constraint
+    WHERE conrelid='public.tournament_players'::regclass AND contype='c' AND pg_get_constraintdef(oid) ~ '\\mteam\\M'`)).rows.map(r => r.d);
+  assert.equal((await teamChecks()).length, 1);
+  const L = (await one(db, `INSERT INTO public.tournaments(name,date,tee_id,format,status) VALUES ('L','2027-04-01','57','league','entry') RETURNING id`)).id;
+  assert.equal(await tryQ(db, JOIN(L, 'league')), 1);
+  assert.equal(await tryQ(db, `UPDATE public.tournament_players SET team='x' WHERE tournament_id=${L}`), '23514');
+  assert.equal(await run(db, sqlFile('matchplay_league_rollback.sql')), null);
+  assert.equal((await teamChecks()).length, 1);
+  assert.equal(await tryQ(db, JOIN(TD, 'league')), '23514');
+  assert.equal(await tryQ(db, JOIN(TD, 'a')), 1);
+  assert.equal(await run(db, sqlFile('matchplay_league_rollback.sql')), null);   // still safe to re-run
+  assert.equal((await teamChecks()).length, 1);
+});
+
+test('rollback reports what it deletes', async () => {
+  const { db, L, E } = await world();
+  await db.query(`UPDATE public.tournament_players SET paid_at=now(), amount=200 WHERE tournament_id=$1 AND player_id=3`, [L]);
+  const notes = [];
+  await db.exec(sqlFile('matchplay_league_rollback.sql'), { onNotice: n => notes.push(n.message) });
+  assert.ok(notes.some(n => /2 league tournament\(s\), 3 entries \(1 paid\), 7 matches/.test(n)), notes.join(' | '));
+  assert.ok(E);
 });
 
 test('the league CHECKs hold', async () => {
@@ -167,7 +258,10 @@ test('rehearsal changes nothing; a second real run refuses; rollback removes the
   const db = await productionDb();
   assert.equal(await run(db, REAL('phase2a_auth.sql')), null);
   const col = async () => (await one(db, `SELECT count(*)::int n FROM information_schema.columns WHERE table_name='tournaments' AND column_name='format'`)).n;
-  assert.match(await run(db, sqlFile('matchplay_league.sql')), /REHEARSAL OK/);
+  const rehearsal = await run(db, sqlFile('matchplay_league.sql'));
+  assert.match(rehearsal, /REHEARSAL OK/);
+  assert.match(rehearsal, /tournament_players team CHECK: a, b, league/);
+  assert.match(rehearsal, /tournament_scores: one row per match, hole and player/);
   assert.equal(await col(), 0);
   assert.equal(await run(db, REAL('matchplay_league.sql')), null);
   assert.equal((await one(db, `SELECT count(*)::int n FROM public.tournaments WHERE format <> 'team_day'`)).n, 0);   // existing rows: team day

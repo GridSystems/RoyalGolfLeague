@@ -17,7 +17,23 @@ DO $$ BEGIN
   IF to_regprocedure('private.is_admin()') IS NULL THEN
     RAISE EXCEPTION 'phase2a_auth.sql must be applied first. Nothing was changed.';
   END IF;
+  -- Scores become one row per match, hole and player (upserted). Live has none today; refuse rather than guess.
+  IF EXISTS (SELECT 1 FROM public.tournament_scores GROUP BY match_id, hole, player_id HAVING count(*) > 1) THEN
+    RAISE EXCEPTION 'tournament_scores has a duplicate score (same match, hole and player) — remove it first. Nothing was changed.';
+  END IF;
 END $$;
+
+-- Production's tournament_players may carry CHECK (team IN ('a','b')) from the team-day plan, under any
+-- name: find every CHECK on team by its definition, drop it, and add one that allows league entries.
+DO $$ DECLARE c text; BEGIN
+  FOR c IN SELECT conname FROM pg_constraint WHERE conrelid = 'public.tournament_players'::regclass
+             AND contype = 'c' AND pg_get_constraintdef(oid) ~ '\mteam\M' LOOP
+    EXECUTE format('ALTER TABLE public.tournament_players DROP CONSTRAINT %I', c);
+  END LOOP;
+END $$;
+ALTER TABLE public.tournament_players ADD CONSTRAINT tplayers_team CHECK (team IN ('a', 'b', 'league'));
+-- One score per player per hole: the app upserts on this key (league and team day).
+ALTER TABLE public.tournament_scores ADD CONSTRAINT tournament_scores_once UNIQUE (match_id, hole, player_id);
 
 -- ===== Columns (every existing tournament becomes team_day) ==============================
 ALTER TABLE public.tournaments
@@ -77,8 +93,17 @@ GRANT EXECUTE ON FUNCTION private.is_league(bigint), private.league_open(bigint)
 -- ===== League matches: who may change what ===================================================
 -- Requests without a login (the old PIN route) pass unchanged until release B, as everywhere.
 CREATE FUNCTION private.protect_league_match() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
-DECLARE me bigint := private.current_player(); started boolean;
+DECLARE me bigint := private.current_player();
 BEGIN
+  -- A STARTED match's players are fixed for everyone — admins and the PIN route too: its scores and
+  -- outcome belong to them. "Started" per the plan: any score or an admin outcome (status is only a
+  -- cache and can be stale, so it never gates this). Clear the match first (Admin → Clear scores).
+  -- Not 42501: admin mode can't help, so the app mustn't prompt for it.
+  IF (NEW.team_a_p1_id IS DISTINCT FROM OLD.team_a_p1_id OR NEW.team_b_p1_id IS DISTINCT FROM OLD.team_b_p1_id)
+     AND (private.is_league(OLD.tournament_id) OR private.is_league(NEW.tournament_id))
+     AND (OLD.outcome <> 'played' OR EXISTS (SELECT 1 FROM public.tournament_scores WHERE match_id = OLD.id)) THEN
+    RAISE EXCEPTION 'This match has started — clear its scores and outcome before changing who plays in it.';
+  END IF;
   -- Checking OLD alone would miss a member PATCHing a team-day match's tournament_id onto a
   -- league (is_league(OLD)=false, so this would return NEW before the tournament_id-change check
   -- below ever runs) — check NEW too, so that move itself falls into, and is refused by, that check.
@@ -92,12 +117,10 @@ BEGIN
      OR NEW.team_a_p2_id IS DISTINCT FROM OLD.team_a_p2_id OR NEW.team_b_p2_id IS DISTINCT FROM OLD.team_b_p2_id THEN
     RAISE EXCEPTION 'Only an admin in admin mode can change that.' USING ERRCODE = '42501';
   END IF;
-  -- Filling an EMPTY playoff slot as results come in: any member. Never overwriting or emptying one.
+  -- Filling an EMPTY (unstarted, see above) playoff slot as results come in: any member. Never
+  -- overwriting or emptying one.
   IF NEW.team_a_p1_id IS DISTINCT FROM OLD.team_a_p1_id OR NEW.team_b_p1_id IS DISTINCT FROM OLD.team_b_p1_id THEN
-    -- "Started" per the plan: any score or an admin outcome — status is only a cache and can be
-    -- stale (e.g. left over from before a re-open), so it must never gate this.
-    started := OLD.outcome <> 'played' OR EXISTS (SELECT 1 FROM public.tournament_scores WHERE match_id = OLD.id);
-    IF OLD.stage = 'group' OR started
+    IF OLD.stage = 'group'
        OR (NEW.team_a_p1_id IS DISTINCT FROM OLD.team_a_p1_id AND OLD.team_a_p1_id IS NOT NULL)
        OR (NEW.team_b_p1_id IS DISTINCT FROM OLD.team_b_p1_id AND OLD.team_b_p1_id IS NOT NULL) THEN
       RAISE EXCEPTION 'Only an admin in admin mode can change who plays in a match.' USING ERRCODE = '42501';
@@ -140,7 +163,8 @@ CREATE POLICY p2_tplayer_enter ON public.tournament_players FOR INSERT TO authen
               AND paid_at IS NULL AND amount IS NULL AND recorded_by IS NULL AND group_num IS NULL AND seed_pot IS NULL
               AND entered_at = now() AND private.league_open(tournament_id));
 CREATE POLICY p2_tplayer_withdraw ON public.tournament_players FOR DELETE TO authenticated
-  USING (private.is_member() AND player_id = private.current_player() AND paid_at IS NULL AND private.league_open(tournament_id));
+  USING (private.is_member() AND player_id = private.current_player() AND paid_at IS NULL AND group_num IS NULL
+         AND private.league_open(tournament_id));
 -- League scores: restrictive, so they narrow the existing member policies without touching team day.
 CREATE POLICY p2_tscore_league_ins ON public.tournament_scores AS RESTRICTIVE FOR INSERT TO authenticated
   WITH CHECK (private.may_score(match_id, player_id));
@@ -202,6 +226,21 @@ REVOKE ALL ON FUNCTION private.audit_league_match() FROM PUBLIC, anon, authentic
 CREATE TRIGGER audit_league_match AFTER UPDATE ON public.tournament_matches
   FOR EACH ROW EXECUTE FUNCTION private.audit_league_match();
 
+-- A league match's scores deleted — the admin's Clear scores (the app never deletes a single score):
+-- one row per match per statement, not one per score. Team day: not audited.
+CREATE FUNCTION private.audit_league_scores() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE r record;
+BEGIN
+  FOR r IN SELECT m.tournament_id, m.id, m.team_a_p1_id, count(*)::int AS n FROM gone g JOIN public.tournament_matches m ON m.id = g.match_id
+           WHERE private.is_league(m.tournament_id) GROUP BY m.tournament_id, m.id, m.team_a_p1_id LOOP
+    PERFORM private.audit('match_scores_cleared', r.team_a_p1_id, jsonb_build_object('tournament_id', r.tournament_id, 'match_id', r.id, 'scores', r.n));
+  END LOOP;
+  RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION private.audit_league_scores() FROM PUBLIC, anon, authenticated;
+CREATE TRIGGER audit_league_scores AFTER DELETE ON public.tournament_scores REFERENCING OLD TABLE AS gone
+  FOR EACH STATEMENT EXECUTE FUNCTION private.audit_league_scores();
+
 -- ===== CHECKS =====
 DO $$ DECLARE n int; BEGIN
   SELECT count(*) INTO n FROM information_schema.columns WHERE table_schema = 'public'
@@ -225,9 +264,19 @@ DO $$ DECLARE n int; BEGIN
   END IF;
   INSERT INTO ml_report(line) VALUES ('unique indexes: 2');
   SELECT count(*) INTO n FROM pg_trigger WHERE NOT tgisinternal
-    AND tgname IN ('protect_league', 'protect_league_match', 'audit_league_players', 'audit_league_match');
-  IF n <> 4 THEN RAISE EXCEPTION 'Expected 4 new triggers, found %', n; END IF;
-  INSERT INTO ml_report(line) VALUES ('new triggers: 4');
+    AND tgname IN ('protect_league', 'protect_league_match', 'audit_league_players', 'audit_league_match', 'audit_league_scores');
+  IF n <> 5 THEN RAISE EXCEPTION 'Expected 5 new triggers, found %', n; END IF;
+  INSERT INTO ml_report(line) VALUES ('new triggers: 5');
+  IF (SELECT array_agg(conname::text) FROM pg_constraint WHERE conrelid = 'public.tournament_players'::regclass
+        AND contype = 'c' AND pg_get_constraintdef(oid) ~ '\mteam\M') IS DISTINCT FROM ARRAY['tplayers_team'] THEN
+    RAISE EXCEPTION 'tournament_players must have exactly one team CHECK (tplayers_team)';
+  END IF;
+  INSERT INTO ml_report(line) VALUES ('tournament_players team CHECK: a, b, league');
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'tournament_scores_once' AND contype = 'u'
+                 AND conrelid = 'public.tournament_scores'::regclass) THEN
+    RAISE EXCEPTION 'tournament_scores unique (match_id, hole, player_id) missing';
+  END IF;
+  INSERT INTO ml_report(line) VALUES ('tournament_scores: one row per match, hole and player');
   IF EXISTS (SELECT 1 FROM public.tournaments WHERE format <> 'team_day') THEN
     RAISE EXCEPTION 'Existing tournaments must all be team_day';
   END IF;

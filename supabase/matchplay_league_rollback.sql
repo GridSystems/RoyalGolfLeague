@@ -4,15 +4,26 @@
 -- If both this and phase2a_rollback.sql are ever run, run THIS ONE FIRST — its functions and
 -- triggers reference private.is_admin() etc. from phase2a_auth.sql.
 BEGIN;
-DO $$ BEGIN
-  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'tournaments' AND column_name = 'format') THEN
-    EXECUTE 'DELETE FROM public.tournaments WHERE format = ''league''';   -- cascades to players, matches, scores
-  END IF;
-END $$;
 DROP TRIGGER IF EXISTS protect_league ON public.tournaments;
 DROP TRIGGER IF EXISTS protect_league_match ON public.tournament_matches;
 DROP TRIGGER IF EXISTS audit_league_match ON public.tournament_matches;
 DROP TRIGGER IF EXISTS audit_league_players ON public.tournament_players;
+DROP TRIGGER IF EXISTS audit_league_scores ON public.tournament_scores;
+-- Says what it deletes (the Messages tab of the SQL Editor), then deletes it.
+DO $$ DECLARE t int; e int; p int; m int; BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'tournaments' AND column_name = 'format') THEN
+    EXECUTE 'SELECT count(*) FROM public.tournaments WHERE format = ''league''' INTO t;
+    EXECUTE 'SELECT count(*), count(paid_at) FROM public.tournament_players WHERE tournament_id IN (SELECT id FROM public.tournaments WHERE format = ''league'')' INTO e, p;
+    EXECUTE 'SELECT count(*) FROM public.tournament_matches WHERE tournament_id IN (SELECT id FROM public.tournaments WHERE format = ''league'')' INTO m;
+    RAISE NOTICE 'Deleting % league tournament(s), % entries (% paid), % matches, and their scores.', t, e, p, m;
+    EXECUTE 'DELETE FROM public.tournaments WHERE format = ''league''';   -- cascades to players, matches, scores
+  END IF;
+END $$;
+-- Production's team CHECK back as it was (the league's entries are gone above).
+ALTER TABLE public.tournament_players DROP CONSTRAINT IF EXISTS tplayers_team;
+ALTER TABLE public.tournament_players DROP CONSTRAINT IF EXISTS tournament_players_team_check;
+ALTER TABLE public.tournament_players ADD CONSTRAINT tournament_players_team_check CHECK (team IN ('a', 'b'));
+ALTER TABLE public.tournament_scores DROP CONSTRAINT IF EXISTS tournament_scores_once;
 DROP POLICY IF EXISTS p2_tplayer_enter ON public.tournament_players;
 DROP POLICY IF EXISTS p2_tplayer_withdraw ON public.tournament_players;
 DROP POLICY IF EXISTS p2_tscore_league_ins ON public.tournament_scores;
@@ -22,6 +33,7 @@ DROP FUNCTION IF EXISTS private.protect_league();
 DROP FUNCTION IF EXISTS private.protect_league_match();
 DROP FUNCTION IF EXISTS private.audit_league_players();
 DROP FUNCTION IF EXISTS private.audit_league_match();
+DROP FUNCTION IF EXISTS private.audit_league_scores();
 DROP FUNCTION IF EXISTS private.may_score(bigint, bigint);
 DROP FUNCTION IF EXISTS private.league_open(bigint);
 DROP FUNCTION IF EXISTS private.is_league(bigint);

@@ -29,7 +29,7 @@ CREATE TABLE public.tournaments (id bigint PRIMARY KEY, name text NOT NULL, date
   status text NOT NULL DEFAULT 'setup', team_a_name text NOT NULL DEFAULT 'Team A', team_b_name text NOT NULL DEFAULT 'Team B',
   team_a_captain_id bigint, team_b_captain_id bigint, created_at timestamptz DEFAULT now());
 CREATE TABLE public.tournament_players (id bigint PRIMARY KEY, tournament_id bigint NOT NULL REFERENCES public.tournaments(id),
-  player_id bigint NOT NULL, team text NOT NULL);
+  player_id bigint NOT NULL, team text NOT NULL CHECK (team IN ('a','b')));   -- production's, from the plan
 CREATE TABLE public.tournament_matches (id bigint PRIMARY KEY, tournament_id bigint NOT NULL REFERENCES public.tournaments(id),
   round int NOT NULL, match_num int NOT NULL, team_a_p1_id bigint, team_a_p2_id bigint, team_b_p1_id bigint, team_b_p2_id bigint,
   status text NOT NULL DEFAULT 'pending', result text, created_at timestamptz DEFAULT now(), tee_id text);
