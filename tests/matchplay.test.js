@@ -18,7 +18,7 @@ setTimeout(async function(){
   // A player with one handicap index; a league match between a and b (group unless x says otherwise).
   const P=(id,name,idx=18,x={})=>({id,name,color:id%10,hcp_history:[{date:'2026-01-01',value:idx,note:''}],approved:true,is_social:false,...x});
   const M=(id,a,b,x={})=>({id,tournament_id:900,round:1,match_num:1,stage:'group',bracket:null,team_a_p1_id:a,team_b_p1_id:b,team_a_p2_id:null,team_b_p2_id:null,
-    status:'pending',result:null,start_hole:1,extra_holes:0,outcome:'played',decided_by:null,played_on:null,tee_id:null,_teeId:'57',...x});
+    status:'pending',result:null,start_hole:1,outcome:'played',played_on:null,tee_id:null,_teeId:'57',...x});
   // Score rows for a match: rows of [hole, grossA, grossB].
   const card=(m,rows)=>rows.flatMap(([h,ga,gb])=>[{match_id:m.id,hole:h,player_id:m.team_a_p1_id,gross:ga},{match_id:m.id,hole:h,player_id:m.team_b_p1_id,gross:gb}]);
   const holes=(from,to,ga,gb)=>{const r=[];for(let h=from;h<=to;h++)r.push([h,ga,gb]);return r;};
@@ -41,12 +41,13 @@ setTimeout(async function(){
       T('a league match in round 1 is singles, not a fourball',!tmIsFourball(M(3,1,2,{round:1})));
       const td2={id:51,tournament_id:901,round:2,match_num:1,team_a_p1_id:1,team_b_p1_id:2,team_a_p2_id:null,team_b_p2_id:null,_teeId:'57'};
       info=tmMatchHcpInfo(td2,'2027-05-10');
-      T('team day singles (diff ≤ 18) unchanged: strokes on SI 1–8',wonBy(td2,info,4,4).every((x,i)=>x===(HOLE_HCP[i]<=8?'b':'half'))&&info.strokeHoles.length===8);
+      T('team day singles (diff ≤ 18) unchanged: strokes on SI 1–8',wonBy(td2,info,4,4).every((x,i)=>x===(HOLE_HCP[i]<=8?'b':'half')));
       T('handicap date: team day uses the tournament date, a league match the day it was played',tmMatchDate(td2,{date:'2027-07-04'})==='2027-07-04'&&tmMatchDate(M(9,1,2,{played_on:'2027-06-01'}),{})==='2027-06-01'&&tmMatchDate(M(9,1,2),{})==='2027-05-10');
       // hole order
       T('start on the 1st: 1…18',mlPlayOrder(M(4,1,2)).join()==='1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18');
       const m10=M(5,1,2,{start_hole:10,stage:'semi',bracket:1,round:4});
       T('start on the 10th: 10…18 then 1…9',mlPlayOrder(m10).join()==='10,11,12,13,14,15,16,17,18,1,2,3,4,5,6,7,8,9');
+      T('play order is the Log Round hole order (heOrderedHoles) for a start on the 1st and the 10th',[1,10].every(h=>mlPlayOrder(M(8,1,2,{start_hole:h})).join()===heOrderedHoles(h).join()));
       T('sudden death replays from the start hole: from 1st 19 = hole 1; from 10th 19 = hole 10, 20 = hole 11',tmHoleIdx(M(6,1,2),19)===0&&tmHoleIdx(m10,19)===9&&tmHoleIdx(m10,20)===10&&tmHoleIdx(m10,5)===4);
       T('next hole: 18 → 1 from the 10th; after the 9th a playoff goes to 19; then 20',mlNextHole(m10,18)===1&&mlNextHole(m10,9)===19&&mlNextHole(m10,19)===20);
       T('a group match never goes past its 18th hole',mlNextHole(M(7,1,2),18)===18);
@@ -70,7 +71,7 @@ setTimeout(async function(){
       const s1=lv(21,{stage:'semi',bracket:1,round:4});
       d=decide(s1,holes(1,18,4,4));T('playoff level after 18: sudden death, undecided',!d.decided&&/sudden death/.test(d.label));
       d=decide(s1,[...holes(1,18,4,4),[19,4,4],[20,4,3]]);
-      T('sudden death: won at the 20th by B, 2 extra holes',d.decided&&d.winner==='b'&&d.label==='won at the 20th'&&d.extra===2);
+      T('sudden death: won at the 20th by B',d.decided&&d.winner==='b'&&d.label==='won at the 20th');
       const s10=lv(22,{stage:'semi',bracket:1,round:4,start_hole:10});
       d=decide(s10,[...holes(10,12,3,4),...holes(13,18,4,4),...holes(1,7,4,4)]);
       T('from the 10th: 3&2 after 16 holes played (the 7th)',d.decided&&d.label==='3&2'&&d.thru===16);
@@ -78,7 +79,7 @@ setTimeout(async function(){
       const sd=start=>{const mm=M(23,1,2,{stage:'semi',bracket:1,round:4,start_hole:start});
         return mlDecide(mm,{receivingTeam:'b',diff:4},card(mm,[...HOLE_HCP.map((si,i)=>[i+1,4,si<=4?5:4]),[19,4,4]]));};
       T('sudden death from the 1st plays hole 1 (SI 4): the stroke wins it at the 19th',sd(1).winner==='b'&&sd(1).label==='won at the 19th');
-      T('sudden death from the 10th plays hole 10 (SI 5): no stroke, still level',!sd(10).decided&&sd(10).extra===1);
+      T('sudden death from the 10th plays hole 10 (SI 5): no stroke, still level',!sd(10).decided&&/\(1 played\)/.test(sd(10).label));
       T('walkover: decided for the named player',decide(lv(24,{outcome:'walkover',result:'b'}),[]).winner==='b');
       d=decide(lv(25,{outcome:'halve_decision',result:'half'}),[]);T('halve by decision: half, started',d.winner==='half'&&d.started&&d.decided);
       d=decide(lv(26,{outcome:'double_forfeit'}),[]);T('group double forfeit: decided, nobody wins',d.decided&&d.winner===null);
@@ -89,7 +90,7 @@ setTimeout(async function(){
       const ents=[5,30,12,1,22,8,17,3,26,14,9,20,2,28,11,6].map((index,i)=>({pid:100+i,index}));
       const potOf={};[...ents].sort((x,y)=>x.index-y.index).forEach((e,i)=>potOf[e.pid]=Math.floor(i/4)+1);
       let okPots=true,okDistinct=true;const seenInA=new Set();
-      for(let k=0;k<200;k++){const gs=mlDrawGroups(ents);
+      for(let k=0;k<200;k++){const gs=mlDrawGroupsResume(ents,{});
         if(!gs.every(g=>g.map(p=>potOf[p]).join()==='1,2,3,4'))okPots=false;
         if(new Set(gs.flat()).size!==16)okDistinct=false;
         seenInA.add(gs[0][0]);}
@@ -97,7 +98,7 @@ setTimeout(async function(){
       T('draw: 16 distinct players',okDistinct);
       T('draw: which pot-1 player lands in group A varies',seenInA.size===4);
       const tie=[...Array(16)].map((_,i)=>({pid:200+i,index:i<3?1:i<5?10:20+i}));   // 203 and 204 tie on 10 across the pot 1/2 boundary
-      T('draw: an index tie across a pot boundary goes by sign-up order',mlDrawGroups(tie).some(g=>g[0]===203)&&mlDrawGroups(tie).every(g=>g[0]!==204));
+      T('draw: an index tie across a pot boundary goes by sign-up order',mlDrawGroupsResume(tie,{}).some(g=>g[0]===203)&&mlDrawGroupsResume(tie,{}).every(g=>g[0]!==204));
       const GR=[[1,2,3,4],[5,6,7,8],[9,10,11,12],[13,14,15,16]];
       const fx=mlFixtures(GR),grp=fx.filter(r=>r.stage==='group');
       T('fixtures: 40 rows — 24 group matches, 8 semis, 4 finals, 4 third/fourth',fx.length===40&&grp.length===24&&fx.filter(r=>r.stage==='semi').length===8&&fx.filter(r=>r.stage==='final').length===4&&fx.filter(r=>r.stage==='place').length===4);
@@ -167,7 +168,7 @@ setTimeout(async function(){
       const better=r=>SEEDS[r.a]<SEEDS[r.b]?'a':'b';
       const grouped=()=>{const rs=fresh();rs.filter(r=>r.stage==='group').forEach(r=>win(r,better(r)));return rs;};
       const put=(rs,ups)=>{for(const u of ups){const r=rs.find(x=>x.id===u.id);r.a=u.team_a_p1_id;r.b=u.team_b_p1_id;}return rs;};
-      const settle=rs=>put(rs,Object.entries(mlPlan(rs,G,SEEDS).want).filter(([id,w])=>{const r=rs.find(x=>x.id===+id);return w.a!==r.a||w.b!==r.b;}).map(([id,w])=>({id:+id,team_a_p1_id:w.a,team_b_p1_id:w.b})));
+      const settle=rs=>put(rs,Object.entries(mlPlan(rs,G,SEEDS)).filter(([id,w])=>{const r=rs.find(x=>x.id===+id);return w.a!==r.a||w.b!==r.b;}).map(([id,w])=>({id:+id,team_a_p1_id:w.a,team_b_p1_id:w.b})));
       const clone=rs=>rs.map(r=>({...r,holes:{...r.holes}}));
       const find=(rs,stage,b,n)=>rs.find(r=>r.stage===stage&&r.bracket===b&&(n==null||r.match_num===n));
       const slots=r=>r.a+'v'+r.b;
@@ -308,7 +309,7 @@ setTimeout(async function(){
     const league=()=>{tournaments=[{...LG}];activeTournamentId=900;TE.matchId=null;mlTab='groups';
       players=[...Array(16)].map((_,i)=>P(i+1,'P'+(i+1),i+1===1?9.3:i+1===4?16.4:18));players[0].is_admin=true;activeId=2;
       tournamentPlayers=G.flatMap((g,gi)=>g.map((pid,k)=>({id:100+pid,tournament_id:900,player_id:pid,team:'league',group_num:gi+1,seed_pot:k+1,entered_at:new Date(Date.UTC(2027,2,1,10,0,pid)).toISOString(),paid_at:null,amount:null})));
-      tournamentMatches=mlFixtures(G).map((r,i)=>({id:i+1,tournament_id:900,status:'pending',result:null,start_hole:1,extra_holes:0,outcome:'played',decided_by:null,played_on:null,tee_id:null,team_a_p2_id:null,team_b_p2_id:null,_teeId:'57',...r}));
+      tournamentMatches=mlFixtures(G).map((r,i)=>({id:i+1,tournament_id:900,status:'pending',result:null,start_hole:1,outcome:'played',played_on:null,tee_id:null,team_a_p2_id:null,team_b_p2_id:null,_teeId:'57',...r}));
       tournamentScores=[];tmLoaded=true;};
     // An open league with n entries (players 1–n signed up in that order; 20 players exist).
     const entryLeague=n=>{tournaments=[{...LG,status:'entry'}];activeTournamentId=900;TE.matchId=null;
@@ -326,7 +327,7 @@ setTimeout(async function(){
     const decideLocal=(m,w)=>{tournamentScores.push(...card(m,holes(1,10,...W(w))));Object.assign(m,{status:'complete',result:w,played_on:'2027-05-01'});};
     const seedWin=m=>{const s={};tournamentPlayers.forEach(e=>s[e.player_id]=e.seed_pot);return s[m.team_a_p1_id]<s[m.team_b_p1_id]?'a':'b';};
     // Put the planned players into every playoff slot, locally (what mlChange writes).
-    const fillLocal=()=>{const t=tournaments[0],{groups,seeds}=mlGroups(t),{want}=mlPlan(mlRecords(t),groups,seeds);for(const m of tournamentMatches)if(want[m.id]){m.team_a_p1_id=want[m.id].a;m.team_b_p1_id=want[m.id].b;}};
+    const fillLocal=()=>{const t=tournaments[0],{groups,seeds}=mlGroups(t),want=mlPlan(mlRecords(t),groups,seeds);for(const m of tournamentMatches)if(want[m.id]){m.team_a_p1_id=want[m.id].a;m.team_b_p1_id=want[m.id].b;}};
     const tc=()=>document.getElementById('tournamentContent').innerHTML;
     {
       league();today=()=>'2027-05-16';
@@ -405,7 +406,7 @@ setTimeout(async function(){
       T('a semi corrected to level after 18 re-opens for sudden death',res.ok&&!res.rec.decided&&S.status==='in_progress'&&S.result===null&&/sudden death/.test(res.rec.label));
       T('its final and 3rd/4th are emptied',fin(1).team_a_p1_id==null&&fin(1,'place').team_a_p1_id==null);
       await scoreHole(S,19,4,4);res=await scoreHole(S,20,3,4);
-      T('sudden death: won at the 20th; extra_holes 2 saved; final refilled',res.rec.label==='won at the 20th'&&S.status==='complete'&&S.result==='a'&&S.extra_holes===2&&fin(1).team_a_p1_id===1&&fin(1).team_b_p1_id===9);
+      T('sudden death: won at the 20th; final refilled',res.rec.label==='won at the 20th'&&S.status==='complete'&&S.result==='a'&&fin(1).team_a_p1_id===1&&fin(1).team_b_p1_id===9);
       // an RLS-filtered update (200, []) is a failure
       league();level();reset((u,b,m)=>m==='POST'?[{id:++sid,...b}]:[]);activeId=2;
       const own=gm().find(m=>m.team_a_p1_id===2||m.team_b_p1_id===2);
@@ -495,7 +496,7 @@ setTimeout(async function(){
         tournamentScores.push(...card(s,HOLE_HCP.map((si,i)=>[i+1,4,4+strokesOnHole(10,i)])));   // every hole halved nett
         await scoreHole(s,19,4,5);return scoreHole(s,20,4,4);};
       res=await sdFrom(10);
-      T('sudden death from the 10th: 19 = hole 10 (halved nett), 20 = hole 11 (SI 7, stroke): won by 5 at the 20th',res.ok&&res.rec.winner==='b'&&res.rec.label==='won at the 20th'&&semi(1,1).extra_holes===2&&semi(1,1).result==='b');
+      T('sudden death from the 10th: 19 = hole 10 (halved nett), 20 = hole 11 (SI 7, stroke): won by 5 at the 20th',res.ok&&res.rec.winner==='b'&&res.rec.label==='won at the 20th'&&semi(1,1).result==='b');
       res=await sdFrom(1);
       T('…from the 1st, 20 = hole 2 (SI 14, no stroke): still level, sudden death goes on',res.ok&&!res.rec.decided&&semi(1,1).status==='in_progress');
       // item 4: a player's correction that would overwrite or empty filled slots is refused whole
@@ -748,11 +749,11 @@ setTimeout(async function(){
       T('a walkover needs a winner: nothing written',calls.length===0);
       await mlSetOutcome(gA.id,'walkover','b');
       const op=calls.find(c=>c.method==='PATCH'&&c.url.includes(`id=eq.${gA.id}`));
-      T('group walkover: outcome, winner, who decided, closed',op&&op.body.outcome==='walkover'&&op.body.result==='b'&&op.body.decided_by===1&&op.body.status==='complete');
+      T('group walkover: outcome, winner, closed',op&&op.body.outcome==='walkover'&&op.body.result==='b'&&op.body.status==='complete');
       const tblA=()=>mlStandings(G[0],mlRecords(tournaments[0]).filter(r=>r.stage==='group'&&mlGroupOf(r)===1),mlGroups(tournaments[0]).seeds);
       T('…counts in the table: 1 point to the walkover winner, no holes',tblA().find(s=>s.pid===gA.team_b_p1_id).pts===1&&tblA().find(s=>s.pid===gA.team_b_p1_id).holes===0);
       stub();await mlSetOutcome(gA.id,'played');
-      T('clearing an outcome re-derives from the scores (none: back to pending)',gA.outcome==='played'&&gA.status==='pending'&&gA.result===null&&gA.decided_by===null);
+      T('clearing an outcome re-derives from the scores (none: back to pending)',gA.outcome==='played'&&gA.status==='pending'&&gA.result===null);
       const sA=semi(1,1);Object.assign(sA,{team_a_p1_id:1,team_b_p1_id:5});stub();
       await mlSetOutcome(sA.id,'halve_decision');
       T('halve by decision refused in the playoffs',calls.length===0);

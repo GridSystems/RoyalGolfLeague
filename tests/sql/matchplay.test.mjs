@@ -209,16 +209,15 @@ test('the league CHECKs hold', async () => {
     MATCH(m.semiFilled, `outcome='double_forfeit'`),                  // playoff: name who goes through
     MATCH(m.td, `outcome='walkover', result='a'`),                    // outcomes are league-only
     MATCH(m.own, `start_hole=5`),
-    MATCH(m.own, `extra_holes=-1`),
     MATCH(m.own, `stage='quarter'`),
     MATCH(m.own, `bracket=1`),                                        // group matches have no bracket
-    MATCH(m.own, `played_on='not-a-date'`),
     `UPDATE public.tournaments SET format='cup' WHERE id=${L}`,
     `UPDATE public.tournaments SET buy_in=-1 WHERE id=${L}`,
     `UPDATE public.tournament_players SET paid_at=now() WHERE tournament_id=${E}`,   // paid_at without amount
     `UPDATE public.tournament_players SET seed_pot=5 WHERE tournament_id=${E}`,
   ];
   for (const sql of bad) assert.equal(await tryQ(db, sql), '23514', sql);
+  assert.equal(await tryQ(db, MATCH(m.own, `played_on='not-a-date'`)), '22007');   // a date column
   assert.equal(await tryQ(db, MATCH(m.semiFilled, `outcome='double_forfeit', result='b'`)), 1);
   assert.equal(await tryQ(db, MATCH(m.other, `outcome='double_forfeit', result=NULL`)), 1);
   assert.equal(await tryQ(db, MATCH(m.own, `outcome='halve_decision', result='half'`)), 1);
@@ -239,7 +238,7 @@ test('entries, payments and admin match decisions are audited; a player closing 
   await db.query(`UPDATE public.tournament_players SET paid_at=now(), amount=200, recorded_by=1 WHERE tournament_id=${E} AND player_id=6`);
   await db.query(`UPDATE public.tournament_players SET paid_at=NULL, amount=NULL, recorded_by=NULL WHERE tournament_id=${E} AND player_id=6`);
   await db.query(`DELETE FROM public.tournament_players WHERE tournament_id=${E} AND player_id=6`);
-  await db.query(MATCH(m.other, `outcome='walkover', result='b', decided_by=1`));
+  await db.query(MATCH(m.other, `outcome='walkover', result='b'`));
   await db.query(MATCH(m.done, `status='in_progress', result=NULL`));
   await db.query(MATCH(m.semiFilled, `team_a_p1_id=8`));
   await su(db);

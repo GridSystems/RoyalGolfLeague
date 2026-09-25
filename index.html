@@ -1184,7 +1184,7 @@ function tmPlayingHcp(player,tee,date){
   const courseHcp=Math.round(idx*tee.slope/113+(tee.rating-COURSE_PAR));
   return Math.round(courseHcp*0.90);
 }
-// Returns {receivingTeam:'a'|'b', diff, strokeHoles:[0-indexed hole indices], phA1,phA2,phB1,phB2}
+// Returns {receivingTeam:'a'|'b', diff, combA, combB, phA1,phA2,phB1,phB2}
 // Works for both fourball (p2 ids set) and singles (p2 ids null)
 function tmMatchHcpInfo(match,date){
   const getP=id=>players.find(p=>p.id===id)||{hcp_history:[],handicap:0};
@@ -1205,8 +1205,7 @@ function tmMatchHcpInfo(match,date){
   const combA=phA1+phA2,combB=phB1+phB2;
   const diff=Math.abs(combA-combB);
   const receivingTeam=combA>=combB?'a':'b';
-  const strokeHoles=HOLE_HCP.map((si,i)=>({si,i})).filter(({si})=>si<=diff).map(({i})=>i);
-  return{receivingTeam,diff,strokeHoles,combA,combB,phA1,phA2,phB1,phB2};
+  return{receivingTeam,diff,combA,combB,phA1,phA2,phB1,phB2};
 }
 
 function tmPlayerNett(gross,strokes){
@@ -1227,7 +1226,7 @@ function tmHoleResult(holeIdx,match,hcpInfo,grossByPid){
     sB2=match.team_b_p2_id!=null?strokesOnHole(hcpInfo.phB2,holeIdx):0;
   }else{
     // Singles: the lower player plays off 0; the other receives the difference — one stroke on
-    // SI 1…diff, a second where diff > 18 (the same as strokeHoles whenever diff ≤ 18).
+    // SI 1…diff, a second where diff > 18.
     const s=strokesOnHole(hcpInfo.diff,holeIdx);
     sA1=hcpInfo.receivingTeam==='a'?s:0;
     sA2=0; sB2=0;
@@ -1294,28 +1293,29 @@ function tmResultLabel(match,hcpInfo,scores){
 // ── Matchplay league (tournaments.format='league') ────────────────────────────
 // Spec: docs/superpowers/specs/2026-09-25-matchplay-league-design.md. The league reuses the
 // tournament tables, the scoring screen and the stroke logic above; these are its pure rules.
-const ML_ROUND_KEYS=['group_1','group_2','group_3','semi','final'];   // match.round 1–5 → its deadline
+const ML_ROUND_LABELS={group_1:'Group round 1',group_2:'Group round 2',group_3:'Group round 3',semi:'Semi-finals',final:'Finals and 3rd/4th'};
+const ML_ROUND_KEYS=Object.keys(ML_ROUND_LABELS);   // match.round 1–5 → its deadline
 const ML_BRACKETS=['Winners','Runners-up','Thirds','Fourths'];       // bracket 1–4 → places 1–4 … 13–16
 // Team day's round 1 is fourballs; league matches are always singles, whatever their round.
 const tmIsFourball=m=>m.round===1&&!m.stage;
 // Handicap date: team day plays on the tournament date, a league match on the day it was played.
 const tmMatchDate=(m,t)=>m.stage?(m.played_on||today()):t.date;
 // Play order: 1–18, or 10–18 then 1–9 for a match that started on the 10th.
-const mlPlayOrder=m=>(m.start_hole||1)===10?[10,11,12,13,14,15,16,17,18,1,2,3,4,5,6,7,8,9]:[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18];
+const mlPlayOrder=m=>heOrderedHoles(m.start_hole||1);
 // 0-based course hole for a hole number. Sudden death is stored as holes 19, 20 … and replays the
 // course from the start hole at the same strokes: from the 1st, 19 is hole 1; from the 10th, hole 10.
 function tmHoleIdx(m,hole){return hole<=18?hole-1:((m.start_hole||1)-1+(hole-19))%18;}
 function mlNextHole(m,h){if(h>=19)return h+1;const o=mlPlayOrder(m),i=o.indexOf(h);return i<17?o[i+1]:m.stage==='group'?h:19;}
 function mlPrevHole(m,h){if(h>19)return h-1;const o=mlPlayOrder(m);if(h===19)return o[17];const i=o.indexOf(h);return i>0?o[i-1]:h;}
-const mlLiveLabel=(up,thru)=>!thru?'—':up===0?`A/S thru ${thru}`:`${Math.abs(up)}UP thru ${thru}`;
 // A league match's decision, derived every time from its scores and admin outcome — never trusted
 // from the stored status/result, so a corrected score re-opens or re-decides it. Walks the play order
 // and stops at the hole that decides it (holes after that were never needed). A group match level
 // after 18 is halved; a playoff goes on to sudden death (holes 19+) until a hole is won.
 // winner: 'a' | 'b' | 'half' | null (group double forfeit: nobody). started: any score or an outcome.
+const ML_UNDECIDED=Object.freeze({decided:false,winner:null,holes:Object.freeze({a:0,b:0}),up:0,thru:0,started:false,label:'—'});
 function mlDecide(m,hcp,scores){
   const o=m.outcome||'played',playoff=m.stage!=='group';
-  const base={decided:false,winner:null,holes:{a:0,b:0},up:0,thru:0,extra:0,started:scores.length>0||o!=='played',label:'—'};
+  const base={...ML_UNDECIDED,started:scores.length>0||o!=='played'};
   if(o==='walkover')return{...base,decided:true,winner:m.result,label:'W/O'};
   if(o==='halve_decision')return{...base,decided:true,winner:'half',label:'Halved by decision'};
   if(o==='double_forfeit')return{...base,decided:true,winner:playoff?m.result:null,label:'Double forfeit'};
@@ -1324,7 +1324,7 @@ function mlDecide(m,hcp,scores){
   const res=h=>{const x=g[h];return x&&x[a]!=null&&x[b]!=null?tmHoleResult(tmHoleIdx(m,h),m,hcp,x).result:null;};
   const holes={a:0,b:0};let up=0,thru=0;
   for(const h of mlPlayOrder(m)){
-    const r=res(h);if(r==null)return{...base,holes,up,thru,label:mlLiveLabel(up,thru)};
+    const r=res(h);if(r==null)return{...base,holes,up,thru,label:!thru?'—':up===0?`A/S thru ${thru}`:`${Math.abs(up)}UP thru ${thru}`};
     if(r!=='half')holes[r]++;up=holes.a-holes.b;thru++;
     const left=18-thru;
     if(Math.abs(up)>left)return{...base,decided:true,winner:up>0?'a':'b',holes,up,thru,label:left?`${Math.abs(up)}&${left}`:`${Math.abs(up)}UP`};
@@ -1332,32 +1332,23 @@ function mlDecide(m,hcp,scores){
   if(!playoff)return{...base,decided:true,winner:'half',holes,up,thru,label:'Halved'};
   for(let h=19;h<19+54;h++){
     const r=res(h);
-    if(r==null)return{...base,holes,up,thru,extra:h-19,label:`A/S after 18 · sudden death${h>19?` (${h-19} played)`:''}`};
-    if(r!=='half')return{...base,decided:true,winner:r,holes,up,thru,extra:h-18,label:`won at the ${ordinal(h)}`};
+    if(r==null)return{...base,holes,up,thru,label:`A/S after 18 · sudden death${h>19?` (${h-19} played)`:''}`};
+    if(r!=='half')return{...base,decided:true,winner:r,holes,up,thru,label:`won at the ${ordinal(h)}`};
   }
-  return{...base,holes,up,thru,extra:54,label:'A/S after 18 · sudden death'};
+  return{...base,holes,up,thru,label:'A/S after 18 · sudden death'};
 }
 
 // The draw (spec decision 10): the 16 sorted by handicap index on the draw date, lowest first, make
 // four pots of four; each group gets one player from each pot at random (shuffleDraw = Fisher-Yates).
-// entrants: [{pid, index}] in sign-up order — the sort is stable, so equal indexes keep that order.
-// Returns groups A–D, each [pot-1 pid, pot-2 pid, pot-3 pid, pot-4 pid].
-function mlDrawGroups(entrants){
-  const s=[...entrants].sort((x,y)=>x.index-y.index);
-  const pots=[0,1,2,3].map(k=>shuffleDraw(s.slice(k*4,k*4+4).map(e=>e.pid)));
-  return[0,1,2,3].map(g=>pots.map(pot=>pot[g]));
-}
-// Pot membership only — deterministic (index rank, ties by sign-up order), no shuffle. mlDrawGroupsResume
-// uses this so a retry recomputes exactly the same four pots every time, whatever is already saved.
-const mlSeedPots=entrants=>{const s=[...entrants].sort((x,y)=>x.index-y.index);return[0,1,2,3].map(k=>s.slice(k*4,k*4+4).map(e=>e.pid));};
-// Resume-safe draw for the admin's draw button: a player already saved (group_num/seed_pot from an
-// earlier, partly-failed draw) keeps that exact spot; only the rest of each pot is randomly assigned,
-// among the groups that pot still has free. Throws — nothing is written by the caller — if the saved
-// placements don't fit the deterministic pots: a seed_pot that doesn't match, or two players of the
-// same pot claiming the same group.
+// entrants: [{pid, index}] in sign-up order — the sort is stable, so equal indexes keep that order, and
+// the pots are the same on every call. Returns groups A–D, each [pot-1 pid … pot-4 pid].
+// Resume-safe (placed: {} for a fresh draw): a player already saved (group_num/seed_pot from an earlier,
+// partly-failed draw) keeps that exact spot; only the rest of each pot is randomly assigned, among the
+// groups that pot still has free. Throws — nothing is written by the caller — if the saved placements
+// don't fit the pots: a seed_pot that doesn't match, or two players of the same pot claiming one group.
 function mlDrawGroupsResume(entrants,placed){
-  const groups=[[],[],[],[]];
-  mlSeedPots(entrants).forEach((pot,k)=>{
+  const groups=[[],[],[],[]],s=[...entrants].sort((x,y)=>x.index-y.index);
+  [0,1,2,3].map(k=>s.slice(k*4,k*4+4).map(e=>e.pid)).forEach((pot,k)=>{
     const free=[0,1,2,3],rest=[];
     for(const pid of pot){
       const p=placed[pid];
@@ -1429,7 +1420,7 @@ function mlStandings(pids,recs,seeds){
 // Who should be in each playoff slot, from the match records alone. Semis once every group match is
 // decided (bracket b: Group A b-th v Group B b-th, Group C b-th v Group D b-th); a bracket's final
 // (the semi winners) and 3rd/4th (the losers) once both its semis are decided with the players the
-// plan puts there. want: {matchId: {a, b}} — nulls = not yet decided.
+// plan puts there. Returns {matchId: {a, b}} — nulls = not yet decided.
 function mlPlan(recs,groups,seeds){
   const want={},group=recs.filter(r=>r.stage==='group');
   const tables=groups.map((g,gi)=>mlStandings(g,group.filter(r=>mlGroupOf(r)===gi+1),seeds));
@@ -1445,7 +1436,7 @@ function mlPlan(recs,groups,seeds){
     for(const r of recs.filter(r=>r.bracket===b&&(r.stage==='final'||r.stage==='place')))
       want[r.id]=!both?{a:null,b:null}:r.stage==='final'?{a:W(semis[0]),b:W(semis[1])}:{a:L(semis[0]),b:L(semis[1])};
   }
-  return{want,tables,groupsDone};
+  return want;
 }
 // Final places 1–16 from the finals and 3rd/4th matches — derived every time, never stored.
 function mlPlaces(recs){
@@ -1468,7 +1459,7 @@ function mlGate(before,after,id,groups,seeds){
     :m.stage==='semi'&&r.bracket===m.bracket&&(r.stage==='final'||r.stage==='place');
   const blocker=before.find(r=>dep(r)&&r.started);
   if(blocker)return{blocker};
-  const {want}=mlPlan(after,groups,seeds);
+  const want=mlPlan(after,groups,seeds);
   return{updates:after.filter(r=>dep(r)&&(want[r.id].a!==r.a||want[r.id].b!==r.b))
     .map(r=>({id:r.id,team_a_p1_id:want[r.id].a,team_b_p1_id:want[r.id].b}))};
 }
@@ -4392,7 +4383,8 @@ function renderMatchScoring(){
   // Match status banner
   const mScores=tournamentScores.filter(s=>s.match_id===match.id);
   const state=tmMatchState(match,hcpInfo,mScores);
-  const statusText=match.stage?mlRecord(match,tournament,mScores).label:state.matchStatus===0?`All Square${state.holesPlayed>0?' H'+state.holesPlayed:''}`
+  const rec=match.stage?mlRecord(match,tournament,mScores):null;
+  const statusText=rec?rec.label:state.matchStatus===0?`All Square${state.holesPlayed>0?' H'+state.holesPlayed:''}`
     :state.matchStatus>0?`${tournament.team_a_name} ${state.matchStatus}UP H${state.holesPlayed}`
     :`${tournament.team_b_name} ${Math.abs(state.matchStatus)}UP H${state.holesPlayed}`;
 
@@ -4442,7 +4434,7 @@ function renderMatchScoring(){
     <span style="font-size:0.75rem;color:rgba(255,255,255,0.4)">Tee:</span>
     <select onchange="teChangeTee(this.value)" style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:#fff;font-size:0.78rem;padding:3px 8px;outline:none">${teeOpts}</select>
   </div>
-  ${match.stage&&!mlRecord(match,tournament,tournamentScores.filter(s=>s.match_id===match.id)).started?`<div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem">
+  ${rec&&!rec.started?`<div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem">
     <span style="font-size:0.75rem;color:rgba(255,255,255,0.4)">Start:</span>
     <select onchange="teSetStart(+this.value)" style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:#fff;font-size:0.78rem;padding:3px 8px;outline:none"><option value="1"${(match.start_hole||1)===1?' selected':''}>1st tee</option><option value="10"${match.start_hole===10?' selected':''}>10th tee</option></select>
   </div>`:''}
@@ -4917,7 +4909,7 @@ function tmSetPlayersTab(btn){
 function mlRecord(m,t,scores){
   const mm={...m,_teeId:m.tee_id||t.tee_id},both=m.team_a_p1_id!=null&&m.team_b_p1_id!=null;
   const hcp=both?tmMatchHcpInfo(mm,m.played_on||today()):null;
-  const d=both?mlDecide(mm,hcp,scores):{decided:false,winner:null,holes:{a:0,b:0},up:0,thru:0,extra:0,started:false,label:'—'};
+  const d=both?mlDecide(mm,hcp,scores):ML_UNDECIDED;
   const played=both&&(m.outcome||'played')==='played'&&scores.length>0;
   return{id:m.id,stage:m.stage,round:m.round,match_num:m.match_num,bracket:m.bracket,a:m.team_a_p1_id,b:m.team_b_p1_id,...d,ph:played?{a:hcp.phA1,b:hcp.phB1}:null};
 }
@@ -4994,10 +4986,8 @@ function mlResultsHtml(t,recs){
   if(!pl.length)return'<div class="empty">Places appear as the finals and 3rd/4th matches finish.</div>';
   return`<div class="rt-wrap"><table class="rt"><thead><tr><th>Place</th><th class="left">Player</th></tr></thead><tbody>${pl.map(x=>`<tr><td>${ordinal(x.place)}</td><td class="left">${x.pid===champ?'🏆 ':''}${mlName(x.pid)}</td></tr>`).join('')}</tbody></table></div>`;
 }
-// The stored status/result/extra_holes are a cache of the derived decision, rewritten after every change.
-function mlSyncFields(m,rec){
-  return{status:rec.decided?'complete':rec.started?'in_progress':'pending',result:rec.decided&&rec.winner?rec.winner:null,extra_holes:rec.extra};
-}
+// The stored status/result are a cache of the derived decision, rewritten after every change.
+const mlSyncFields=rec=>({status:rec.decided?'complete':rec.started?'in_progress':'pending',result:rec.decided&&rec.winner?rec.winner:null});
 // [] back from an update means RLS filtered it: a failure, as in adminEntryWrite. Local state follows only a real save.
 async function mlPatch(m,b,prompt=true){const rows=await sbUpdate('tournament_matches',m.id,b,prompt);if(!rows||!rows.length)throw new Error('not saved');Object.assign(m,b);}
 // Who the database sees as "me" (private.current_player); the old PIN route goes by activeId.
@@ -5058,7 +5048,7 @@ async function mlChange(matchId,{patch=null,score=null,clear=false}={}){
     }
   }catch(e){return{ok:false,msg:'Couldn\'t save — '+e.message};}
   try{
-    const want={...(patch||{}),...mlSyncFields(mp,rec)};
+    const want={...(patch||{}),...mlSyncFields(rec)};
     const diff=Object.fromEntries(Object.entries(want).filter(([k,v])=>m[k]!==v));
     if(Object.keys(diff).length)await mlPatch(m,diff);
   }catch(e){return score
@@ -5078,7 +5068,7 @@ async function mlChange(matchId,{patch=null,score=null,clear=false}={}){
 function mlSlotRepairs(t,recs=mlRecords(t)){
   const {groups,seeds}=mlGroups(t);
   if(!tmLoaded||!groups.every(g=>g.filter(p=>p!=null).length===4))return[];
-  const {want}=mlPlan(recs,groups,seeds);
+  const want=mlPlan(recs,groups,seeds);
   return tournamentMatches.filter(m=>m.tournament_id===t.id&&want[m.id]&&!recs.find(r=>r.id===m.id).started
       &&(want[m.id].a!==(m.team_a_p1_id??null)||want[m.id].b!==(m.team_b_p1_id??null)))
     .map(m=>({m,a:want[m.id].a,b:want[m.id].b,fill:m.team_a_p1_id==null&&m.team_b_p1_id==null}));
@@ -5170,7 +5160,6 @@ function mlEnterFor(){const pid=+document.getElementById('mlEntryFor').value,t=m
 // the top of the waiting list.
 function mlMoveIn(id){const {in:inn}=mlEntries(mlT()),last=inn[inn.length-1];if(!last)return;
   return adminEntryWrite(()=>sbUpdate('tournament_players',id,{entered_at:new Date(Date.parse(last.entered_at)-1).toISOString()}),r=>replaceTp(r[0]),'Moved in',mlRedraw);}
-const ML_ROUND_LABELS={group_1:'Group round 1',group_2:'Group round 2',group_3:'Group round 3',semi:'Semi-finals',final:'Finals and 3rd/4th'};
 // All five play-by dates set, each after the one before (a summer break is just a longer gap).
 const mlDeadlinesOk=dl=>ML_ROUND_KEYS.every((k,i)=>dl[k]&&(!i||dl[k]>dl[ML_ROUND_KEYS[i-1]]));
 const mlLabelStyle='font-size:0.75rem;color:rgba(255,255,255,0.5)';
@@ -5269,7 +5258,7 @@ async function mlSetOutcome(matchId,kind,side=null){
   const playoff=m.stage!=='group',named=kind==='walkover'||(kind==='double_forfeit'&&playoff);
   if(kind==='halve_decision'&&playoff){alert('A halve by decision is only for group matches.');return;}
   if(named&&side!=='a'&&side!=='b'){alert(kind==='walkover'?'Choose who gets the walkover.':'In the playoffs, name who goes through.');return;}
-  const patch={outcome:kind,decided_by:kind==='played'?null:activeId,result:named?side:kind==='halve_decision'?'half':null};
+  const patch={outcome:kind,result:named?side:kind==='halve_decision'?'half':null};
   const r=await mlChange(matchId,{patch});
   if(!r.ok)alert(r.msg);else toast(kind==='played'?'Outcome cleared':`Recorded: ${r.rec.label}`);
   mlRedraw();

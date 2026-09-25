@@ -44,7 +44,6 @@ ALTER TABLE public.tournaments DROP COLUMN IF EXISTS format, DROP COLUMN IF EXIS
 ALTER TABLE public.tournament_players DROP COLUMN IF EXISTS entered_at, DROP COLUMN IF EXISTS paid_at,
   DROP COLUMN IF EXISTS amount, DROP COLUMN IF EXISTS recorded_by, DROP COLUMN IF EXISTS seed_pot, DROP COLUMN IF EXISTS group_num;
 ALTER TABLE public.tournament_matches DROP COLUMN IF EXISTS stage, DROP COLUMN IF EXISTS bracket,
-  DROP COLUMN IF EXISTS start_hole, DROP COLUMN IF EXISTS extra_holes, DROP COLUMN IF EXISTS outcome,
-  DROP COLUMN IF EXISTS decided_by, DROP COLUMN IF EXISTS played_on;
+  DROP COLUMN IF EXISTS start_hole, DROP COLUMN IF EXISTS outcome, DROP COLUMN IF EXISTS played_on;
 NOTIFY pgrst, 'reload schema';
 COMMIT;

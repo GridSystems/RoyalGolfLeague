@@ -55,10 +55,8 @@ ALTER TABLE public.tournament_matches
   ADD COLUMN stage text CHECK (stage IN ('group', 'semi', 'final', 'place')),
   ADD COLUMN bracket int CHECK (bracket BETWEEN 1 AND 4),
   ADD COLUMN start_hole int NOT NULL DEFAULT 1 CHECK (start_hole IN (1, 10)),
-  ADD COLUMN extra_holes int NOT NULL DEFAULT 0 CHECK (extra_holes >= 0),
   ADD COLUMN outcome text NOT NULL DEFAULT 'played' CHECK (outcome IN ('played', 'walkover', 'halve_decision', 'double_forfeit')),
-  ADD COLUMN decided_by bigint REFERENCES public.players(id) ON UPDATE CASCADE ON DELETE SET NULL,
-  ADD COLUMN played_on text,                   -- YYYY-MM-DD of the first score: the handicap date
+  ADD COLUMN played_on date,                   -- the day of the first score: the handicap date
   ADD CONSTRAINT tmatches_bracket_for_playoffs CHECK (stage IS NULL OR (stage = 'group') = (bracket IS NULL)),
   ADD CONSTRAINT tmatches_outcome_league_only CHECK (outcome = 'played' OR stage IS NOT NULL),
   -- Postgres CHECKs pass on NULL, not just TRUE — "OR result = 'half'" would let a NULL result
@@ -66,8 +64,7 @@ ALTER TABLE public.tournament_matches
   ADD CONSTRAINT tmatches_halve_group_only CHECK ((outcome <> 'halve_decision' OR (stage = 'group' AND result = 'half')) IS TRUE),
   ADD CONSTRAINT tmatches_walkover_winner CHECK ((outcome <> 'walkover' OR result IN ('a', 'b')) IS TRUE),
   ADD CONSTRAINT tmatches_forfeit_goes_through CHECK ((outcome <> 'double_forfeit'
-    OR (stage = 'group' AND result IS NULL) OR (stage <> 'group' AND result IN ('a', 'b'))) IS TRUE),
-  ADD CONSTRAINT tmatches_played_on_format CHECK (played_on IS NULL OR played_on ~ '^\d{4}-\d{2}-\d{2}$');
+    OR (stage = 'group' AND result IS NULL) OR (stage <> 'group' AND result IN ('a', 'b'))) IS TRUE);
 
 -- One row per league match slot: all 40 are created at the draw, so a double press can't duplicate.
 CREATE UNIQUE INDEX tournament_matches_league_slot ON public.tournament_matches (tournament_id, round, match_num) WHERE stage IS NOT NULL;
@@ -113,7 +110,6 @@ BEGIN
   IF NEW.tournament_id IS DISTINCT FROM OLD.tournament_id OR NEW.stage IS DISTINCT FROM OLD.stage
      OR NEW.bracket IS DISTINCT FROM OLD.bracket OR NEW.round IS DISTINCT FROM OLD.round
      OR NEW.match_num IS DISTINCT FROM OLD.match_num OR NEW.outcome IS DISTINCT FROM OLD.outcome
-     OR NEW.decided_by IS DISTINCT FROM OLD.decided_by
      OR NEW.team_a_p2_id IS DISTINCT FROM OLD.team_a_p2_id OR NEW.team_b_p2_id IS DISTINCT FROM OLD.team_b_p2_id THEN
     RAISE EXCEPTION 'Only an admin in admin mode can change that.' USING ERRCODE = '42501';
   END IF;
@@ -128,7 +124,7 @@ BEGIN
   END IF;
   -- Playing the match: only its two players, and a finished match only an admin can re-open.
   IF NEW.status IS DISTINCT FROM OLD.status OR NEW.result IS DISTINCT FROM OLD.result
-     OR NEW.extra_holes IS DISTINCT FROM OLD.extra_holes OR NEW.start_hole IS DISTINCT FROM OLD.start_hole
+     OR NEW.start_hole IS DISTINCT FROM OLD.start_hole
      OR NEW.tee_id IS DISTINCT FROM OLD.tee_id OR NEW.played_on IS DISTINCT FROM OLD.played_on THEN
     IF me IS NULL OR (me IS DISTINCT FROM OLD.team_a_p1_id AND me IS DISTINCT FROM OLD.team_b_p1_id) THEN
       RAISE EXCEPTION 'Only the two players (or an admin) can score this match.' USING ERRCODE = '42501';
@@ -185,9 +181,6 @@ BEGIN
   IF NOT private.is_league(NEW.tournament_id) THEN RETURN NEW; END IF;
   IF TG_OP = 'INSERT' THEN
     PERFORM private.audit('league_entered', NEW.player_id, jsonb_build_object('tournament_id', NEW.tournament_id));
-    IF NEW.paid_at IS NOT NULL THEN
-      PERFORM private.audit('league_paid', NEW.player_id, jsonb_build_object('tournament_id', NEW.tournament_id, 'amount', NEW.amount));
-    END IF;
     RETURN NEW;
   END IF;
   IF OLD.paid_at IS NULL AND NEW.paid_at IS NOT NULL THEN
@@ -247,10 +240,9 @@ DO $$ DECLARE n int; BEGIN
     AND table_name::text || '.' || column_name::text IN ('tournaments.format', 'tournaments.deadlines', 'tournaments.buy_in',
       'tournaments.max_players', 'tournament_players.entered_at', 'tournament_players.paid_at', 'tournament_players.amount',
       'tournament_players.recorded_by', 'tournament_players.seed_pot', 'tournament_players.group_num', 'tournament_matches.stage',
-      'tournament_matches.bracket', 'tournament_matches.start_hole', 'tournament_matches.extra_holes', 'tournament_matches.outcome',
-      'tournament_matches.decided_by', 'tournament_matches.played_on');
-  IF n <> 17 THEN RAISE EXCEPTION 'Expected 17 new columns, found %', n; END IF;
-  INSERT INTO ml_report(line) VALUES ('new columns: 17');
+      'tournament_matches.bracket', 'tournament_matches.start_hole', 'tournament_matches.outcome', 'tournament_matches.played_on');
+  IF n <> 15 THEN RAISE EXCEPTION 'Expected 15 new columns, found %', n; END IF;
+  INSERT INTO ml_report(line) VALUES ('new columns: 15');
   SELECT count(*) INTO n FROM pg_policies WHERE schemaname = 'public' AND policyname IN
     ('p2_tplayer_enter', 'p2_tplayer_withdraw', 'p2_tscore_league_ins', 'p2_tscore_league_upd', 'p2_tscore_league_del');
   IF n <> 5 THEN RAISE EXCEPTION 'Expected 5 new policies, found %', n; END IF;
