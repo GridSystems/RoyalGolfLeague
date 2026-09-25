@@ -1000,7 +1000,8 @@ const sbSel=t=>t==='players'?'select='+PLAYER_COLS:'';
 // Archived players (people who left) keep their history but are left out of every pick list.
 const activePlayers=()=>players.filter(p=>!p.archived_at);
 async function sbGet(t,p=''){const go=()=>fetch(`${SUPABASE_URL}/rest/v1/${t}?${[sbSel(t),p].filter(Boolean).join('&')}`,{headers:hdr()});return (await sbCheck(await go(),go)).json();}
-async function sbInsert(t,b){const go=()=>fetch(`${SUPABASE_URL}/rest/v1/${t}?${sbSel(t)}`,{method:'POST',headers:hdr({'Prefer':'return=representation'}),body:JSON.stringify(b)});return (await sbCheck(await go(),go)).json();}
+// onConflict ('col,col'): an upsert on that unique key — a row already there is updated, not duplicated.
+async function sbInsert(t,b,onConflict){const go=()=>fetch(`${SUPABASE_URL}/rest/v1/${t}?${[sbSel(t),onConflict&&'on_conflict='+onConflict].filter(Boolean).join('&')}`,{method:'POST',headers:hdr({'Prefer':(onConflict?'resolution=merge-duplicates,':'')+'return=representation'}),body:JSON.stringify(b)});return (await sbCheck(await go(),go)).json();}
 // PostgREST returns zero rows, not an error, when an UPDATE/DELETE policy's USING filters rows out —
 // so an admin who isn't in admin mode gets [] back rather than a refusal, and we retry through the
 // prompt on that too. If the prompt is cancelled we throw rather than return the empty result, so a
@@ -1087,7 +1088,7 @@ let fineTypes=[],allFines=[],finePayments=[];
 let seasonEntries=[];
 let editingFineTypeId=null;
 let saturdayEvents=[],saturdaySignups=[];
-let tournaments=[],tournamentPlayers=[],tournamentMatches=[],tournamentScores=[];
+let tournaments=[],tournamentPlayers=[],tournamentMatches=[],tournamentScores=[],tmLoaded=false;
 let activeTournamentId=null;
 const MOBILEPAY_FINES_URL='https://qr.mobilepay.dk/box/19b8d876-6c09-4fbd-b471-6d46df7c61e5/pay-in';
 let pendingDraw={};
@@ -1176,6 +1177,8 @@ function closeModal(id){document.getElementById(id).style.display='none';}
 function hcpOnDate(player,date){const hist=player.hcp_history||[];if(!hist.length)return player.handicap;const s=[...hist].sort((a,b)=>a.date.localeCompare(b.date));let v=s[0].value;for(const e of s){if(e.date<=date)v=e.value;else break;}return v;}
 
 // ── Tournament helpers ────────────────────────────────────────────
+// One score per player per hole (tournament_scores_once): every score, team day and league, is one upsert.
+const tmSaveScore=row=>sbInsert('tournament_scores',row,'match_id,hole,player_id');
 function tmPlayingHcp(player,tee,date){
   const idx=hcpOnDate(player,date);
   const courseHcp=Math.round(idx*tee.slope/113+(tee.rating-COURSE_PAR));
@@ -1492,10 +1495,12 @@ function calcHolePoints(round,player){const tee=getTee(round.tee_id||'platinum')
 let pendingPlayers=[];
 async function loadData(){let _teesFetchOk=false;try{tees=await sbGet('tees','order=archived.asc,name.asc');_teesFetchOk=true;}catch(e){console.warn('tees fetch failed:',e);tees=[];}if(_teesFetchOk&&tees.length===0)await seedTees();const all=await sbGet('players','order=created_at.asc');pendingPlayers=all.filter(p=>p.approved===false);players=all.filter(p=>p.approved!==false);allRounds=await sbGet('rounds','order=date.desc');fineTypes=await sbGet('fine_types','order=name.asc');allFines=await sbGet('fines','order=created_at.desc');try{finePayments=await sbGet('fine_payments','order=date.desc');}catch(e){console.warn('fine_payments load failed:',e);finePayments=[];}try{saturdayEvents=await sbGet('saturday_events','order=date.asc');}catch(e){saturdayEvents=[];}try{saturdaySignups=await sbGet('saturday_signups','order=created_at.asc');}catch(e){saturdaySignups=[];}try{const pg=await sbGet('green_polygons','');greenPolygons={};pg.forEach(r=>{greenPolygons[r.hole]=r.vertices;});}catch(e){console.warn('green_polygons load failed:',e);}try{const fp=await sbGet('fairway_polygons','');fairwayPolygons={};fp.forEach(r=>{fairwayPolygons[r.hole]=r.polygons;});}catch(e){console.warn('fairway_polygons load failed:',e);}
 try{seasonEntries=await sbGet('season_entries','order=entered_at.asc');}catch(e){seasonEntries=[];}   // missing until season_entries.sql runs
-try{tournaments=await sbGet('tournaments','order=created_at.desc');}catch(e){tournaments=[];}
-try{tournamentPlayers=await sbGet('tournament_players','order=id.asc');}catch(e){tournamentPlayers=[];}
-try{tournamentMatches=await sbGet('tournament_matches','order=round.asc,match_num.asc');}catch(e){tournamentMatches=[];}
-try{tournamentScores=await sbGet('tournament_scores','order=id.asc');}catch(e){tournamentScores=[];}
+let tmOk=true;const tmGet=async(t,q)=>{try{return await sbGet(t,q);}catch(e){tmOk=false;return[];}};
+tournaments=await tmGet('tournaments','order=created_at.desc');
+tournamentPlayers=await tmGet('tournament_players','order=id.asc');
+tournamentMatches=await tmGet('tournament_matches','order=round.asc,match_num.asc');
+tournamentScores=await tmGet('tournament_scores','order=id.asc');
+tmLoaded=tmOk;   // a failed load reads as "nothing played" — the league heal must never act on that
 if(tournaments.length>0&&!activeTournamentId)activeTournamentId=tournaments[0].id;
 // Inject tee info onto matches so tmMatchHcpInfo can find it
 tournamentMatches.forEach(m=>{
@@ -3918,7 +3923,7 @@ function renderTournament(){
   let selectorHtml='';
   if(tournaments.length>1){
     selectorHtml=`<div style="margin-bottom:1rem"><select onchange="activeTournamentId=parseInt(this.value);renderTournament()" style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:7px;padding:0.4rem 0.75rem;color:#fff;font-size:0.85rem">
-      ${tournaments.map(t=>`<option value="${t.id}"${t.id===activeTournamentId?' selected':''}>${t.name} (${t.date})</option>`).join('')}
+      ${tournaments.map(t=>`<option value="${t.id}"${t.id===activeTournamentId?' selected':''}>${escHtml(t.name)} (${escHtml(t.date)})</option>`).join('')}
     </select></div>`;
   }
 
@@ -4531,11 +4536,10 @@ async function teEnter(){
   TE.scores[pid][TE.currentHole]=gross;
   _teBuffer='';
 
-  // Save to Supabase (delete existing + insert)
+  // Save to Supabase (one upsert per hole and player)
   const _payload={match_id:TE.matchId,hole:TE.currentHole,player_id:pid,gross};
   try{
-    await sbDeleteWhere('tournament_scores',`match_id=eq.${TE.matchId}&hole=eq.${TE.currentHole}&player_id=eq.${pid}`);
-    const[saved]=await sbInsert('tournament_scores',_payload);
+    const[saved]=await tmSaveScore(_payload);
     tournamentScores=tournamentScores.filter(s=>!(s.match_id===TE.matchId&&s.hole===TE.currentHole&&s.player_id===pid));
     tournamentScores.push(saved);
   }catch(e){
@@ -4668,7 +4672,7 @@ function renderAdminTournament(){
   el.innerHTML=`
   ${createHtml}${mlCreateHtml()}${mlPickerHtml()}
   <hr style="border-color:rgba(255,255,255,0.08);margin:1rem 0">
-  <h4 style="margin:0 0 0.75rem;font-size:0.9rem">${tourn.name} <span style="font-size:0.7rem;opacity:0.5">${tourn.status}</span></h4>
+  <h4 style="margin:0 0 0.75rem;font-size:0.9rem">${escHtml(tourn.name)} <span style="font-size:0.7rem;opacity:0.5">${tourn.status}</span></h4>
 
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem">
     <div>
@@ -4992,9 +4996,7 @@ function mlResultsHtml(t,recs){
 }
 // The stored status/result/extra_holes are a cache of the derived decision, rewritten after every change.
 function mlSyncFields(m,rec){
-  const f={status:rec.decided?'complete':rec.started?'in_progress':'pending',result:rec.decided&&rec.winner?rec.winner:null,extra_holes:rec.extra};
-  if(!m.played_on&&(m.outcome||'played')==='played'&&rec.started)f.played_on=today();   // the handicap date
-  return f;
+  return{status:rec.decided?'complete':rec.started?'in_progress':'pending',result:rec.decided&&rec.winner?rec.winner:null,extra_holes:rec.extra};
 }
 // [] back from an update means RLS filtered it: a failure, as in adminEntryWrite. Local state follows only a real save.
 async function mlPatch(m,b,prompt=true){const rows=await sbUpdate('tournament_matches',m.id,b,prompt);if(!rows||!rows.length)throw new Error('not saved');Object.assign(m,b);}
@@ -5010,16 +5012,27 @@ const mlMe=()=>_session?(players.find(p=>p.user_id===_session.user.id)?.id??null
 // Then: the score, the match's own fields and its synced cache, and last the slots — they're derived
 // from the results, so if one of those writes fails the results are still right and mlHealAll (or an
 // admin's Repair on the league page) puts the slots right from them.
-async function mlChange(matchId,{patch=null,score=null}={}){
-  const m=tournamentMatches.find(x=>x.id===matchId),t=m&&tournaments.find(x=>x.id===m.tournament_id);
+// clear: the admin's Clear scores — every score of the match deleted (patch resets its outcome).
+async function mlChange(matchId,{patch=null,score=null,clear=false}={}){
+  let m=tournamentMatches.find(x=>x.id===matchId);const t=m&&tournaments.find(x=>x.id===m.tournament_id);
   if(!m||!t)return{ok:false,msg:'Match not found.'};
+  // Gate on the league as it is now, not as this device loaded it: another phone may have started a playoff.
+  try{
+    const fresh=await sbGet('tournament_matches',`tournament_id=eq.${t.id}&order=round.asc,match_num.asc`),ids=fresh.map(x=>x.id);
+    const sc=ids.length?await sbGet('tournament_scores',`match_id=in.(${ids.join(',')})&order=id.asc`):[];
+    fresh.forEach(x=>{x._teeId=x.tee_id||t.tee_id;});
+    tournamentMatches=[...tournamentMatches.filter(x=>x.tournament_id!==t.id),...fresh];
+    tournamentScores=[...tournamentScores.filter(s=>!ids.includes(s.match_id)),...sc];
+  }catch(e){return{ok:false,msg:'Couldn\'t check the latest results — check your signal and try again. Nothing was saved.'};}
+  m=tournamentMatches.find(x=>x.id===matchId);if(!m)return{ok:false,msg:'Match not found.'};
   const same=s=>s.match_id===matchId&&s.hole===score.hole&&s.player_id===score.player_id;
   const mp={...m,...(patch||{})};
   const ms=tournamentMatches.map(x=>x.id===matchId?mp:x);
-  const sc=score?[...tournamentScores.filter(s=>!same(s)),{match_id:matchId,...score}]:tournamentScores;
+  const sc=clear?tournamentScores.filter(s=>s.match_id!==matchId)
+    :score?[...tournamentScores.filter(s=>!same(s)),{match_id:matchId,...score}]:tournamentScores;
   const {groups,seeds}=mlGroups(t),after=mlRecords(t,ms,sc);
   const g=mlGate(mlRecords(t),after,matchId,groups,seeds);
-  if(g.blocker)return{ok:false,msg:`Can't change this now: ${mlMatchName(g.blocker)} has already started. Clear that match's scores and outcome first, then try again.`};
+  if(g.blocker)return{ok:false,msg:`Can't change this now: ${mlMatchName(g.blocker)} has already started. An admin can clear that match with Clear scores (Admin tab, the league's match tools), then try again. Nothing was saved.`};
   const rec=after.find(r=>r.id===matchId),me=mlMe();
   const filled=g.updates.map(u=>tournamentMatches.find(x=>x.id===u.id)).filter(x=>x.team_a_p1_id!=null||x.team_b_p1_id!=null);
   const mine=me!=null&&(me===m.team_a_p1_id||me===m.team_b_p1_id);
@@ -5030,9 +5043,16 @@ async function mlChange(matchId,{patch=null,score=null}={}){
     if(!await requireAdminMode())return{ok:false,msg:'Admin mode is needed for that. Nothing was saved.'};
   }
   try{
+    if(clear&&tournamentScores.some(s=>s.match_id===matchId)){
+      await sbDeleteWhere('tournament_scores',`match_id=eq.${matchId}`);
+      // A delete a permission rule filters out still "succeeds" — check nothing is left.
+      if((await sbGet('tournament_scores',`match_id=eq.${matchId}&select=id`)).length)throw new Error('scores not cleared');
+      tournamentScores=tournamentScores.filter(s=>s.match_id!==matchId);
+    }
+    // The handicap date (the day of the first score) goes first, so a score never lands without it.
+    if(score&&!m.played_on&&(m.outcome||'played')==='played')await mlPatch(m,{played_on:today()});
     if(score){
-      await sbDeleteWhere('tournament_scores',`match_id=eq.${matchId}&hole=eq.${score.hole}&player_id=eq.${score.player_id}`);
-      const [saved]=await sbInsert('tournament_scores',{match_id:matchId,...score});
+      const [saved]=await tmSaveScore({match_id:matchId,...score});
       if(!saved)throw new Error('score not saved');
       tournamentScores=[...tournamentScores.filter(s=>!same(s)),saved];
     }
@@ -5053,8 +5073,12 @@ async function mlChange(matchId,{patch=null,score=null}={}){
 }
 // Playoff slots whose players differ from what the results say — a slot write that failed part-way.
 // Started matches are never touched. Empty slots any member may fill; a filled one needs an admin.
+// Only from a complete picture — every tournament table loaded at start-up and a full 4×4 draw: a
+// failed scores load looks like "nothing played" and would empty every slot.
 function mlSlotRepairs(t,recs=mlRecords(t)){
-  const {groups,seeds}=mlGroups(t),{want}=mlPlan(recs,groups,seeds);
+  const {groups,seeds}=mlGroups(t);
+  if(!tmLoaded||!groups.every(g=>g.filter(p=>p!=null).length===4))return[];
+  const {want}=mlPlan(recs,groups,seeds);
   return tournamentMatches.filter(m=>m.tournament_id===t.id&&want[m.id]&&!recs.find(r=>r.id===m.id).started
       &&(want[m.id].a!==(m.team_a_p1_id??null)||want[m.id].b!==(m.team_b_p1_id??null)))
     .map(m=>({m,a:want[m.id].a,b:want[m.id].b,fill:m.team_a_p1_id==null&&m.team_b_p1_id==null}));
@@ -5166,8 +5190,9 @@ function mlAdminHtml(t){
       .map(m=>`<option value="${m.id}">${escHtml(mlMatchName(m))}: ${mlName(m.team_a_p1_id)} v ${mlName(m.team_b_p1_id)} — ${escHtml(recs.find(r=>r.id===m.id).label)}</option>`).join('');
     html+=sub('Record an outcome')+`<div style="display:grid;gap:0.4rem"><select id="mlOutMatch" class="input">${opts}</select>
       <select id="mlOutKind" class="input"><option value="played">Played — clear any decision</option><option value="walkover:a">Walkover to the first-named</option><option value="walkover:b">Walkover to the second-named</option><option value="halve_decision">Halve by decision (group only)</option><option value="double_forfeit">Double forfeit (group)</option><option value="double_forfeit:a">Double forfeit — first-named goes through (playoff)</option><option value="double_forfeit:b">Double forfeit — second-named goes through (playoff)</option></select>
-      <button class="btn btn-warn btn-sm" onclick="mlSetOutcomeFromForm()">Record</button></div>
-      <div style="font-size:0.72rem;color:rgba(255,255,255,0.35);margin-top:0.4rem">To correct a score, open the match on the Tournament tab. A change that would move a playoff match already under way is refused.</div>`;
+      <button class="btn btn-warn btn-sm" onclick="mlSetOutcomeFromForm()">Record</button>
+      <button class="btn btn-ghost btn-sm" onclick="mlClearScores(+document.getElementById('mlOutMatch').value)">Clear scores</button></div>
+      <div style="font-size:0.72rem;color:rgba(255,255,255,0.35);margin-top:0.4rem">To correct a score, open the match on the Tournament tab. A change that would move a playoff match already under way is refused — Clear scores puts that match back to not started first.</div>`;
   }
   return html;
 }
@@ -5234,8 +5259,7 @@ async function mlDraw(tid){
     const [tr]=await sbUpdate('tournaments',t.id,{status:'drawn'});if(!tr)throw new Error('not saved');
     t.status='drawn';toast('Groups drawn 🏆');
   }catch(e){alert('The draw didn\'t finish — '+e.message+'. Press Draw groups again to complete it.');}
-  finally{mlDrawing=false;}
-  mlRedraw();
+  finally{mlDrawing=false;mlRedraw();}   // every exit, the cancelled authenticator prompt included
 }
 // Admin decisions on a league match — edits like any other, through mlChange and the edit rules.
 // kind: 'played' (clear) | 'walkover' | 'halve_decision' (group only) | 'double_forfeit'.
@@ -5251,6 +5275,15 @@ async function mlSetOutcome(matchId,kind,side=null){
   mlRedraw();
 }
 function mlSetOutcomeFromForm(){const [k,s]=document.getElementById('mlOutKind').value.split(':');return mlSetOutcome(+document.getElementById('mlOutMatch').value,k,s||null);}
+// Admin: put a league match back to not started — every score deleted, any outcome cleared. It's an edit of
+// that match like any other (mlChange), so it's refused while a match that depends on it has started.
+async function mlClearScores(matchId){
+  const m=tournamentMatches.find(x=>x.id===matchId);
+  if(!m||!confirm(`Clear every score and any outcome of ${mlMatchName(m)}? It goes back to not started.`))return;
+  const r=await mlChange(matchId,{clear:true,patch:{outcome:'played',played_on:null}});
+  if(!r.ok)alert(r.msg);else if(r.warn)alert(r.warn);else toast('Scores cleared');
+  mlRedraw();
+}
 
 function renderSaturdayAdmin(){
   const el=document.getElementById('saturdayAdminBody');if(!el)return;
