@@ -1011,8 +1011,11 @@ async function retryEmptyInAdminMode(rows,go){
   if(!await requireAdminMode())throw new Error('Admin mode is needed for that.');
   return (await sbCheck(await go(),null)).json();
 }
-async function sbUpdate(t,id,b){
+// prompt=false: never ask for the authenticator code (background writes, e.g. the start-up league heal) —
+// a refusal just throws, and [] comes back as it is.
+async function sbUpdate(t,id,b,prompt=true){
   const go=()=>fetch(`${SUPABASE_URL}/rest/v1/${t}?id=eq.${id}&${sbSel(t)}`,{method:'PATCH',headers:hdr({'Prefer':'return=representation'}),body:JSON.stringify(b)});
+  if(!prompt)return (await sbCheck(await go(),null)).json();
   return retryEmptyInAdminMode(await (await sbCheck(await go(),go)).json(),go);
 }
 async function sbRpc(fn,args){const go=()=>fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`,{method:'POST',headers:hdr(),body:JSON.stringify(args)});const r=await sbCheck(await go(),go);const t=await r.text();return t?JSON.parse(t):null;}
@@ -4969,7 +4972,7 @@ function mlSyncFields(m,rec){
   return f;
 }
 // [] back from an update means RLS filtered it: a failure, as in adminEntryWrite. Local state follows only a real save.
-async function mlPatch(m,b){const rows=await sbUpdate('tournament_matches',m.id,b);if(!rows||!rows.length)throw new Error('not saved');Object.assign(m,b);}
+async function mlPatch(m,b,prompt=true){const rows=await sbUpdate('tournament_matches',m.id,b,prompt);if(!rows||!rows.length)throw new Error('not saved');Object.assign(m,b);}
 // Who the database sees as "me" (private.current_player); the old PIN route goes by activeId.
 const mlMe=()=>_session?(players.find(p=>p.user_id===_session.user.id)?.id??null):activeId;
 // EVERY change to a league match goes through here: a score, the tee or start hole, an admin outcome.
@@ -5008,10 +5011,15 @@ async function mlChange(matchId,{patch=null,score=null}={}){
       if(!saved)throw new Error('score not saved');
       tournamentScores=[...tournamentScores.filter(s=>!same(s)),saved];
     }
+  }catch(e){return{ok:false,msg:'Couldn\'t save — '+e.message};}
+  try{
     const want={...(patch||{}),...mlSyncFields(mp,rec)};
     const diff=Object.fromEntries(Object.entries(want).filter(([k,v])=>m[k]!==v));
     if(Object.keys(diff).length)await mlPatch(m,diff);
-  }catch(e){return{ok:false,msg:'Couldn\'t save — '+e.message};}
+  }catch(e){return score
+    // The score stands; the status/result cache is rewritten on the next change (and every view derives it anyway).
+    ?{ok:false,saved:true,rec,msg:`Score saved. Couldn't save the match status (${e.message}) — it will correct itself on the next change.`}
+    :{ok:false,msg:'Couldn\'t save — '+e.message};}
   const failed=[];   // each slot on its own: one failure mustn't stop the rest
   for(const u of g.updates){const x=tournamentMatches.find(y=>y.id===u.id);
     try{await mlPatch(x,{team_a_p1_id:u.team_a_p1_id,team_b_p1_id:u.team_b_p1_id});}catch(e){failed.push(mlMatchName(x));}}
@@ -5035,7 +5043,9 @@ async function mlHealAll(repair=false){
     const fix=mlSlotRepairs(t);
     const admin=fix.some(x=>!x.fill)&&isAdminAccount()&&(!_session||adminModeActive()||(repair&&await requireAdminMode()));
     for(const x of fix)if(x.fill||admin)
-      try{await mlPatch(x.m,{team_a_p1_id:x.a,team_b_p1_id:x.b});}catch(e){console.warn('league heal:',e.message);}
+      // Start-up never prompts: a refusal (another device got there first, or it needs admin mode) or [] skips
+      // the slot, which stays flagged on the league page. Only the Repair button (repair=true) may prompt.
+      try{await mlPatch(x.m,{team_a_p1_id:x.a,team_b_p1_id:x.b},repair);}catch(e){console.warn('league heal:',e.message);}
   }
 }
 // Where the scoring screen opens: the first hole in play order not yet scored by both, going on into
@@ -5054,16 +5064,19 @@ const teLive=()=>TE.match=tournamentMatches.find(x=>x.id===TE.matchId)||TE.match
 async function mlScoreEnter(gross){
   const pid=TE.playerOrder[TE.currentPlayerIdx],hole=TE.currentHole;
   const wasComplete=TE.playerOrder.every(p=>TE.scores[p]?.[hole]!=null);
+  const wasDecided=mlRecord(TE.match,TE.tournament,tournamentScores.filter(s=>s.match_id===TE.matchId)).decided;
   _teBuffer='';
   const r=await mlChange(TE.matchId,{score:{hole,player_id:pid,gross}});
   teLive();TE.scores=teScoresOf(TE.matchId);   // the screen shows what was actually saved, whatever happened
-  if(!r.ok){alert(r.msg);renderMatchScoring();return;}
-  if(r.warn)alert(r.warn);
+  if(!r.ok){alert(r.msg);if(!r.saved){renderMatchScoring();return;}}   // saved: the score stands, carry on
+  else if(r.warn)alert(r.warn);
+  // This score decided the match — on the hole just finished or a corrected earlier one: the card is done
+  // (a player can't enter more on a finished match).
+  if(r.rec.decided&&!wasDecided){toast(`Match over — ${r.rec.label}`);teBack();return;}
   if(wasComplete){renderMatchScoring();return;}                    // correcting a hole: stay on it
   TE.currentPlayerIdx++;
   if(TE.currentPlayerIdx>=TE.playerOrder.length){
     TE.currentPlayerIdx=0;
-    if(r.rec.decided){toast(`Match over — ${r.rec.label}`);teBack();return;}
     TE.currentHole=mlNextHole(TE.match,hole);
   }
   renderMatchScoring();

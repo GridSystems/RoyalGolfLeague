@@ -543,6 +543,36 @@ setTimeout(async function(){
       league();level();players[1].name='<i>Z</i>';stub();teOpenMatch(gm().find(m=>m.team_a_p1_id===2||m.team_b_p1_id===2).id);
       T('scoring screen: player names are escaped',!document.getElementById('tournamentContent').querySelector('i')&&/&lt;i&gt;Z/.test(tc()));
       TE.matchId=null;
+      // ── fix round 1 ──
+      // 1 / 3c: a signed-in admin NOT in admin mode heals at start-up; a fill refused (42501) is skipped and flagged, never prompted
+      {league();level();gm().forEach(m=>decideLocal(m,seedWin(m)));
+       players[0].user_id='u-1';_session={user:{id:'u-1'},access_token:'x.'+btoa(JSON.stringify({aal:'aal1'}))+'.y'};
+       const keep=requireAdminMode;let prompts=0;window.requireAdminMode=async()=>{prompts++;return true;};
+       reset((u,b,m)=>m==='PATCH'?{__status:403,code:'42501',message:'Only an admin in admin mode can change who plays in a match.'}:[]);
+       await mlHealAll();window.requireAdminMode=keep;
+       T('heal, signed-in admin without admin mode, fills refused 42501: no prompt, each slot tried once and skipped',prompts===0&&calls.filter(c=>c.method==='PATCH').length===8&&tournamentMatches.filter(m=>m.stage==='semi').every(m=>m.team_a_p1_id==null));
+       _session=null;renderTournament();
+       T('…the skipped slots stay flagged on the league page',/out of step with the results: Winners semi-final 1/.test(tc()));}
+      // 2: a correction that decides the match mid-card ends the card
+      {league();level();stub();activeId=2;const m2=gm().find(m=>m.team_a_p1_id===2||m.team_b_p1_id===2);
+       tournamentScores.push(...card(m2,[...holes(1,9,3,5),[10,5,3]]));Object.assign(m2,{status:'in_progress',played_on:'2027-05-01'});   // 8 up thru 10: undecided
+       teOpenMatch(m2.id);const opened=TE.currentHole===11;
+       TE.currentHole=10;TE.currentPlayerIdx=1;_teBuffer='6';
+       const keepT=window.toast;let msg='';window.toast=s=>{msg=s;};await teEnter();window.toast=keepT;
+       T('a correction that decides the match mid-card: "Match over — 10&8" and the card closes',opened&&msg==='Match over — 10&8'&&TE.matchId==null&&m2.status==='complete');}
+      // 3a: a group match all square after 18 → complete, halved (exact body)
+      {league();level();stub();activeId=2;const m3=gm().find(m=>m.team_a_p1_id===2||m.team_b_p1_id===2);
+       tournamentScores.push(...card(m3,holes(1,17,4,4)),{match_id:m3.id,hole:18,player_id:m3.team_a_p1_id,gross:4});Object.assign(m3,{status:'in_progress',played_on:'2027-05-01'});
+       res=await mlChange(m3.id,{score:{hole:18,player_id:m3.team_b_p1_id,gross:4}});
+       T('group match all square after 18: writes the score then {"status":"complete","result":"half"}, nothing else',res.ok&&res.rec.label==='Halved'&&seq()===[SCORE,PM].join()&&JSON.stringify(calls[2].body)==='{"status":"complete","result":"half"}');}
+      // 3b: a player correcting their own finished match is refused, nothing written
+      {league();level();gm().forEach(m=>decideLocal(m,seedWin(m)));stub();activeId=2;const m4=gm().find(m=>m.team_a_p1_id===2||m.team_b_p1_id===2);
+       res=await mlChange(m4.id,{score:{hole:1,player_id:2,gross:6}});
+       T('a player correcting their own finished match: refused, zero writes, told an admin is needed',!res.ok&&calls.length===0&&/admin/.test(res.msg));}
+      // 4: the score saved but the match cache update failed → said accurately
+      {league();level();reset((u,b,m)=>m==='POST'?[{id:++sid,...b}]:[]);activeId=2;const m5=gm().find(m=>m.team_a_p1_id===2||m.team_b_p1_id===2);
+       res=await mlChange(m5.id,{score:{hole:1,player_id:2,gross:4}});
+       T('score saved, match status not: the message says exactly that',!res.ok&&res.saved&&/^Score saved/.test(res.msg)&&/match status/.test(res.msg)&&/correct itself on the next change/.test(res.msg)&&tournamentScores.some(s=>s.match_id===m5.id));}
       activeId=2;
     }
     // ── end ──
