@@ -313,19 +313,22 @@ A second tournament format beside the one-day team event: `tournaments.format='l
   That gives places 1–16, and everyone plays 5 matches. All 40 match rows are created at
   the draw (`mlFixtures`). Playoff players are filled in as results come in. Each round
   has a play-by date in `tournaments.deadlines` (`group_1`…`final`); after it, an
-  undecided match shows **Overdue**.
-- **Handicap:** 90% of course handicap on the match tee and `played_on` day. The lower
+  undecided match shows **Overdue**. The league's default tee is `tournaments.tee_id`
+  (57 in the create form); the two players may agree another.
+- **Handicap:** 90% of course handicap on the match tee and `played_on` day (a date
+  column, written before the match's first score). The lower
   player plays off 0 and the other gets the difference on SI 1…diff, with a second
   stroke where diff > 18 (`strokesOnHole(diff)`).
 - **Decisions are derived, never stored as truth.** `mlDecide` walks the play order (from
   the 1st or 10th) and stops at the deciding hole. A group match level after 18 is
   halved. A level playoff goes to sudden death: holes 19+ replay from the start hole
-  (`tmHoleIdx`). `status`/`result`/`extra_holes`/`played_on` are a cache written by
-  `mlSyncFields`. Group tables come from `mlStandings`: points, then head-to-head /
+  (`tmHoleIdx`). `status`/`result` are a cache written by `mlSyncFields`. Group tables come from `mlStandings`: points, then head-to-head /
   mini-table, then holes won, then average playing handicap, then seed pot. Places and
   the champion come from `mlPlaces`/`mlChampion` and are never stored.
 - **Every write to a league match goes through `mlChange`.** Never PATCH one directly.
-  `mlChange` tries the change on copies, then `mlGate` applies the edit rules:
+  `mlChange` first re-reads the league's matches and scores (another phone may have
+  started a playoff; a failed read refuses), tries the change on copies, then `mlGate`
+  applies the edit rules:
   - A group change is refused once any playoff match has started (a score or an outcome).
   - A semi change is refused once its final or 3rd/4th has started.
   - A final or 3rd/4th change only moves places.
@@ -333,17 +336,35 @@ A second tournament format beside the one-day team event: `tournaments.format='l
   - A correction that leaves a closed match undecided re-opens it.
   - Admin outcomes (walkover, halve by decision [group only], double forfeit; in a
     playoff the admin names who goes through) are edits too.
-  - `mlHealAll` (on `init`) fills any slot a failed write left empty.
+  - **Clear scores** (Admin tab, the league's match tools; `mlClearScores`) puts a match
+    back to not started: its scores deleted, any outcome cleared. It is an edit of that
+    match, so it is refused while a match depending on it has started (clearing a semi
+    needs its final and 3rd/4th unstarted). The refusal message points here — it is how
+    an admin unblocks a group correction once a playoff match has started.
+  - `mlHealAll` (on `init`) fills any slot a failed write left empty — only when every
+    tournament table loaded (`tmLoaded`) and the draw is a complete 4×4: a failed scores
+    load looks like "nothing played" and would otherwise empty every slot.
+- **Scores** (league and team day): one row per match, hole and player
+  (`tournament_scores_once`), written as one upsert (`tmSaveScore`).
 - **Permissions:**
-  - Trigger `protect_league_match`: only a match's two players (or an admin in admin
-    mode) change its status, result, tee or start hole. Only an admin changes a finished
-    match or an outcome. Any member may fill an empty, unstarted playoff slot, but never
-    overwrite one.
+  - Trigger `protect_league_match`: nobody — admins and the PIN route included — changes
+    who plays in a **started** league match (any score or an outcome); clear it first.
+    Only a match's two players (or an admin in admin mode) change its status, result,
+    tee or start hole. Only an admin changes a finished match or an outcome. Any member
+    may fill an empty, unstarted playoff slot, but never overwrite one.
+  - A player's own last score closes their match, **wrong result included** — they then
+    can't re-open it; an admin corrects it (open the match, or Clear scores).
   - Restrictive score policies: players score only their own unfinished league matches.
-  - Members enter and withdraw themselves before the draw, unpaid (`entered_at` forced
-    to now).
+  - Members enter and withdraw themselves before the draw, unpaid and not yet placed in
+    a group (`entered_at` forced to now). League entries are `team='league'`: the
+    migration replaces any `team` CHECK (found by definition) with `tplayers_team`
+    (a, b, league); the rollback restores (a, b).
   - League tournament rows are admin-only. Team day is unchanged.
-  - Audit: `league_*`, `match_outcome`, `match_edited`, `match_players_changed`.
+  - **In the database, the old PIN route (anon) bypasses every league rule above** except
+    the started-match guard (the app still applies `mlGate`) — its allow-all policy stays
+    until release B, like everywhere else.
+  - Audit: `league_*`, `match_outcome`, `match_edited`, `match_players_changed`,
+    `match_scores_cleared`.
 - **Entries** use the shared views: `entryBoxHtml` for the member box and
   `entriesPanelHtml` for the admin panel, the same ones season entries use. The first
   16 by `entered_at` are in and the rest wait. Admin "Move in" puts a waiting player
