@@ -1366,6 +1366,36 @@ function mlMatchName(r){
     :r.stage==='semi'?`${B} semi-final ${r.match_num%2?1:2}`:r.stage==='final'?`${B} final`:`${B} 3rd/4th`;
 }
 
+// A group's table. recs: match records ({a,b,decided,winner,holes,ph}); seeds: {pid: seed_pot}.
+// Points from decided matches: win 1, halve ½, loss 0 (a double forfeit is a loss for both). Order:
+// points, then (a) the tied players' results against each other — a mini-table for three or more —
+// (b) holes won in the group, (c) lower average playing handicap over played matches, (d) seed pot
+// (never level inside a group). A step that splits a tied set restarts at (a) for each smaller set.
+function mlStandings(pids,recs,seeds){
+  const row={};for(const p of pids)row[p]={pid:p,P:0,W:0,H:0,L:0,pts:0,holes:0,phs:[]};
+  for(const r of recs){if(!r.decided)continue;
+    for(const s of['a','b']){const x=row[r[s]];if(!x)continue;
+      x.P++;x.holes+=r.holes[s];if(r.ph)x.phs.push(r.ph[s]);
+      if(r.winner==='half'){x.H++;x.pts+=0.5;}else if(r.winner===s){x.W++;x.pts+=1;}else x.L++;}}
+  for(const x of Object.values(row))x.avgPh=x.phs.length?x.phs.reduce((t,v)=>t+v,0)/x.phs.length:null;
+  const rank=ids=>{
+    if(ids.length<2)return ids;
+    const set=new Set(ids);
+    const keys=[   // higher ranks first
+      id=>recs.filter(r=>r.decided&&set.has(r.a)&&set.has(r.b)&&(r.a===id||r.b===id)).reduce((t,r)=>t+(r.winner==='half'?0.5:r[r.winner]===id?1:0),0),
+      id=>row[id].holes,
+      id=>row[id].avgPh==null?-Infinity:-row[id].avgPh,
+      id=>-(seeds[id]??99)];
+    for(const k of keys){
+      const v=new Map(ids.map(id=>[id,k(id)])),vals=[...new Set(v.values())].sort((x,y)=>y-x);
+      if(vals.length>1)return vals.flatMap(val=>rank(ids.filter(id=>v.get(id)===val)));
+    }
+    return ids;
+  };
+  const byPts=[...new Set(pids.map(p=>row[p].pts))].sort((x,y)=>y-x);
+  return byPts.flatMap(v=>rank(pids.filter(p=>row[p].pts===v))).map((p,i)=>({...row[p],pos:i+1}));
+}
+
 function currentHcp(player){const hist=player.hcp_history||[];if(!hist.length)return player.handicap;return[...hist].sort((a,b)=>b.date.localeCompare(a.date))[0].value;}
 // DGU membership number: digits, one hyphen, digits. Segments are variable-length
 // (900-1831, 1-123456), so the hyphen must be typed — it cannot be inferred.

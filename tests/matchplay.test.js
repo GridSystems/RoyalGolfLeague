@@ -107,6 +107,32 @@ setTimeout(async function(){
       T('no deadlines set: never overdue',!mlOverdue({},{round:1},{decided:false}));
       today=()=>'2027-05-10';
     }
+    // ── Task 4: group standings and tie-breaks ──
+    {
+      const rec=(a,b,winner,x={})=>({stage:'group',a,b,decided:winner!==undefined,winner:winner===undefined?null:winner,holes:{a:0,b:0},ph:null,started:true,...x});
+      const order=(recs,seeds={1:1,2:2,3:3,4:4})=>mlStandings([1,2,3,4],recs,seeds).map(s=>s.pid).join(',');
+      let st=mlStandings([1,2,3,4],[rec(1,4,'a'),rec(2,3,'half'),rec(1,3,'b'),rec(4,2,'b'),rec(1,2,undefined),rec(3,4,undefined)],{1:1,2:2,3:3,4:4});
+      const row=pid=>st.find(s=>s.pid===pid);
+      T('table: P W H L and points (1 / ½ / 0); undecided matches not counted',row(1).P===2&&row(1).W===1&&row(1).L===1&&row(1).pts===1&&row(2).H===1&&row(2).pts===1.5&&row(4).P===2&&row(4).pts===0);
+      T('table: ordered by points, positions 1–4',st[0].pts===1.5&&st[3].pid===4&&st.map(s=>s.pos).join()==='1,2,3,4');
+      T('(a) two tied: the winner of their match ranks higher, even with fewer holes won',
+        order([rec(1,2,'b',{holes:{a:0,b:1}}),rec(1,3,'a',{holes:{a:9,b:0}}),rec(2,4,'b',{holes:{a:0,b:2}}),rec(3,4,'a'),rec(1,4,'a',{holes:{a:5,b:0}}),rec(2,3,'a',{holes:{a:1,b:0}})])==='2,1,3,4');
+      T('(b) tied and halved against each other: more group holes won ranks higher',
+        order([rec(1,2,'half'),rec(1,3,'a',{holes:{a:2,b:0}}),rec(2,3,'a',{holes:{a:5,b:0}}),rec(1,4,'b'),rec(2,4,'b'),rec(3,4,'b')])==='4,2,1,3');
+      T('(c) then lower average playing handicap',
+        order([rec(1,2,'half',{ph:{a:14,b:10}}),rec(1,3,'a',{ph:{a:14,b:9}}),rec(2,3,'a',{ph:{a:10,b:9}}),rec(1,4,'b',{ph:{a:14,b:3}}),rec(2,4,'b',{ph:{a:10,b:3}}),rec(3,4,'b',{ph:{a:9,b:3}})])==='4,2,1,3');
+      const flat=[rec(1,2,'half'),rec(1,3,'a'),rec(2,3,'a'),rec(1,4,'b'),rec(2,4,'b'),rec(3,4,'b')];
+      T('(d) and finally seed pot',order(flat,{1:2,2:1,3:3,4:4})==='4,2,1,3'&&order(flat)==='4,1,2,3');
+      // 1 beat 2, 2 beat 3, 1 halved 3; 1–4 double forfeit, 2–4 halved, 3 beat 4 → 1, 2, 3 all on 1½
+      const three=[rec(1,2,'a',{holes:{a:1,b:0}}),rec(2,3,'a',{holes:{a:1,b:0}}),rec(1,3,'half'),rec(1,4,null),rec(2,4,'half'),rec(3,4,'a',{holes:{a:9,b:0}})];
+      T('three-way tie resolved by the mini-table of their own matches (not holes, not seed)',order(three,{1:3,2:2,3:1,4:4})==='1,2,3,4');
+      st=mlStandings([1,2,3,4],three,{1:3,2:2,3:1,4:4});
+      T('double forfeit: played and lost for both, no points',row(4).L===2&&row(4).P===3&&row(1).L===1&&row(1).pts===1.5);
+      T('three-way circle (equal mini-table) falls to holes won, then head-to-head again for the pair still level',
+        order([rec(1,2,'a',{holes:{a:2,b:0}}),rec(2,3,'a',{holes:{a:1,b:0}}),rec(3,1,'a',{holes:{a:4,b:0}}),rec(1,4,'a',{holes:{a:3,b:0}}),rec(2,4,'a',{holes:{a:1,b:0}}),rec(3,4,'a',{holes:{a:1,b:0}})])==='3,1,2,4');
+      st=mlStandings([1,2,3,4],[rec(1,2,'a',{ph:{a:10,b:20}}),rec(1,3,'a'),rec(1,4,'a',{ph:{a:14,b:2}})],{1:1,2:2,3:3,4:4});
+      T('average playing handicap: played matches only (a walkover has none)',row(1).avgPh===12&&row(3).avgPh===null);
+    }
     // ── end ──
   }catch(e){out.push('FAIL EXCEPTION :: '+e.stack);}
   await new Promise(r=>setTimeout(r,150));
