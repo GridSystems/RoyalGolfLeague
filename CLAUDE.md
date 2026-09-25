@@ -227,6 +227,7 @@ excluded), Best N IPS (N from `SEASONS` — 4 for Summer 2026, 3 for Winter 2027
 live from `seasonStandings` / `eclecticStandings` / `finesStandings` — the same
 functions the leaderboards use — so there is no winners table to keep in sync.
 Ties share the title. The current season shows as "In progress · current leaders".
+A season in which a matchplay league starts also shows **Matchplay champion**: the Winners final's winner, derived live from the matches (`mlChampion`).
 
 Records rows (all players, social included — no prize money): most gross birdies
 (par−1), most gross eagles (par−2 or better, so an ace on a par 3 also counts),
@@ -298,6 +299,55 @@ of the time by chance, and with two foursomes the minimum possible repeat count 
 one got the Fisher-Yates fix), and it died silently for five weeks — an unhandled
 `NOT NULL` on `saturday_events.id`, which it never supplied. Nobody noticed until
 pairings felt stale. A draw computed on demand has no scheduler to fail quietly.
+
+## Matchplay league
+
+A second tournament format beside the one-day team event: `tournaments.format='league'`
+(team day is `'team_day'`, the default). Migration `supabase/matchplay_league.sql`
+(+ `matchplay_league_rollback.sql`). Spec: `docs/superpowers/specs/2026-09-25-matchplay-league-design.md`.
+
+- **Shape.** 16 players drawn into 4 groups of 4. The draw makes pots by handicap index,
+  one player per pot in each group (`mlDrawGroupsResume`, resume-safe). Each group plays a round robin in
+  rounds 1–3. Then come four brackets by group position (Winners, Runners-up, Thirds,
+  Fourths): semis A v B and C v D in round 4, then the final and 3rd/4th in round 5.
+  That gives places 1–16, and everyone plays 5 matches. All 40 match rows are created at
+  the draw (`mlFixtures`). Playoff players are filled in as results come in. Each round
+  has a play-by date in `tournaments.deadlines` (`group_1`…`final`); after it, an
+  undecided match shows **Overdue**.
+- **Handicap:** 90% of course handicap on the match tee and `played_on` day. The lower
+  player plays off 0 and the other gets the difference on SI 1…diff, with a second
+  stroke where diff > 18 (`strokesOnHole(diff)`).
+- **Decisions are derived, never stored as truth.** `mlDecide` walks the play order (from
+  the 1st or 10th) and stops at the deciding hole. A group match level after 18 is
+  halved. A level playoff goes to sudden death: holes 19+ replay from the start hole
+  (`tmHoleIdx`). `status`/`result`/`extra_holes`/`played_on` are a cache written by
+  `mlSyncFields`. Group tables come from `mlStandings`: points, then head-to-head /
+  mini-table, then holes won, then average playing handicap, then seed pot. Places and
+  the champion come from `mlPlaces`/`mlChampion` and are never stored.
+- **Every write to a league match goes through `mlChange`.** Never PATCH one directly.
+  `mlChange` tries the change on copies, then `mlGate` applies the edit rules:
+  - A group change is refused once any playoff match has started (a score or an outcome).
+  - A semi change is refused once its final or 3rd/4th has started.
+  - A final or 3rd/4th change only moves places.
+  - Otherwise the affected playoff slots are re-filled or emptied **in place** (same rows).
+  - A correction that leaves a closed match undecided re-opens it.
+  - Admin outcomes (walkover, halve by decision [group only], double forfeit; in a
+    playoff the admin names who goes through) are edits too.
+  - `mlHealAll` (on `init`) fills any slot a failed write left empty.
+- **Permissions:**
+  - Trigger `protect_league_match`: only a match's two players (or an admin in admin
+    mode) change its status, result, tee or start hole. Only an admin changes a finished
+    match or an outcome. Any member may fill an empty, unstarted playoff slot, but never
+    overwrite one.
+  - Restrictive score policies: players score only their own unfinished league matches.
+  - Members enter and withdraw themselves before the draw, unpaid (`entered_at` forced
+    to now).
+  - League tournament rows are admin-only. Team day is unchanged.
+  - Audit: `league_*`, `match_outcome`, `match_edited`, `match_players_changed`.
+- **Entries** use the shared views: `entryBoxHtml` for the member box and
+  `entriesPanelHtml` for the admin panel, the same ones season entries use. The first
+  16 by `entered_at` are in and the rest wait. Admin "Move in" puts a waiting player
+  just ahead of the 16th.
 
 ## Key design decisions (don't change without reason)
 

@@ -6102,6 +6102,9 @@ function renderHallOfFame(){
     const full=sr.filter(r=>r.holes.length===18&&r.holes.every(h=>h&&(h.score!=null||h.pickup)))
       .map(r=>({r,p:pOf(r.player_id),pts:calcRoundPoints(r,pOf(r.player_id))})).filter(x=>x.pts!=null).sort((a,b)=>a.pts-b.pts);
     const longest=tied(full,x=>x.pts).map(x=>({p:x.p,record:`${x.pts} pts · ${fd(x.r.date)}`}));
+    // Matchplay leagues that start in this season: the Winners final's winner, derived from the matches.
+    const leagues=tournaments.filter(t=>t.format==='league'&&seasonOf(t.date)===season);
+    const mW=leagues.map(t=>({p:players.find(p=>p.id===mlChampion(mlRecords(t))),record:escHtml(t.name)})).filter(w=>w.p);
     return`<div style="margin-bottom:1.75rem">
       <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:0.6rem">
         <span style="font-family:'Playfair Display',serif;font-size:1.15rem;color:var(--gold-l)">${season}</span>
@@ -6110,6 +6113,7 @@ function renderHallOfFame(){
       <div class="rt-wrap"><table class="rt"><thead><tr><th>Competition</th><th>${done?'Winner':'Leader'}</th><th>Record</th></tr></thead><tbody>
         ${rows('🏆 Eclectic',eW)}
         ${rows(`🏆 Best ${seasonInfo(season).best} IPS`,iW)}
+        ${leagues.length?rows('🥇 Matchplay champion',mW):''}
         ${rows('🐦 Most birdies',birdies)}
         ${rows('🦅 Most eagles',eagles)}
         ${rows('⛳ Hole in one',aces)}

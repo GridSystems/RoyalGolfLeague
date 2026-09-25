@@ -745,6 +745,22 @@ setTimeout(async function(){
       T('inconsistent saved placements: refused, nothing written, the admin is told',calls.length===0&&!!window.__alert);
       activeId=2;
     }
+    // ── Task 10: Hall of Fame ──
+    {
+      league();gm().forEach(m=>decideLocal(m,seedWin(m)));fillLocal();
+      for(const b of[1,2,3,4]){decideLocal(semi(b,1),'a');decideLocal(semi(b,2),'a');}fillLocal();
+      tournaments[0].date='2026-11-01';   // starts in Winter 2027
+      allRounds=[{id:1,player_id:1,date:'2026-11-07',tee_id:'platinum',holes:HOLE_PARS.map((par,i)=>({hole:i+1,par,hcp:HOLE_HCP[i],score:par}))}];
+      allFines=[];seasonEntries=[];
+      const champRow=()=>{renderHallOfFame();const f=document.getElementById('fameBody').innerHTML;return f.includes('Matchplay champion')?f.split('Matchplay champion')[1].split('</tr>')[0]:null;};
+      T('Hall of Fame: a Matchplay champion row, empty until the final is decided',champRow()!==null&&!/Matchplay 2027/.test(champRow()));
+      decideLocal(fin(1),'b');
+      T('the Winners final winner is champion, derived from the matches',/<\/div>P9<\/div>/.test(champRow())&&/Matchplay 2027/.test(champRow()));
+      tournamentScores=tournamentScores.filter(s=>s.match_id!==fin(1).id);decideLocal(fin(1),'a');
+      T('…and follows a corrected final',/<\/div>P1<\/div>/.test(champRow()));
+      tournaments[0].date='2026-05-01';
+      T('a season without a league has no Matchplay row',champRow()===null);
+    }
     // ── end ──
   }catch(e){out.push('FAIL EXCEPTION :: '+e.stack);}
   await new Promise(r=>setTimeout(r,150));
