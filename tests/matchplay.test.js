@@ -292,9 +292,13 @@ setTimeout(async function(){
     // ── Task 6: the Tournament tab for a league ──
     const LG={id:900,name:'Matchplay 2027',date:'2027-04-01',tee_id:'57',format:'league',status:'drawn',buy_in:200,max_players:16,
       deadlines:{group_1:'2027-05-15',group_2:'2027-06-15',group_3:'2027-07-31',semi:'2027-08-20',final:'2027-09-10'}};
-    // A drawn league: players 1–16 all index 18 (nett = gross), groups G, 40 matches (ids 1–40), no scores.
+    // A drawn league: players 1–16. Players 1 and 4 (the round-1 group-A pair behind mlRecords[0]) get
+    // real, different indexes — 9.3 and 16.4 on tee 57 → playing handicaps 12 and 20 (Task 2) — so a
+    // record's ph is checked against each player's own number, not the fourball zero-relative stroke
+    // difference (which would give 0 either way). Everyone else stays level, index 18, nett = gross.
+    // Groups G, 40 matches (ids 1–40), no scores.
     const league=()=>{tournaments=[{...LG}];activeTournamentId=900;TE.matchId=null;mlTab='groups';
-      players=[...Array(16)].map((_,i)=>P(i+1,'P'+(i+1)));players[0].is_admin=true;activeId=2;
+      players=[...Array(16)].map((_,i)=>P(i+1,'P'+(i+1),i+1===1?9.3:i+1===4?16.4:18));players[0].is_admin=true;activeId=2;
       tournamentPlayers=G.flatMap((g,gi)=>g.map((pid,k)=>({id:100+pid,tournament_id:900,player_id:pid,team:'league',group_num:gi+1,seed_pot:k+1,entered_at:new Date(Date.UTC(2027,2,1,10,0,pid)).toISOString(),paid_at:null,amount:null})));
       tournamentMatches=mlFixtures(G).map((r,i)=>({id:i+1,tournament_id:900,status:'pending',result:null,start_hole:1,extra_holes:0,outcome:'played',decided_by:null,played_on:null,tee_id:null,team_a_p2_id:null,team_b_p2_id:null,_teeId:'57',...r}));
       tournamentScores=[];};
@@ -320,7 +324,7 @@ setTimeout(async function(){
       league();today=()=>'2027-05-16';
       gm().filter(m=>mlGroupOf(m)===1&&m.round<3).forEach(m=>decideLocal(m,seedWin(m)));
       T('records: one per league match, decided from the scores',mlRecords(tournaments[0]).length===40&&mlRecords(tournaments[0]).filter(r=>r.decided).length===4&&mlRecords(tournaments[0])[0].label==='10&8');
-      T('records: playing handicaps kept for played matches',mlRecords(tournaments[0])[0].ph.a===mlRecords(tournaments[0])[0].ph.b);
+      T('records: ph is each player\'s own playing handicap (12 v 20 on tee 57), not the stroke difference',mlRecords(tournaments[0])[0].ph.a===12&&mlRecords(tournaments[0])[0].ph.b===20);
       T('groups from the draw, in pot order, with seeds',JSON.stringify(mlGroups(tournaments[0]).groups)===JSON.stringify(G)&&mlGroups(tournaments[0]).seeds[7]===3);
       renderTournament();let html=tc();
       T('league: Groups, Playoffs and Results tabs; no team-day tabs',/>Groups</.test(html)&&/>Playoffs</.test(html)&&/>Results</.test(html)&&!/Fourballs/.test(html));
