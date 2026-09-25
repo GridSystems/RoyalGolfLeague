@@ -4,6 +4,8 @@
 -- (true) it runs everything, reports, then rolls back. Set it to false for the real run.
 -- Needs phase2a_auth.sql (Phase 2 release A). Undo: matchplay_league_rollback.sql.
 -- No version-gate change: the live app reads the new columns only for format = 'league'.
+-- If both this and phase2a_auth are ever rolled back, roll back THIS ONE FIRST — its functions
+-- and triggers live in schema private/reference private.is_admin() etc. from phase2a_auth.sql.
 BEGIN;
 CREATE TEMP TABLE ml_mode ON COMMIT DROP AS SELECT true AS rehearsal;   -- ◀◀ THE SWITCH
 CREATE TEMP TABLE ml_report (ord serial, line text) ON COMMIT DROP;
@@ -48,7 +50,8 @@ ALTER TABLE public.tournament_matches
   ADD CONSTRAINT tmatches_halve_group_only CHECK ((outcome <> 'halve_decision' OR (stage = 'group' AND result = 'half')) IS TRUE),
   ADD CONSTRAINT tmatches_walkover_winner CHECK ((outcome <> 'walkover' OR result IN ('a', 'b')) IS TRUE),
   ADD CONSTRAINT tmatches_forfeit_goes_through CHECK ((outcome <> 'double_forfeit'
-    OR (stage = 'group' AND result IS NULL) OR (stage <> 'group' AND result IN ('a', 'b'))) IS TRUE);
+    OR (stage = 'group' AND result IS NULL) OR (stage <> 'group' AND result IN ('a', 'b'))) IS TRUE),
+  ADD CONSTRAINT tmatches_played_on_format CHECK (played_on IS NULL OR played_on ~ '^\d{4}-\d{2}-\d{2}$');
 
 -- One row per league match slot: all 40 are created at the draw, so a double press can't duplicate.
 CREATE UNIQUE INDEX tournament_matches_league_slot ON public.tournament_matches (tournament_id, round, match_num) WHERE stage IS NOT NULL;
@@ -76,7 +79,11 @@ GRANT EXECUTE ON FUNCTION private.is_league(bigint), private.league_open(bigint)
 CREATE FUNCTION private.protect_league_match() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
 DECLARE me bigint := private.current_player(); started boolean;
 BEGIN
-  IF auth.uid() IS NULL OR private.is_admin() OR NOT private.is_league(OLD.tournament_id) THEN RETURN NEW; END IF;
+  -- Checking OLD alone would miss a member PATCHing a team-day match's tournament_id onto a
+  -- league (is_league(OLD)=false, so this would return NEW before the tournament_id-change check
+  -- below ever runs) — check NEW too, so that move itself falls into, and is refused by, that check.
+  IF auth.uid() IS NULL OR private.is_admin()
+     OR NOT (private.is_league(OLD.tournament_id) OR private.is_league(NEW.tournament_id)) THEN RETURN NEW; END IF;
   -- The league's shape and admin decisions: admin mode only.
   IF NEW.tournament_id IS DISTINCT FROM OLD.tournament_id OR NEW.stage IS DISTINCT FROM OLD.stage
      OR NEW.bracket IS DISTINCT FROM OLD.bracket OR NEW.round IS DISTINCT FROM OLD.round
@@ -87,7 +94,9 @@ BEGIN
   END IF;
   -- Filling an EMPTY playoff slot as results come in: any member. Never overwriting or emptying one.
   IF NEW.team_a_p1_id IS DISTINCT FROM OLD.team_a_p1_id OR NEW.team_b_p1_id IS DISTINCT FROM OLD.team_b_p1_id THEN
-    started := OLD.status <> 'pending' OR EXISTS (SELECT 1 FROM public.tournament_scores WHERE match_id = OLD.id);
+    -- "Started" per the plan: any score or an admin outcome — status is only a cache and can be
+    -- stale (e.g. left over from before a re-open), so it must never gate this.
+    started := OLD.outcome <> 'played' OR EXISTS (SELECT 1 FROM public.tournament_scores WHERE match_id = OLD.id);
     IF OLD.stage = 'group' OR started
        OR (NEW.team_a_p1_id IS DISTINCT FROM OLD.team_a_p1_id AND OLD.team_a_p1_id IS NOT NULL)
        OR (NEW.team_b_p1_id IS DISTINCT FROM OLD.team_b_p1_id AND OLD.team_b_p1_id IS NOT NULL) THEN
@@ -207,6 +216,14 @@ DO $$ DECLARE n int; BEGIN
     ('p2_tplayer_enter', 'p2_tplayer_withdraw', 'p2_tscore_league_ins', 'p2_tscore_league_upd', 'p2_tscore_league_del');
   IF n <> 5 THEN RAISE EXCEPTION 'Expected 5 new policies, found %', n; END IF;
   INSERT INTO ml_report(line) VALUES ('new policies: 5');
+  SELECT count(*) INTO n FROM pg_policies WHERE schemaname = 'public' AND policyname IN
+    ('p2_tscore_league_ins', 'p2_tscore_league_upd', 'p2_tscore_league_del') AND permissive = 'RESTRICTIVE';
+  IF n <> 3 THEN RAISE EXCEPTION 'Expected 3 restrictive league score policies, found %', n; END IF;
+  INSERT INTO ml_report(line) VALUES ('league score policies restrictive: 3');
+  IF to_regclass('public.tournament_matches_league_slot') IS NULL OR to_regclass('public.tournament_players_once') IS NULL THEN
+    RAISE EXCEPTION 'unique indexes missing';
+  END IF;
+  INSERT INTO ml_report(line) VALUES ('unique indexes: 2');
   SELECT count(*) INTO n FROM pg_trigger WHERE NOT tgisinternal
     AND tgname IN ('protect_league', 'protect_league_match', 'audit_league_players', 'audit_league_match');
   IF n <> 4 THEN RAISE EXCEPTION 'Expected 4 new triggers, found %', n; END IF;

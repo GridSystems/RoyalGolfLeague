@@ -1,6 +1,8 @@
 -- Royal Golf Club — undo matchplay_league.sql. League tournaments (their entries, matches and scores)
 -- are deleted; team-day tournaments are untouched; the audit log keeps its league rows.
 -- Redeploy the previous app straight after. Safe to re-run.
+-- If both this and phase2a_rollback.sql are ever run, run THIS ONE FIRST — its functions and
+-- triggers reference private.is_admin() etc. from phase2a_auth.sql.
 BEGIN;
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'tournaments' AND column_name = 'format') THEN

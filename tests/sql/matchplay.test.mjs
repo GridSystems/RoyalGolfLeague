@@ -26,9 +26,13 @@ async function world() {
     done: await M(2, 1, 'group', null, 2, 4, 'complete', 'a'),  // finished; the member won
     semiEmpty: await M(4, 1, 'semi', 1, null, null),
     semiFilled: await M(4, 2, 'semi', 1, 6, 7),
+    semiStarted: await M(4, 3, 'semi', 2, 6, null),                 // one slot filled, has a score: started
+    semiStaleStatus: await M(4, 4, 'semi', 3, null, null, 'in_progress'), // stale status cache, never actually started
     td: await id(`INSERT INTO public.tournament_matches(tournament_id,round,match_num) VALUES ($1,2,1)`, [TD]),
   };
   await db.query(`INSERT INTO public.tournament_scores(match_id,hole,player_id,gross) VALUES ($1,1,3,5)`, [m.other]);
+  await db.query(`INSERT INTO public.tournament_scores(match_id,hole,player_id,gross) VALUES ($1,1,6,4)`, [m.semiStarted]);
+  await db.query(`INSERT INTO public.tournament_scores(match_id,hole,player_id,gross) VALUES ($1,1,9,4)`, [m.td]);
   await db.query(`INSERT INTO public.tournament_players(tournament_id,player_id,team,group_num,seed_pot) VALUES ($1,3,'league',1,2),($1,4,'league',1,3)`, [L]);
   await db.query(`INSERT INTO public.tournament_players(tournament_id,player_id,team) VALUES ($1,3,'league')`, [E]);
   const P = { anon: null, pending: await persona(db, { playerId: 5 }), member: await persona(db, { playerId: 2 }),
@@ -50,6 +54,8 @@ const MATRIX = [
   ['admin',  'score any match, finished too',          w => SCORE(w.m.done, 1, 2), 1],
   ['anon',   'score any match (PIN route)',            w => SCORE(w.m.other, 2, 3), 1],
   ['member', 'team-day score, not in the match (unchanged)', w => SCORE(w.m.td, 1, 9), 1],
+  ['member', 'update any team-day score (unchanged)',  w => `UPDATE public.tournament_scores SET gross=5 WHERE match_id=${w.m.td}`, 1],
+  ['member', 'delete any team-day score (unchanged)',  w => `DELETE FROM public.tournament_scores WHERE match_id=${w.m.td}`, 1],
   // match status / result / outcome / players
   ['member', 'close own match',                        w => MATCH(w.m.own, `status='complete', result='a'`), 1],
   ['member', 'change own match tee and start hole',    w => MATCH(w.m.own, `tee_id='54', start_hole=10`), 1],
@@ -59,6 +65,10 @@ const MATRIX = [
   ['member', 'change who plays a group match',         w => MATCH(w.m.own, `team_b_p1_id=9`), 'denied'],
   ['member', 'fill an empty playoff slot',             w => MATCH(w.m.semiEmpty, `team_a_p1_id=2, team_b_p1_id=9`), 1],
   ['member', 'overwrite a filled playoff slot',        w => MATCH(w.m.semiFilled, `team_a_p1_id=2`), 'denied'],
+  ['member', 'empty a filled playoff slot',            w => MATCH(w.m.semiFilled, `team_a_p1_id=NULL`), 'denied'],
+  ['member', 'fill a slot on a playoff match that has already started (a score exists)', w => MATCH(w.m.semiStarted, `team_b_p1_id=9`), 'denied'],
+  ['member', 'fill an empty slot despite a stale in_progress status cache (never actually started)', w => MATCH(w.m.semiStaleStatus, `team_a_p1_id=2, team_b_p1_id=9`), 1],
+  ['member', 'move a team-day match into a league',    w => MATCH(w.m.td, `tournament_id=${w.L}, stage='group', round=1, match_num=9`), 'denied'],
   ['adminNo2fa', 'record an outcome',                  w => MATCH(w.m.other, `outcome='walkover', result='a'`), 'denied'],
   ['admin',  'record an outcome',                      w => MATCH(w.m.other, `outcome='walkover', result='a'`), 1],
   ['admin',  're-open a finished match',               w => MATCH(w.m.done, `status='in_progress', result=NULL`), 1],
@@ -111,6 +121,7 @@ test('the league CHECKs hold', async () => {
     MATCH(m.own, `extra_holes=-1`),
     MATCH(m.own, `stage='quarter'`),
     MATCH(m.own, `bracket=1`),                                        // group matches have no bracket
+    MATCH(m.own, `played_on='not-a-date'`),
     `UPDATE public.tournaments SET format='cup' WHERE id=${L}`,
     `UPDATE public.tournaments SET buy_in=-1 WHERE id=${L}`,
     `UPDATE public.tournament_players SET paid_at=now() WHERE tournament_id=${E}`,   // paid_at without amount
