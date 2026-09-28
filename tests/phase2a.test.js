@@ -120,6 +120,25 @@ setTimeout(async function(){
     const sg=authCalls.find(c=>c[0]==='signUp');
     T('sign-up: sends name, DGU, handicap and colour as metadata',sg&&sg[1].options.data.name==='Cy'&&sg[1].options.data.dgu_number==='900-1'&&sg[1].options.data.handicap===14.2&&Number.isInteger(sg[1].options.data.color));
     T('sign-up: never writes to players directly',!calls.some(c=>c.method==='POST'&&c.url.includes('/players')));
+    // Finish signing up: signed in (came in by "Set it up") but no player
+    const fieldShown=id=>document.getElementById(id).closest('.fgi').style.display!=='none';
+    T('unlinked panel offers Finish signing up',/finish signing up/i.test(document.querySelector('#lockUnlinkedPanel .btn-primary').textContent));
+    _session=sessionFor('u-9');showLockPanel('lockSignupPanel',true);
+    T('finish sign-up: no email or password fields',!fieldShown('signupEmail')&&!fieldShown('signupPassword')&&!fieldShown('signupPassword2')&&fieldShown('signupName')&&fieldShown('signupDgu'));
+    ['signupName','signupEmail','signupDgu','signupHcp','signupPassword','signupPassword2'].forEach(id=>field(id,''));
+    field('signupName','Late');field('signupDgu','900-7');field('signupHcp','18.4');
+    reset((u,b,m)=>u.includes('/rpc/complete_signup')?{__status:400,message:'Your email is already on file for a player. Sign out and sign in again; if you are still not linked, ask an admin.'}:[]);
+    authCalls.length=0;await submitSignup();
+    T('finish sign-up: a refusal shows the database message',shown('signupError')&&/already on file/.test(document.getElementById('signupError').textContent),document.getElementById('signupError').textContent);
+    localStorage.clear();sessionStorage.clear();   // a stored player missing from the load would reload the page
+    reset(u=>u.includes('/rpc/complete_signup')?17:u.includes('/players?')?[{id:17,name:'Late',user_id:'u-9',color:0,hcp_history:[],approved:false}]:[]);
+    await submitSignup();
+    const cs=calls.find(c=>c.url.includes('/rpc/complete_signup'));
+    T('finish sign-up: calls complete_signup with name, DGU, handicap and colour',cs&&cs.method==='POST'&&cs.body.p_name==='Late'&&cs.body.p_dgu==='900-7'&&cs.body.p_handicap===18.4&&Number.isInteger(cs.body.p_color),JSON.stringify(cs&&cs.body));
+    T('finish sign-up: no new login is created',!authCalls.some(c=>c[0]==='signUp'));
+    T('finish sign-up: starts the app as the pending player',activeId===17&&document.getElementById('lockScreen').style.display==='none',String(activeId));
+    showLockPanel('lockSignupPanel');
+    T('sign-up (not finishing) shows email and password, even with a session',fieldShown('signupEmail')&&fieldShown('signupPassword'));
     showLockPanel('lockForgotPanel');field('forgotEmail','ghost@x.dk');authCalls.length=0;await submitForgot();
     const rs=authCalls.find(c=>c[0]==='reset');
     T('forgot: sends a reset with the site redirect',rs&&rs[1]==='ghost@x.dk'&&rs[2].redirectTo===SITE_URL);

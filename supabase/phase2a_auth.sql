@@ -149,12 +149,33 @@ END $$;
 REVOKE ALL ON FUNCTION public.log_admin_mode() FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.log_admin_mode() TO authenticated;
 
+-- A new pending player for a login, from sign-up details m (name, dgu_number, handicap, color).
+-- Never a second player for an email already on file: returns NULL then. Shared by link_login and
+-- complete_signup, so the two ways in can't drift apart.
+CREATE OR REPLACE FUNCTION private.create_pending(p_user uuid, p_email text, m jsonb) RETURNS bigint
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE pid bigint;
+BEGIN
+  IF EXISTS (SELECT 1 FROM public.players WHERE lower(email) = lower(p_email)) THEN RETURN NULL; END IF;
+  INSERT INTO public.players (name, email, dgu_number, color, handicap, hcp_history, approved, user_id)
+  VALUES (left(m ->> 'name', 60), p_email, left(m ->> 'dgu_number', 20), coalesce((m ->> 'color')::int, 0),
+          nullif(m ->> 'handicap', '')::numeric,
+          CASE WHEN nullif(m ->> 'handicap', '') IS NULL THEN '[]'::jsonb
+               ELSE jsonb_build_array(jsonb_build_object('date', to_char(now() AT TIME ZONE 'Europe/Copenhagen', 'YYYY-MM-DD'),
+                                      'value', (m ->> 'handicap')::numeric, 'note', 'Sign-up entry')) END,
+          false, p_user)
+  RETURNING id INTO pid;
+  PERFORM private.audit('signed_up', pid, NULL, pid);
+  RETURN pid;
+END $$;
+REVOKE ALL ON FUNCTION private.create_pending(uuid, text, jsonb) FROM PUBLIC, anon, authenticated;
+
 -- Link a confirmed login to its player (existing member, matched by email), or create the pending
 -- player for a new sign-up. Also tries the email match again on every sign-in of a still-unlinked
 -- login, so an admin correcting players.email is enough to fix it — but only confirmation ever
 -- creates a player, so a rejected applicant is not recreated by signing in again.
 -- Never blocks a login: any error becomes a warning.
-CREATE FUNCTION private.link_login() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+CREATE OR REPLACE FUNCTION private.link_login() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
 DECLARE pid bigint; m jsonb := coalesce(NEW.raw_user_meta_data, '{}'::jsonb); confirming boolean;
 BEGIN
   IF NEW.email_confirmed_at IS NULL THEN RETURN NEW; END IF;
@@ -166,16 +187,8 @@ BEGIN
   IF pid IS NOT NULL THEN
     UPDATE public.players SET user_id = NEW.id WHERE id = pid;
     PERFORM private.audit('login_set_up', pid, NULL, pid);
-  ELSIF confirming AND m ? 'name' AND NOT EXISTS (SELECT 1 FROM public.players WHERE lower(email) = lower(NEW.email)) THEN
-    INSERT INTO public.players (name, email, dgu_number, color, handicap, hcp_history, approved, user_id)
-    VALUES (left(m ->> 'name', 60), NEW.email, left(m ->> 'dgu_number', 20), coalesce((m ->> 'color')::int, 0),
-            nullif(m ->> 'handicap', '')::numeric,
-            CASE WHEN nullif(m ->> 'handicap', '') IS NULL THEN '[]'::jsonb
-                 ELSE jsonb_build_array(jsonb_build_object('date', to_char(now() AT TIME ZONE 'Europe/Copenhagen', 'YYYY-MM-DD'),
-                                        'value', (m ->> 'handicap')::numeric, 'note', 'Sign-up entry')) END,
-            false, NEW.id)
-    RETURNING id INTO pid;
-    PERFORM private.audit('signed_up', pid, NULL, pid);
+  ELSIF confirming AND m ? 'name' THEN
+    PERFORM private.create_pending(NEW.id, NEW.email, m);
   END IF;
   RETURN NEW;
 EXCEPTION WHEN OTHERS THEN
@@ -183,6 +196,26 @@ EXCEPTION WHEN OTHERS THEN
 END $$;
 CREATE TRIGGER link_login AFTER INSERT OR UPDATE OF email_confirmed_at, last_sign_in_at ON auth.users
   FOR EACH ROW EXECUTE FUNCTION private.link_login();
+
+-- "Finish signing up": a signed-in login with no player (it came in by "Set it up", so carried no
+-- name) creates its own pending player. Only ever creates: an email already on file is linked by
+-- link_login at the next sign-in, or needs an admin.
+CREATE OR REPLACE FUNCTION public.complete_signup(p_name text, p_dgu text, p_handicap numeric, p_color int) RETURNS bigint
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE em text; pid bigint;
+BEGIN
+  SELECT email INTO em FROM auth.users WHERE id = auth.uid() AND email_confirmed_at IS NOT NULL;
+  IF em IS NULL THEN RAISE EXCEPTION 'Confirm your email first, then sign in again.'; END IF;
+  SELECT id INTO pid FROM public.players WHERE user_id = auth.uid();
+  IF pid IS NOT NULL THEN RETURN pid; END IF;
+  IF coalesce(btrim(p_name), '') = '' THEN RAISE EXCEPTION 'Please enter your name.'; END IF;
+  pid := private.create_pending(auth.uid(), em,
+    jsonb_build_object('name', btrim(p_name), 'dgu_number', btrim(p_dgu), 'handicap', p_handicap, 'color', p_color));
+  IF pid IS NULL THEN RAISE EXCEPTION 'Your email is already on file for a player. Sign out and sign in again; if you are still not linked, ask an admin.'; END IF;
+  RETURN pid;
+END $$;
+REVOKE ALL ON FUNCTION public.complete_signup(text, text, numeric, int) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.complete_signup(text, text, numeric, int) TO authenticated;
 
 -- ===== SECTION 3: permission rules for logged-in users ======================================
 -- The old PIN route (anon) keeps its allow-all policy until release B; everything below applies to

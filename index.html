@@ -219,7 +219,8 @@ select option { background: #1a3a2a; }
     </div>
     <!-- Signed in but no matching player row -->
     <div id="lockUnlinkedPanel" style="display:none">
-      <div style="font-size:0.88rem;color:rgba(255,255,255,0.75);line-height:1.6;margin-bottom:1rem;text-align:left">Your login isn't linked to a player yet. Ask an admin to check the email the league has on file for you, then sign in again.</div>
+      <div style="font-size:0.88rem;color:rgba(255,255,255,0.75);line-height:1.6;margin-bottom:1rem;text-align:left">Your login isn't linked to a player yet.<br><br><strong>New to the league?</strong> Finish signing up below.<br><br><strong>Already a member?</strong> Ask an admin to check the email the league has on file for you, then sign in again.</div>
+      <button class="btn btn-primary" style="width:100%;margin-bottom:0.6rem" onclick="showLockPanel('lockSignupPanel',true)">Finish signing up</button>
       <button class="btn btn-ghost" style="width:100%" onclick="signOut()">Sign out</button>
     </div>
     <!-- First-time PIN set panel (existing player, no PIN yet) -->
@@ -238,15 +239,15 @@ select option { background: #1a3a2a; }
     <div id="lockSignupPanel" style="display:none">
       <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:1rem;text-align:left">
         <div class="fgi"><label>Full Name</label><input type="text" id="signupName" placeholder="e.g. Anders Nielsen" maxlength="60"></div>
-        <div class="fgi"><label>Email</label><input type="email" id="signupEmail" placeholder="your@email.com" maxlength="100"></div>
+        <div class="fgi signup-account"><label>Email</label><input type="email" id="signupEmail" placeholder="your@email.com" maxlength="100"></div>
         <div class="fgi"><label>DGU Number</label><input type="text" id="signupDgu" placeholder="e.g. 900-1831" maxlength="20"></div>
         <div class="fgi"><label>Handicap Index</label><input type="number" id="signupHcp" placeholder="e.g. 14.2" step="0.1" min="-10" max="54"></div>
-        <div class="fgi"><label>Password (at least 8 characters)</label><input type="password" id="signupPassword" autocomplete="new-password" maxlength="100"></div>
-        <div class="fgi"><label>Confirm password</label><input type="password" id="signupPassword2" autocomplete="new-password" maxlength="100"></div>
+        <div class="fgi signup-account"><label>Password (at least 8 characters)</label><input type="password" id="signupPassword" autocomplete="new-password" maxlength="100"></div>
+        <div class="fgi signup-account"><label>Confirm password</label><input type="password" id="signupPassword2" autocomplete="new-password" maxlength="100"></div>
         <div id="signupError" style="color:#f08080;font-size:0.78rem;display:none"></div>
       </div>
       <button class="btn btn-primary" style="width:100%" onclick="submitSignup()">Register</button>
-      <div style="margin-top:1.25rem;font-size:0.8rem;color:rgba(240,213,140,0.5)"><span class="lock-link" onclick="showLockPanel('lockLoginPanel')">← Back to login</span></div>
+      <div style="margin-top:1.25rem;font-size:0.8rem;color:rgba(240,213,140,0.5)"><span class="lock-link" onclick="showLockPanel(finishingSignup?'lockUnlinkedPanel':'lockLoginPanel')">← Back</span></div>
     </div>
   </div>
 </div>
@@ -1520,9 +1521,14 @@ function applyPendingUI(){updateSignOutBtn();document.getElementById('pendingPay
 let lockLoginPlayer=null;
 const LOCK_PANELS=['lockLoginPanel','lockPinPanel','lockSetPinPanel','lockSetupPanel','lockForgotPanel','lockNewPwPanel','lockCheckEmailPanel','lockUnlinkedPanel','lockSignupPanel'];
 // Shows one lock-screen panel and hides the rest.
-function showLockPanel(id){
+// finish=true: "Finish signing up" — signed in with no player, so the Sign up form minus email and
+// password (the login already exists). Any other panel change turns it off.
+let finishingSignup=false;
+function showLockPanel(id,finish=false){
   document.getElementById('lockScreen').style.display='flex';
   LOCK_PANELS.forEach(p=>{const el=document.getElementById(p);if(el)el.style.display=p===id?'block':'none';});
+  finishingSignup=finish;
+  document.querySelectorAll('.signup-account').forEach(e=>e.style.display=finish?'none':'');
   document.querySelectorAll('#lockScreen [id$="Error"]').forEach(e=>e.style.display='none');
 }
 // The initial data load failed (bad signal, DB unreachable) — say so on the login panel
@@ -1657,12 +1663,17 @@ async function submitSignup(){
   const v=id=>document.getElementById(id).value.trim();
   const name=v('signupName'),email=v('signupEmail').toLowerCase(),dgu=v('signupDgu'),hcpRaw=v('signupHcp'),a=document.getElementById('signupPassword').value,b=document.getElementById('signupPassword2').value;
   if(!name){lockError('signupError','Please enter your name.');return;}
-  if(!email.includes('@')){lockError('signupError','Please enter a valid email.');return;}
+  if(!finishingSignup&&!email.includes('@')){lockError('signupError','Please enter a valid email.');return;}
   if(!isValidDgu(dgu)){lockError('signupError','Enter your DGU number as digits, a hyphen, then digits — for example 900-1831.');return;}
+  const handicap=hcpRaw?parseFloat(hcpRaw):null,color=Math.floor(Math.random()*COLORS.length);
+  if(finishingSignup){                             // the login exists; create its pending player now
+    try{await sbRpc('complete_signup',{p_name:name,p_dgu:dgu,p_handicap:handicap,p_color:color});}
+    catch(e){let m=e.message;try{m=JSON.parse(m).message||m;}catch(_){}lockError('signupError',m);return;}
+    await startApp();return;
+  }
   const p=pwProblem(a,b);if(p){lockError('signupError',p);return;}
-  const handicap=hcpRaw?parseFloat(hcpRaw):null;
   const {error}=await authClient().auth.signUp({email,password:a,options:{emailRedirectTo:SITE_URL,
-    data:{name,dgu_number:dgu,handicap,color:Math.floor(Math.random()*COLORS.length)}}});
+    data:{name,dgu_number:dgu,handicap,color}}});
   if(authSignupError('signupError',error))return;
   checkEmail('Nearly there: we\'ve sent a confirmation link to ',email,'. After you click it, your registration waits for admin approval.<br><br>'+payHtml());
 }

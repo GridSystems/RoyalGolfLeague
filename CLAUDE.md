@@ -388,7 +388,13 @@ A second tournament format beside the one-day team event: `tournaments.format='l
   email, and sign-up that creates a pending player — all three share one trigger,
   `private.link_login`, on `auth.users`. It also retries the email match on every
   sign-in of a still-unlinked login (so fixing `players.email` is enough), but only
-  confirmation ever creates a player. `players.user_id` (uuid, unique, FK →
+  confirmation ever creates a player. A login with no player (someone new who used
+  "Set it up" instead of "Sign up", so sent no name) gets **Finish signing up** on the
+  "isn't linked" screen: the Sign up form minus email/password, calling
+  `public.complete_signup` (`supabase/complete_signup.sql`), which creates the pending
+  player. It only ever creates — an email already on file is left to `link_login`'s
+  sign-in retry or an admin. Both routes create through `private.create_pending`.
+  `players.user_id` (uuid, unique, FK →
   `auth.users.id`) is what makes a login a player; `private.current_player()` /
   `acting_player()` / `is_member()` / `is_admin()` (schema `private`, no Data API
   grants) read it. **Admin mode** is stronger than `is_admin`: it also needs `aal2`

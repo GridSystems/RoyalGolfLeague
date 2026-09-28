@@ -27,6 +27,7 @@ DROP SCHEMA IF EXISTS phase2a_backup CASCADE;
 DROP FUNCTION IF EXISTS public.run_draw(text, jsonb, jsonb);
 DROP FUNCTION IF EXISTS public.admin_member_emails();
 DROP FUNCTION IF EXISTS public.log_admin_mode();
+DROP FUNCTION IF EXISTS public.complete_signup(text, text, numeric, int);
 DROP TABLE IF EXISTS public.audit_log;
 ALTER TABLE public.players DROP COLUMN IF EXISTS user_id;
 DROP SCHEMA IF EXISTS private CASCADE;
