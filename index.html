@@ -268,12 +268,12 @@ select option { background: #1a3a2a; }
   <div id="pendingBanner" style="display:none;background:rgba(201,168,76,0.08);border:1px solid rgba(201,168,76,0.25);border-radius:10px;padding:0.7rem 1rem;font-size:0.82rem;color:rgba(240,213,140,0.8);margin-bottom:1rem">Your account is pending admin approval. You can log rounds in the meantime.<div id="pendingPay" style="margin-top:0.6rem"></div></div>
   <div class="nav">
     <button class="nav-tab active" id="tabLeaderboard" onclick="showView('leaderboard',this)">Leaderboards</button>
+    <button class="nav-tab" onclick="showView('signup',this)">Sign Up</button>
+    <button class="nav-tab" id="tabProfile" onclick="showView('profile',this)">My Profile</button>
     <button class="nav-tab" onclick="showView('log',this)">Log Round</button>
     <button class="nav-tab" id="tabTournament" style="display:none" onclick="showView('tournament',this)">🏆 Tournament</button>
-    <button class="nav-tab" onclick="showView('signup',this)">Sign Up</button>
     <button class="nav-tab" onclick="showView('teesheet',this)">Tee Sheet</button>
     <button class="nav-tab" id="tabHistory" onclick="showView('history',this)">My Rounds</button>
-    <button class="nav-tab" id="tabProfile" onclick="showView('profile',this)">My Profile</button>
     <button class="nav-tab" id="tabPlayers" onclick="showView('players',this)">Players</button>
     <button class="nav-tab" onclick="showView('rules',this)">Rules</button>
     <button class="nav-tab" id="tabTrack" onclick="openTrackTab()" style="display:none">📍 Track</button>
@@ -396,6 +396,7 @@ select option { background: #1a3a2a; }
 
   <!-- SIGN UP -->
   <div class="view" id="view-signup">
+    <div id="signupEntry"></div>
     <div class="panel">
       <div class="ph"><span class="pt">Saturday Sign Up</span><span style="font-size:0.75rem;color:rgba(255,255,255,0.35)">Register for upcoming Saturday rounds</span></div>
       <div class="pb"><div id="saturdayView"></div></div>
@@ -1071,10 +1072,12 @@ let gpsWatchId = null;
 let gpsWatchTimeout = null;
 let greenPolygons = {};  // {hole: [[lat,lng],...]} loaded from Supabase
 let fairwayPolygons = {}; // {hole: [[[lat,lng],...], ...]} — array of polygon patches per hole
-// Course bounding box — furthest holes + ~350m buffer in each direction
-const COURSE_BOUNDS = {south:55.6273, north:55.6419, west:12.5533, east:12.5774};
+// Course bounding box — furthest holes + ~1km buffer in each direction. It only has to catch
+// someone who has driven home; ~350m cut players off on the course (2026-09-26).
+const COURSE_BOUNDS = {south:55.6215, north:55.6480, west:12.5408, east:12.5885};
 const GPS_WATCH_MAX_MS  = 6 * 60 * 60 * 1000; // 6 hours
 const GPS_OOB_THRESHOLD = 5;                   // consecutive out-of-bounds readings before stopping
+const GPS_OOB_MAX_ACC_M = 100;                 // a fix vaguer than this never counts as off course
 let currentWeather = null;
 let weatherInterval = null;
 let fineTypes=[],allFines=[],finePayments=[];
@@ -1553,7 +1556,7 @@ function showView(id,btn){
   if(id==='admin'){renderPendingApprovals();renderAdmin();renderBulkEntry();renderAdminFines();renderSaturdayAdmin();renderAdminTournament();renderMoveOverList();renderAdminEntries();}
   if(id==='rules')renderRules();
   if(id==='track')renderTrackView();
-  if(id==='signup')renderSaturdayView();
+  if(id==='signup'){renderSaturdayView();renderEntryBanner();}
   if(id==='teesheet')renderTeeSheet();
   if(id==='tournament'){
     clearInterval(window._tmRefreshInterval);
@@ -1773,7 +1776,8 @@ function startGpsWatch(){
       const lat=pos.coords.latitude, lng=pos.coords.longitude;
       // Out-of-bounds check — requires consecutive strikes to avoid false positives
       const inBounds=lat>=COURSE_BOUNDS.south&&lat<=COURSE_BOUNDS.north&&lng>=COURSE_BOUNDS.west&&lng<=COURSE_BOUNDS.east;
-      if(!inBounds){
+      // Under trees or on waking, a phone reports cell/Wi-Fi fixes hundreds of metres out
+      if(!inBounds&&pos.coords.accuracy<=GPS_OOB_MAX_ACC_M){
         GR._oobStrikes=(GR._oobStrikes||0)+1;
         if(GR._oobStrikes>=GPS_OOB_THRESHOLD){
           toast('GPS watch stopped — appears to be off course');
@@ -3267,6 +3271,7 @@ function heRender(){
           <div style="width:22px;height:22px;border-radius:50%;background:${clr(curPlayer)};display:flex;align-items:center;justify-content:center;font-size:0.58rem;font-weight:700;color:#fff;flex-shrink:0">${ini(curPlayer.name)}</div>
           <span style="font-size:0.95rem;font-weight:600;color:var(--cream)">${curPlayer.name.split(' ')[0]}</span>
           ${curEntry.phcp!=null?`<span style="font-size:0.72rem;color:rgba(255,255,255,0.35)">(HCP ${curEntry.phcp})</span>`:''}
+          ${heHasScores(curPlayer.id)?'':`<button class="btn btn-ghost btn-sm" onclick="heRemovePlayer(${curPlayer.id})" style="font-size:0.7rem;padding:2px 8px">Didn't turn up?</button>`}
         </div>
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;max-width:320px;margin:0 auto;padding:0 4px">
           ${[1,2,3,4,5,6,7,8,9].map(d=>`<button onclick="heKeypadDigit(${d})" style="font-family:'DM Mono',monospace;font-size:1.35rem;font-weight:600;color:var(--cream);background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:10px;padding:9px 0;touch-action:manipulation;cursor:pointer;-webkit-tap-highlight-color:transparent">${d}</button>`).join('')}
@@ -3315,6 +3320,29 @@ async function heKeypadPickup(){
   HE.scores[pl.p.id][HE.currentHole-1]=null;
   _heKeypadBuffer='';
   await heEnter(HE.currentPidx);
+}
+// A no-show: picking up every hole leaves no scores, which Save refuses. Take them out of the
+// group and delete their empty round — any member may delete a round with no scores
+// (noshow_round_delete.sql). Returns false if nothing was removed.
+const heHasScores=pid=>HE.scores[pid].some(x=>x!==null);
+async function heRemovePlayer(pid){
+  const pl=HE.playerList.find(x=>x.p.id===pid);if(!pl)return false;
+  const name=pl.p.name;
+  if(heHasScores(pid)){alert(`${name} has scores on this card — ask an admin to delete the round.`);return false;}
+  if(!confirm(`${name} has no scores. Remove them from the group and delete their empty round?`))return false;
+  const rid=HE.roundIds[pid];let deleted=!rid;
+  if(rid){try{deleted=(await sbDelete('rounds',rid)).length>0;}catch(e){}
+    if(deleted)allRounds=allRounds.filter(r=>r.id!==rid);}
+  HE.playerList=HE.playerList.filter(x=>x.p.id!==pid);
+  delete HE.scores[pid];delete HE.roundIds[pid];if(HE.pickups)delete HE.pickups[pid];
+  groupPlayerIds=groupPlayerIds.filter(x=>x!==pid);
+  HE.currentPidx=Math.min(HE.currentPidx,Math.max(0,HE.playerList.length-1));_heKeypadBuffer='';
+  toast(deleted?`${name} removed`:`${name} removed from the group — ask an admin to delete their round`);
+  if(HE.playerList.length){saveActiveGroup();heRender();}
+  else{localStorage.removeItem('sl_active_group');
+    document.getElementById('logStep2').style.display='none';document.getElementById('logStep1').style.display='block';
+    buildPlayerCheckboxes();}
+  return true;
 }
 
 async function heNext(){
@@ -5177,10 +5205,13 @@ async function saveGroupRound(){
     return;
   }
   // Validate minimum holes
-  for(const{p}of HE.playerList){
+  for(const{p}of[...HE.playerList]){
     const filled=HE.scores[p.id].filter(x=>x!==null).length;
+    // No scores at all is a no-show (every hole picked up): offer to remove them, don't block the group
+    if(!filled){if(!await heRemovePlayer(p.id))return;continue;}
     if(filled<9){alert(`Enter at least 9 scores for ${p.name}.`);return;}
   }
+  if(!HE.playerList.length)return;
   // Check rounds still exist in DB
   for(const{p}of HE.playerList){
     const rid=HE.roundIds[p.id];
@@ -5356,6 +5387,7 @@ function renderEntryBanner(){
   const el=document.getElementById('entryBanner');if(!el)return;
   const p=players.find(x=>x.id===activeId)||pendingPlayers.find(x=>x.id===activeId),s=entryFor(p);
   el.innerHTML=s?entryStatusHtml(p,s):'';
+  document.getElementById('signupEntry').innerHTML=el.innerHTML; // also on Sign Up, where members look for it
 }
 function addEntry(pid){return sbInsert('season_entries',{season:entrySeason().name,player_id:pid});}
 async function enterSeason(){

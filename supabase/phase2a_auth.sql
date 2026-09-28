@@ -229,7 +229,9 @@ CREATE POLICY p2_players_delete ON public.players FOR DELETE TO authenticated US
 CREATE POLICY p2_rounds_read  ON public.rounds FOR SELECT TO authenticated USING (private.is_member() OR player_id = private.current_player());
 CREATE POLICY p2_rounds_write ON public.rounds FOR INSERT TO authenticated WITH CHECK (private.is_member() OR player_id = private.current_player());
 CREATE POLICY p2_rounds_upd   ON public.rounds FOR UPDATE TO authenticated USING (private.is_member() OR player_id = private.current_player()) WITH CHECK (private.is_member() OR player_id = private.current_player());
-CREATE POLICY p2_rounds_del   ON public.rounds FOR DELETE TO authenticated USING (player_id = private.current_player() OR private.is_admin());
+-- A member may also delete a round with no scores: a no-show taken out of their group (noshow_round_delete.sql).
+CREATE POLICY p2_rounds_del   ON public.rounds FOR DELETE TO authenticated USING (player_id = private.current_player() OR private.is_admin()
+  OR (private.is_member() AND NOT jsonb_path_exists(holes, '$[*] ? (@.score != null)')));
 -- fines
 CREATE POLICY p2_fines_read ON public.fines FOR SELECT TO authenticated USING (private.is_member());
 CREATE POLICY p2_fines_ins  ON public.fines FOR INSERT TO authenticated WITH CHECK (private.is_member());

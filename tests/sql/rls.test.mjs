@@ -222,3 +222,27 @@ test('old dashboard policies (allow-all TO public) are dropped, reported, and re
   assert.deepEqual((await db.query(defs)).rows, before);
   assert.equal((await db.query(`SELECT count(*)::int n FROM pg_namespace WHERE nspname='phase2a_backup'`)).rows[0].n, 0);
 });
+
+// A no-show taken out of a Log Round group: any member may delete a group mate's round with no
+// scores (every hole picked up, or none entered), never one with a score.
+const NOSHOW = [
+  ['all picked up', '[{"hole":1,"score":null,"pickup":true},{"hole":2,"score":null,"pickup":true}]', 1],
+  ['nothing entered', '[{"hole":1,"score":null},{"hole":2,"score":null}]', 1],
+  ['one score', '[{"hole":1,"score":null,"pickup":true},{"hole":2,"score":5}]', 0],
+];
+for (const [what, holes, want] of NOSHOW) test(`member: delete a group mate's round, ${what} → ${want}`, async () => {
+  const { db, P } = await world();
+  const id = (await db.query(`INSERT INTO public.rounds(player_id,date,holes) VALUES (3,'2026-10-10',$1) RETURNING id`, [holes])).rows[0].id;
+  await as(db, P.member);
+  assert.equal(await tryQ(db, `DELETE FROM public.rounds WHERE id=$1`, [id]), want);
+});
+// The live database gets the policy from noshow_round_delete.sql, not a re-run of phase2a_auth.sql.
+test('noshow_round_delete.sql on the release A policy: a member deletes an all-pickup round', async () => {
+  const db = await productionDb();
+  assert.equal(await run(db, REAL().replace(/ OR \(private\.is_member\(\) AND NOT jsonb_path_exists[^;]*\)\)\);/, ');')), null);
+  assert.equal(await run(db, sqlFile('noshow_round_delete.sql')), null);
+  await db.exec('RESET ROLE');
+  const id = (await db.query(`INSERT INTO public.rounds(player_id,date,holes) VALUES (3,'2026-10-10','[{"hole":1,"score":null,"pickup":true}]') RETURNING id`)).rows[0].id;
+  await as(db, await persona(db, { playerId: 2 }));
+  assert.equal(await tryQ(db, `DELETE FROM public.rounds WHERE id=$1`, [id]), 1);
+});

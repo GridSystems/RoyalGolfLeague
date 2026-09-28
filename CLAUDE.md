@@ -132,13 +132,17 @@ Stableford   = max(0, 2 + par + strokes − gross)
 ## App structure
 
 ### Navigation tabs
-1. **Leaderboards** — Today (live), Season (best 4 rounds), Eclectic (best nett per hole)
-2. **Log Round** — hole-by-hole group score entry, live-saves to Supabase
-3. **My Rounds** — personal stats, round history, Dream Scorecard, GPS Stats
-4. **My Profile** — name, membership number, handicap, colour, My Bag, units,
-   GPS tracking mode. Owns all self-service identity and preference editing.
-5. **Players** — roster (admin-only add/remove)
-5. **⚙ Admin** — PIN-protected; bulk entry, HCP history, edit/delete rounds
+Order (2026-09-28): Leaderboards, Sign Up, My Profile first, then Log Round, Tournament,
+Tee Sheet, My Rounds, Players, Rules, Track, Admin.
+- **Leaderboards** — Today (live), Season (best 4 rounds), Eclectic (best nett per hole)
+- **Sign Up** — weekly Saturday sign-up; also carries the season entry box (`#signupEntry`,
+  filled by `renderEntryBanner`, same box as on the Season leaderboard and My Profile)
+- **My Profile** — name, membership number, handicap, colour, My Bag, units,
+  GPS tracking mode. Owns all self-service identity and preference editing.
+- **Log Round** — hole-by-hole group score entry, live-saves to Supabase
+- **My Rounds** — personal stats, round history, Dream Scorecard, GPS Stats
+- **Players** — roster (admin-only add/remove)
+- **⚙ Admin** — PIN-protected; bulk entry, HCP history, edit/delete rounds
 
 ### Key JS state variables
 ```js
@@ -243,6 +247,14 @@ Per-player best nett score per hole across the season. Ranked by total nett. "My
 5. After each complete hole, all player rounds are PATCHed silently
 6. "Save All Rounds" does final PATCH and navigates to leaderboard
 7. **Resume:** if today's partial rounds exist, Log Round screen shows a resume banner
+8. **No-show:** a player with no scores (pickups store `score:null`, so an all-pickup card counts)
+   gets a "Didn't turn up?" button, and Save offers to remove them instead of refusing.
+   `heRemovePlayer` deletes their round — the `p2_rounds_del` policy lets any member delete a
+   round with no scores (`supabase/noshow_round_delete.sql`). A round with a score still needs
+   its owner or an admin.
+
+**GPS off-course guard:** `COURSE_BOUNDS` is the course plus ~1 km; five consecutive fixes
+outside it stop the GPS watch. Fixes vaguer than `GPS_OOB_MAX_ACC_M` (100 m) never count.
 
 ### Starting hole
 `heOrderedHoles(startHole)` returns [startHole, startHole+1, ..., 18, 1, ..., startHole-1]. Navigation wraps correctly. After hole 18, next is hole 1 if started elsewhere.
