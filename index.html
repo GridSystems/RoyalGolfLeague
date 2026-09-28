@@ -6982,20 +6982,18 @@ async function init(){
 }
 // ── Update check ───────────────────────────────────────────────────────
 // iOS tabs live for weeks, and sessionStorage keeps them signed in, so players
-// never re-fetch index.html and can sit on a months-old build. Compare the
-// deployed file's ETag whenever the tab comes back to the foreground and offer
-// a reload. Uses the ETag Pages already sends, so there is no version constant
-// to remember to bump. Detection lags up to the 600s max-age on index.html.
-let _deployTag=null,_lastUpdateCheck=0;
+// never re-fetch index.html and can sit on a months-old build. Whenever the tab
+// comes back to the foreground, offer a reload if the deployed file is NEWER than
+// the running page (document.lastModified is this page's own Last-Modified, even
+// when it came from cache). Newer, not different: for a few minutes after a deploy
+// some CDN edges still serve the old file. No version constant to bump.
+let _lastUpdateCheck=0;
 async function checkForUpdate(){
   if(Date.now()-_lastUpdateCheck<30000)return;
   _lastUpdateCheck=Date.now();
   try{
     const r=await fetch(location.pathname,{method:'HEAD',cache:'no-store'});
-    const tag=r.headers.get('etag')||r.headers.get('last-modified');
-    if(!tag)return;
-    if(_deployTag===null){_deployTag=tag;return;}   // first call sets the baseline
-    if(tag!==_deployTag)showUpdateBar();
+    if(Date.parse(r.headers.get('last-modified'))>Date.parse(document.lastModified))showUpdateBar();
   }catch(e){/* offline on the course — just try again next time */}
 }
 function showUpdateBar(){

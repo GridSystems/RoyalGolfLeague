@@ -65,6 +65,18 @@ setTimeout(async function(){
     // ── Tab order ──
     const tabs=[...document.querySelectorAll('.nav-tab')].map(t=>t.textContent.trim());
     T('Leaderboards, Sign Up, My Profile first',tabs.slice(0,3).join('|')==='Leaderboards|Sign Up|My Profile',tabs.join('|'));
+    // ── Update check: only a newer deploy than the running page ──
+    Object.defineProperty(document,'lastModified',{configurable:true,get:()=>'09/28/2026 14:36:22'});   // this page's own date
+    const offered=async lm=>{
+      document.getElementById('updateBar')?.remove();_lastUpdateCheck=0;
+      window.fetch=async()=>({headers:{get:h=>h.toLowerCase()==='last-modified'?lm:null}});
+      await checkForUpdate();return !!document.getElementById('updateBar');
+    };
+    const t=new Date(2026,8,28,14,36,22),utc=ms=>new Date(t.getTime()+ms).toUTCString();   // Last-Modified is GMT
+    T('update: the same deploy is not offered',!(await offered(utc(0))));
+    T('update: a CDN edge still serving an older copy is not offered',!(await offered(utc(-4*3600e3))));
+    T('update: a newer deploy is offered on the first check',await offered(utc(60e3)));
+    T('update: no Last-Modified header offers nothing',!(await offered(null)));
     // ── end ──
   }catch(e){out.push('FAIL EXCEPTION :: '+e.stack);}
   await new Promise(r=>setTimeout(r,150));
