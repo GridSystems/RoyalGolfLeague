@@ -118,7 +118,7 @@ select option { background: #1a3a2a; }
 .tag-admin { background: rgba(201,168,76,0.12); color: var(--gold-l); border: 1px solid rgba(201,168,76,0.24); }
 .tag-you { background: rgba(74,126,232,0.12); color: #82aaf0; border: 1px solid rgba(74,126,232,0.24); }
 .tag-social { background: rgba(100,180,120,0.12); color: #7ecf9e; border: 1px solid rgba(100,180,120,0.25); }
-.loading-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.65); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 1000; gap: 14px; }
+.loading-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.65); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 1002; gap: 14px; }
 .spinner { width: 36px; height: 36px; border: 3px solid rgba(201,168,76,0.15); border-top-color: var(--gold); border-radius: 50%; animation: spin 0.8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .toast { position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%); background: #1e3d2c; border: 1px solid rgba(201,168,76,0.35); color: var(--gold-l); padding: 10px 20px; border-radius: 10px; font-size: 0.85rem; z-index: 2000; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
@@ -161,7 +161,7 @@ select option { background: #1a3a2a; }
     <div style="font-family:'Playfair Display',serif;font-size:1.5rem;color:#f0d58c;margin-bottom:4px">Saturday League</div>
     <div style="font-size:0.65rem;color:rgba(240,213,140,0.4);letter-spacing:0.12em;text-transform:uppercase;margin-bottom:2rem">Royal Golf Club · Copenhagen</div>
     <!-- Password login -->
-    <div id="lockLoginPanel">
+    <div id="lockLoginPanel" style="display:none"><!-- shown by boot() once it knows nobody is signed in -->
       <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:1rem;text-align:left">
         <div class="fgi"><label>Email</label><input type="email" id="loginEmail" autocomplete="email" maxlength="100" onkeydown="if(event.key==='Enter')submitPasswordLogin()"></div>
         <div class="fgi"><label>Password</label><input type="password" id="loginPassword" autocomplete="current-password" maxlength="100" onkeydown="if(event.key==='Enter')submitPasswordLogin()"></div>
