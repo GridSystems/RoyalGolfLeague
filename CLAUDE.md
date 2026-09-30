@@ -271,7 +271,8 @@ One implementation, in `index.html`. There is **no** edge function and no cron �
   comparator is inconsistent, so V8 leaves players near their original order. It
   measured 286% off uniform, with the last signup staying last 48% of the time.
 - `drawGroupCount(n, teeTimes)` — fourballs (`ceil(n/4)`), capped at the number of
-  tee times entered. Was hard-capped at 3 groups until 2026-09-30.
+  tee times entered. Was hard-capped at 3 groups until 2026-09-30. **Smaller groups
+  always tee off first** (19 on 5 times → 3,4,4,4,4) — club rule, not a preference.
 - `drawPairWeights(before)` — recency-weighted memory of who played with whom over
   the last 4 *drawn* Saturdays (weights 8/4/2/1). Counting drawn Saturdays, not
   calendar weeks, keeps the memory intact across cancelled weeks.
