@@ -2218,7 +2218,11 @@ function renderGpsHole(){
   const headerSub=isGpsOnly
     ?`Par ${par} · SI ${HOLE_HCP[GR.currentHole-1]} · ${distHeaderHtml}`
     :`Par ${par} · SI ${HOLE_HCP[GR.currentHole-1]} · Shot ${shotCount+1} · ${distHeaderHtml}`;
-  const headerBtn=isGpsOnly||GR.chipAndPutt
+  // GPS only records no score, so holes are stepped directly; End Hole stays only when marking others
+  const marking=GR.scoringForIds?.length>0;
+  const headerBtn=isGpsOnly
+    ?`<div style="display:flex;gap:6px"><button class="btn btn-ghost btn-sm" onclick="gpsStepHole(-1)" aria-label="Previous hole">‹</button><button class="btn btn-ghost btn-sm" onclick="gpsStepHole(1)" aria-label="Next hole">›</button>${marking?`<button class="btn btn-ghost btn-sm" onclick="confirmEndHole()">End Hole →</button>`:''}</div>`
+    :GR.chipAndPutt
     ?`<button class="btn btn-ghost btn-sm" onclick="confirmEndHole()">End Hole →</button>`
     :`<button class="btn btn-ghost btn-sm" onclick="enterChipAndPutt()">⛳ Chip &amp; Putt →</button>`;
 
@@ -2235,11 +2239,17 @@ function renderGpsHole(){
       ${controlBar}
       <div id="gpsMapWrap" style="${GR.mapOpen?'':'display:none'}"><div id="gpsMap"></div></div>
       <div style="padding:0.5rem 1rem;display:flex;gap:8px;justify-content:flex-end;border-top:1px solid var(--border)">
-        <button class="btn btn-ghost btn-sm" onclick="abandonGpsRound()">Abandon</button>
-        <button class="btn btn-primary btn-sm" onclick="confirmEndHole()">Finish Round</button>
+        <button class="btn btn-ghost btn-sm" onclick="abandonGpsRound()">${isGpsOnly&&!marking?'End Tracking':'Abandon'}</button>
+        ${isGpsOnly&&!marking?'':`<button class="btn btn-primary btn-sm" onclick="confirmEndHole()">Finish Round</button>`}
       </div>
     </div>`;
   if(GR.mapOpen)initGpsMap(holeShots);
+}
+function gpsStepHole(d){
+  if(!GR)return;
+  GR.currentHole=(GR.currentHole-1+d+18)%18+1;
+  GR.provisionalShotId=null;GR.chipAndPutt=false;
+  renderGpsHole();
 }
 function initGpsMap(holeShots){
   if(GR.map){GR.map.remove();GR.map=null;GR.markers=[];GR.polylines=[];}
