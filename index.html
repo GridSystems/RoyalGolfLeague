@@ -927,24 +927,9 @@ async function sbCheck(r,retry){
 // (before boot() has its session), so boot() and init() check this flag rather than start the app
 // over the "choose a new password" panel; submitNewPassword() clears it.
 let _auth=null,_session=null,_recoveryPending=false;
-// TEMP (2026-09-30): a saved login sometimes vanishes (every tab signed out) around opening Track.
-// Keeps the last 50 auth events in localStorage 'sl_auth_log' — no tokens, only event names and
-// error messages. Read it with localStorage.sl_auth_log. Delete authLog and its calls once found.
-function authLog(ev,extra){
-  try{const l=JSON.parse(localStorage.getItem('sl_auth_log')||'[]');
-    l.push({t:new Date().toISOString(),ev,href:location.href,...(extra||{})});
-    localStorage.setItem('sl_auth_log',JSON.stringify(l.slice(-50)));console.warn('[auth]',ev,JSON.stringify(extra||{}));}catch(e){}
-}
-function authDebug(...args){
-  const text=args.filter(a=>typeof a==='string').join(' ');
-  if(/autoRefreshTokenTick|_acquireLock|_useSession|getSession\(\)|_emitInitialSession|AutoRefresh\(\)|session from storage|\(\) (begin|end)\b/.test(text))return;
-  if(!/refresh|remove|recover|signOut|error|_initialize/i.test(text))return;
-  const errs=args.filter(a=>a&&typeof a==='object'&&a.message).map(a=>`${a.name||''} ${a.status||''} ${a.code||''} ${a.message}`.trim());
-  authLog('lib',{msg:args.filter(a=>typeof a==='string'&&a.length<60&&!a.startsWith('GoTrueClient')).join(' '),errs});
-}
 function authClient(){
-  if(!_auth){_auth=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{flowType:'pkce',detectSessionInUrl:true,persistSession:true,autoRefreshToken:true,debug:authDebug}});
-    _auth.auth.onAuthStateChange((event,session)=>{_session=session;authLog(event,{session:!!session});if(event==='PASSWORD_RECOVERY'){_recoveryPending=true;showLockPanel('lockNewPwPanel');}});}
+  if(!_auth){_auth=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{flowType:'pkce',detectSessionInUrl:true,persistSession:true,autoRefreshToken:true}});
+    _auth.auth.onAuthStateChange((event,session)=>{_session=session;if(event==='PASSWORD_RECOVERY'){_recoveryPending=true;showLockPanel('lockNewPwPanel');}});}
   return _auth;
 }
 function hdr(extra){return{...H,...(_session?{Authorization:'Bearer '+_session.access_token}:{}),...(extra||{})};}
@@ -1612,7 +1597,6 @@ function handleAuthRedirectError(){
   history.replaceState(null,'',location.pathname);
 }
 async function signOut(){
-  const ev=window.event;authLog('signOut() called',{trusted:ev?.isTrusted,type:ev?.type,target:ev?.target?.id||ev?.target?.textContent?.trim().slice(0,20),stack:new Error().stack.split('\n').slice(1,4).join(' | ')});   // TEMP, see authLog
   try{await authClient().auth.signOut();}catch(e){}
   _session=null;sessionStorage.removeItem('sl_session_player');localStorage.removeItem('sl_active_player');
   forceReload();
@@ -7040,10 +7024,8 @@ window.addEventListener('pageshow',checkForUpdate);   // also fires on iOS bfcac
 async function boot(){
   handleAuthRedirectError();
   const hadCode=new URLSearchParams(location.search).has('code');   // a confirmation or reset link
-  let session=null;const savedBefore=!!localStorage.getItem('sb-qvjybtcbymexheqrjkai-auth-token');   // TEMP, see authLog
-  try{const r=await authClient().auth.getSession();session=r.data.session;if(r.error)authLog('boot getSession error',{err:r.error.message});}
-  catch(e){authLog('boot getSession threw',{err:e.message});/* login service unreachable: old route still works */}
-  authLog('boot',{session:!!session,savedBefore,savedAfter:!!localStorage.getItem('sb-qvjybtcbymexheqrjkai-auth-token')});   // TEMP, see authLog
+  let session=null;
+  try{session=(await authClient().auth.getSession()).data.session;}catch(e){/* login service unreachable: old route still works */}
   _session=session;
   if(_recoveryPending){setLoading(false);showLockPanel('lockNewPwPanel');return;}
   if(session){await startApp();return;}
