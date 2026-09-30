@@ -1612,6 +1612,7 @@ function handleAuthRedirectError(){
   history.replaceState(null,'',location.pathname);
 }
 async function signOut(){
+  const ev=window.event;authLog('signOut() called',{trusted:ev?.isTrusted,type:ev?.type,target:ev?.target?.id||ev?.target?.textContent?.trim().slice(0,20),stack:new Error().stack.split('\n').slice(1,4).join(' | ')});   // TEMP, see authLog
   try{await authClient().auth.signOut();}catch(e){}
   _session=null;sessionStorage.removeItem('sl_session_player');localStorage.removeItem('sl_active_player');
   forceReload();
