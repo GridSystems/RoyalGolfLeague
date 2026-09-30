@@ -161,30 +161,30 @@ select option { background: #1a3a2a; }
     <div style="font-family:'Playfair Display',serif;font-size:1.5rem;color:#f0d58c;margin-bottom:4px">Saturday League</div>
     <div style="font-size:0.65rem;color:rgba(240,213,140,0.4);letter-spacing:0.12em;text-transform:uppercase;margin-bottom:2rem">Royal Golf Club · Copenhagen</div>
     <!-- Password login -->
-    <div id="lockLoginPanel" style="display:none"><!-- shown by boot() once it knows nobody is signed in -->
+    <form id="lockLoginPanel" style="display:none" onsubmit="return lockSubmit(submitPasswordLogin)"><!-- shown by boot() once it knows nobody is signed in -->
       <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:1rem;text-align:left">
-        <div class="fgi"><label>Email</label><input type="email" id="loginEmail" autocomplete="email" maxlength="100" onkeydown="if(event.key==='Enter')submitPasswordLogin()"></div>
-        <div class="fgi"><label>Password</label><input type="password" id="loginPassword" autocomplete="current-password" maxlength="100" onkeydown="if(event.key==='Enter')submitPasswordLogin()"></div>
+        <div class="fgi"><label>Email</label><input type="email" id="loginEmail" autocomplete="email" maxlength="100"></div>
+        <div class="fgi"><label>Password</label><input type="password" id="loginPassword" autocomplete="current-password" maxlength="100"></div>
         <div id="loginError" style="color:#f08080;font-size:0.78rem;display:none"></div>
       </div>
-      <button class="btn btn-primary" style="width:100%" onclick="submitPasswordLogin()">Sign in</button>
+      <button type="submit" class="btn btn-primary" style="width:100%">Sign in</button>
       <div style="margin-top:0.9rem;font-size:0.8rem"><span class="lock-link" onclick="showLockPanel('lockForgotPanel')">Forgot password?</span></div>
       <div style="margin-top:1rem;font-size:0.8rem;color:rgba(240,213,140,0.5)">First time on the new login? <span class="lock-link" onclick="showLockPanel('lockSetupPanel')">Set it up</span></div>
       <div style="margin-top:0.4rem;font-size:0.8rem;color:rgba(240,213,140,0.5)">New here? <span class="lock-link" onclick="showLockPanel('lockSignupPanel')">Sign up</span></div>
       <div style="margin-top:0.9rem;font-size:0.7rem"><span class="lock-link" style="opacity:0.6" onclick="showLockPanel('lockPinPanel')">Use my old PIN</span></div>
-    </div>
+    </form>
     <!-- Old PIN login (removed in release B) -->
-    <div id="lockPinPanel" style="display:none">
+    <form id="lockPinPanel" style="display:none" onsubmit="return lockSubmit(submitEmailPin)">
       <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:1rem;text-align:left">
-        <div class="fgi"><label>Email</label><input type="email" id="pinEmail" placeholder="your@email.com" maxlength="100" onkeydown="if(event.key==='Enter')submitEmailPin()"></div>
-        <div class="fgi"><label>PIN</label><input type="password" id="loginPin" placeholder="••••" maxlength="4" inputmode="numeric" pattern="[0-9]*" onkeydown="if(event.key==='Enter')submitEmailPin()"></div>
+        <div class="fgi"><label>Email</label><input type="email" id="pinEmail" placeholder="your@email.com" maxlength="100"></div>
+        <div class="fgi"><label>PIN</label><input type="password" id="loginPin" autocomplete="one-time-code" placeholder="••••" maxlength="4" inputmode="numeric" pattern="[0-9]*"></div>
         <div id="pinLoginError" style="color:#f08080;font-size:0.78rem;display:none"></div>
       </div>
-      <button class="btn btn-primary" style="width:100%" onclick="submitEmailPin()">Enter with PIN</button>
+      <button type="submit" class="btn btn-primary" style="width:100%">Enter with PIN</button>
       <div style="margin-top:1rem;font-size:0.8rem"><span class="lock-link" onclick="showLockPanel('lockLoginPanel')">← Back</span></div>
-    </div>
+    </form>
     <!-- Set up new login (email + password) -->
-    <div id="lockSetupPanel" style="display:none">
+    <form id="lockSetupPanel" style="display:none" onsubmit="return lockSubmit(submitSetup)">
       <div style="font-size:0.82rem;color:rgba(255,255,255,0.55);margin-bottom:1rem;text-align:left">Use the email the league has on file. Choose a password of at least 8 characters.</div>
       <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:1rem;text-align:left">
         <div class="fgi"><label>Email</label><input type="email" id="setupEmail" autocomplete="email" maxlength="100"></div>
@@ -192,26 +192,26 @@ select option { background: #1a3a2a; }
         <div class="fgi"><label>Confirm password</label><input type="password" id="setupPassword2" autocomplete="new-password" maxlength="100"></div>
         <div id="setupError" style="color:#f08080;font-size:0.78rem;display:none"></div>
       </div>
-      <button class="btn btn-primary" style="width:100%" onclick="submitSetup()">Set up my login</button>
+      <button type="submit" class="btn btn-primary" style="width:100%">Set up my login</button>
       <div style="margin-top:1rem;font-size:0.8rem"><span class="lock-link" onclick="showLockPanel('lockLoginPanel')">← Back</span></div>
-    </div>
+    </form>
     <!-- Forgot password -->
-    <div id="lockForgotPanel" style="display:none">
+    <form id="lockForgotPanel" style="display:none" onsubmit="return lockSubmit(submitForgot)">
       <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:1rem;text-align:left">
         <div class="fgi"><label>Email</label><input type="email" id="forgotEmail" autocomplete="email" maxlength="100"></div>
       </div>
-      <button class="btn btn-primary" style="width:100%" onclick="submitForgot()">Email me a reset link</button>
+      <button type="submit" class="btn btn-primary" style="width:100%">Email me a reset link</button>
       <div style="margin-top:1rem;font-size:0.8rem"><span class="lock-link" onclick="showLockPanel('lockLoginPanel')">← Back</span></div>
-    </div>
+    </form>
     <!-- Choose a new password (via reset link or forced recovery) -->
-    <div id="lockNewPwPanel" style="display:none">
+    <form id="lockNewPwPanel" style="display:none" onsubmit="return lockSubmit(submitNewPassword)">
       <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:1rem;text-align:left">
         <div class="fgi"><label>New password</label><input type="password" id="newPassword" autocomplete="new-password" maxlength="100"></div>
         <div class="fgi"><label>Confirm password</label><input type="password" id="newPassword2" autocomplete="new-password" maxlength="100"></div>
         <div id="newPwError" style="color:#f08080;font-size:0.78rem;display:none"></div>
       </div>
-      <button class="btn btn-primary" style="width:100%" onclick="submitNewPassword()">Save new password</button>
-    </div>
+      <button type="submit" class="btn btn-primary" style="width:100%">Save new password</button>
+    </form>
     <!-- Check your email (confirmation, reset) -->
     <div id="lockCheckEmailPanel" style="display:none">
       <div id="checkEmailText" style="font-size:0.88rem;color:rgba(255,255,255,0.75);line-height:1.6;margin-bottom:1rem;text-align:left"></div>
@@ -224,19 +224,19 @@ select option { background: #1a3a2a; }
       <button class="btn btn-ghost" style="width:100%" onclick="signOut()">Sign out</button>
     </div>
     <!-- First-time PIN set panel (existing player, no PIN yet) -->
-    <div id="lockSetPinPanel" style="display:none">
+    <form id="lockSetPinPanel" style="display:none" onsubmit="return lockSubmit(submitLockSetPin)">
       <div id="lockSetPinName" style="font-family:'Playfair Display',serif;font-size:1rem;color:var(--gold-l);margin-bottom:0.5rem"></div>
       <div style="font-size:0.82rem;color:rgba(255,255,255,0.45);margin-bottom:1rem;text-align:left">No PIN set yet. Choose a 4-digit PIN to secure your account.</div>
       <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:1rem;text-align:left">
-        <div class="fgi"><label>Choose a PIN</label><input type="password" id="lockSetPinInput" placeholder="••••" maxlength="4" inputmode="numeric" pattern="[0-9]*"></div>
-        <div class="fgi"><label>Confirm PIN</label><input type="password" id="lockSetPinConfirm" placeholder="••••" maxlength="4" inputmode="numeric" pattern="[0-9]*"></div>
+        <div class="fgi"><label>Choose a PIN</label><input type="password" id="lockSetPinInput" autocomplete="one-time-code" placeholder="••••" maxlength="4" inputmode="numeric" pattern="[0-9]*"></div>
+        <div class="fgi"><label>Confirm PIN</label><input type="password" id="lockSetPinConfirm" autocomplete="one-time-code" placeholder="••••" maxlength="4" inputmode="numeric" pattern="[0-9]*"></div>
         <div id="lockSetPinError" style="color:#f08080;font-size:0.78rem;display:none"></div>
       </div>
-      <button class="btn btn-primary" style="width:100%" onclick="submitLockSetPin()">Set PIN & Enter</button>
+      <button type="submit" class="btn btn-primary" style="width:100%">Set PIN & Enter</button>
       <div style="margin-top:1.25rem;font-size:0.8rem;color:rgba(240,213,140,0.5)"><span onclick="showLockPanel('lockLoginPanel')" style="color:var(--gold-l);cursor:pointer;text-decoration:underline">← Back</span></div>
-    </div>
+    </form>
     <!-- Sign-up panel -->
-    <div id="lockSignupPanel" style="display:none">
+    <form id="lockSignupPanel" style="display:none" onsubmit="return lockSubmit(submitSignup)">
       <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:1rem;text-align:left">
         <div class="fgi"><label>Full Name</label><input type="text" id="signupName" placeholder="e.g. Anders Nielsen" maxlength="60"></div>
         <div class="fgi signup-account"><label>Email</label><input type="email" id="signupEmail" placeholder="your@email.com" maxlength="100"></div>
@@ -246,9 +246,9 @@ select option { background: #1a3a2a; }
         <div class="fgi signup-account"><label>Confirm password</label><input type="password" id="signupPassword2" autocomplete="new-password" maxlength="100"></div>
         <div id="signupError" style="color:#f08080;font-size:0.78rem;display:none"></div>
       </div>
-      <button class="btn btn-primary" style="width:100%" onclick="submitSignup()">Register</button>
+      <button type="submit" class="btn btn-primary" style="width:100%">Register</button>
       <div style="margin-top:1.25rem;font-size:0.8rem;color:rgba(240,213,140,0.5)"><span class="lock-link" onclick="showLockPanel(finishingSignup?'lockUnlinkedPanel':'lockLoginPanel')">← Back</span></div>
-    </div>
+    </form>
   </div>
 </div>
 <div class="loading-overlay" id="loadingOverlay"><div class="spinner"></div><div style="color:var(--gold-l);font-size:0.88rem">Connecting to Supabase…</div></div>
@@ -675,7 +675,7 @@ select option { background: #1a3a2a; }
   <h3>⚙ Admin Access</h3>
   <div style="font-size:0.82rem;color:rgba(255,255,255,0.45);margin-bottom:1rem">Enter the admin PIN to continue.</div>
   <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:1rem">
-    <div class="fgi"><label>PIN</label><input type="password" id="adminPinInput" placeholder="••••" maxlength="20" onkeydown="if(event.key==='Enter')submitAdminPin()"></div>
+    <div class="fgi"><label>PIN</label><input type="password" id="adminPinInput" autocomplete="one-time-code" placeholder="••••" maxlength="20" onkeydown="if(event.key==='Enter')submitAdminPin()"></div>
     <div id="adminPinError" style="color:#f08080;font-size:0.78rem;display:none">Incorrect PIN.</div>
   </div>
   <div style="display:flex;gap:9px;justify-content:flex-end">
@@ -732,8 +732,8 @@ select option { background: #1a3a2a; }
 <div class="modal-bg" id="changePinModal" style="display:none"><div class="modal modal-sm">
   <h3>Change Admin PIN</h3>
   <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:1rem">
-    <div class="fgi"><label>New PIN</label><input type="password" id="newPinVal" placeholder="Choose a PIN" maxlength="20"></div>
-    <div class="fgi"><label>Confirm PIN</label><input type="password" id="newPinConfirm" placeholder="Repeat PIN" maxlength="20"></div>
+    <div class="fgi"><label>New PIN</label><input type="password" id="newPinVal" autocomplete="one-time-code" placeholder="Choose a PIN" maxlength="20"></div>
+    <div class="fgi"><label>Confirm PIN</label><input type="password" id="newPinConfirm" autocomplete="one-time-code" placeholder="Repeat PIN" maxlength="20"></div>
   </div>
   <div style="display:flex;gap:9px;justify-content:flex-end">
     <button class="btn btn-ghost btn-sm" onclick="closeModal('changePinModal')">Cancel</button>
@@ -832,7 +832,7 @@ select option { background: #1a3a2a; }
   </div>
   <div id="pinEnterSection">
     <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:1rem">
-      <div class="fgi"><label>Enter your PIN</label><input type="password" id="pinInput" placeholder="••••" maxlength="4" inputmode="numeric" pattern="[0-9]*" onkeydown="if(event.key==='Enter')submitPin()"></div>
+      <div class="fgi"><label>Enter your PIN</label><input type="password" id="pinInput" autocomplete="one-time-code" placeholder="••••" maxlength="4" inputmode="numeric" pattern="[0-9]*" onkeydown="if(event.key==='Enter')submitPin()"></div>
       <div id="pinError" style="color:#f08080;font-size:0.78rem;display:none">Incorrect PIN.</div>
     </div>
     <div style="display:flex;gap:9px;justify-content:flex-end">
@@ -844,8 +844,8 @@ select option { background: #1a3a2a; }
     <div style="font-size:0.82rem;color:rgba(255,255,255,0.45);margin-bottom:1rem">No PIN set yet. Confirm your email and choose a 4-digit PIN to secure your account.</div>
     <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:1rem">
       <div class="fgi"><label>Your email</label><input type="email" id="pinSetEmail" placeholder="your@email.com" maxlength="100"></div>
-      <div class="fgi"><label>Choose a PIN</label><input type="password" id="pinSetInput" placeholder="••••" maxlength="4" inputmode="numeric" pattern="[0-9]*"></div>
-      <div class="fgi"><label>Confirm PIN</label><input type="password" id="pinSetConfirm" placeholder="••••" maxlength="4" inputmode="numeric" pattern="[0-9]*"></div>
+      <div class="fgi"><label>Choose a PIN</label><input type="password" id="pinSetInput" autocomplete="one-time-code" placeholder="••••" maxlength="4" inputmode="numeric" pattern="[0-9]*"></div>
+      <div class="fgi"><label>Confirm PIN</label><input type="password" id="pinSetConfirm" autocomplete="one-time-code" placeholder="••••" maxlength="4" inputmode="numeric" pattern="[0-9]*"></div>
       <div id="pinSetError" style="color:#f08080;font-size:0.78rem;display:none"></div>
     </div>
     <div style="display:flex;gap:9px;justify-content:flex-end">
@@ -1531,6 +1531,10 @@ function showLockPanel(id,finish=false){
   document.querySelectorAll('.signup-account').forEach(e=>e.style.display=finish?'none':'');
   document.querySelectorAll('#lockScreen [id$="Error"]').forEach(e=>e.style.display='none');
 }
+// Every lock panel is a <form>, so Enter and password managers submit that panel instead of guessing
+// at a button elsewhere — NordPass used to "submit" by clicking the header's Sign out. A submit while
+// the lock screen is hidden (a password manager filling fields you can't see) is ignored.
+function lockSubmit(fn){if(document.getElementById('lockScreen').style.display!=='none')fn();return false;}
 // The initial data load failed (bad signal, DB unreachable) — say so on the login panel
 // rather than rendering with no player data. Reloading is the retry.
 function showLockDbError(){

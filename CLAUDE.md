@@ -378,6 +378,11 @@ A second tournament format beside the one-day team event: `tournaments.format='l
 ## Key design decisions (don't change without reason)
 
 - **Single HTML file** — deliberate. No build complexity. Easy to deploy and share.
+- **Lock-screen panels are `<form>`s** (`onsubmit="return lockSubmit(fn)"`, submit button, no Enter
+  handlers) and PIN inputs are `autocomplete="one-time-code"`. The panels stay in the DOM while
+  signed in; before 2026-09-30 they weren't forms, and NordPass filled the hidden fields and
+  "submitted" by clicking the header Sign out — random sign-outs. `lockSubmit` ignores a submit
+  while the lock screen is hidden. New login-style panels follow the same pattern.
 - **Database-assigned IDs** (Phase 1, 2026-09-24) — every table's `id` is `GENERATED ALWAYS AS IDENTITY`; inserts send no `id` and keep the row PostgREST returns. Never reintroduce `Date.now()` ids — the database refuses them. Foreign keys: rows that belong to a player RESTRICT their deletion; mentions (issued_by, recorded_by, marker, captains, match slots) SET NULL. Removing a player sets `archived_at`; use `activePlayers()` for pick lists and `players` for history.
 - **Version gate** (Phase 1; minimum now **3** as of Phase 2 release A) — every API request sends `x-app-version`; `public.require_current_app()` (PostgREST pre-request) refuses older versions with HTTP 426 and the app reloads itself. For a release that must not coexist with the previous one, bump `APP_VERSION` in `index.html`, `x-app-version` in `course-mapper.html` (`SB_H`) *and* `tests/sql/snapshot.mjs` (`H`), and the gate's minimum in `phase2a_auth.sql`, together — `tests/sql/version.test.mjs` checks all four agree. Anything else calling the API needs the header too.
 - **HCP on date** — always calculated dynamically from hcp_history, never stored on round except as snapshot for display.
