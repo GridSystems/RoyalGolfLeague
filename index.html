@@ -1568,9 +1568,10 @@ function authSignupError(errId,error){
 async function submitPasswordLogin(){
   const email=document.getElementById('loginEmail').value.trim().toLowerCase(),password=document.getElementById('loginPassword').value;
   if(!email||!password){lockError('loginError','Enter your email and password.');return;}
-  const {data,error}=await authClient().auth.signInWithPassword({email,password});
-  if(error||!data.session){lockError('loginError','Email or password incorrect.');return;}
-  _session=data.session;await startApp();
+  setLoading(true,'Connecting to Supabase…');     // init() clears it once the app is ready
+  let res;try{res=await authClient().auth.signInWithPassword({email,password});}catch(e){res={error:e};}
+  if(res.error||!res.data?.session){setLoading(false);lockError('loginError','Email or password incorrect.');return;}
+  _session=res.data.session;await startApp();
 }
 async function submitSetup(){
   const email=document.getElementById('setupEmail').value.trim().toLowerCase(),a=document.getElementById('setupPassword').value,b=document.getElementById('setupPassword2').value;
