@@ -5316,7 +5316,7 @@ function renderSaturdayAdmin(){
     const teeTimes=(event?.tee_times||['08:30','08:40','08:50']).slice().sort();
     const signups=saturdaySignups.filter(s=>s.date===date);
     const n=signups.length;
-    const numGroups=n<=4?1:n<=8?2:3;
+    const numGroups=drawGroupCount(n,teeTimes);
     const dateObj=new Date(date+'T00:00:00');
     const dateLabel=dateObj.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'});
     const hasAlloc=signups.some(s=>s.tee_time);
@@ -5569,9 +5569,11 @@ function scoreGrouping(groups,weights){
 // One candidate allocation. Early requesters are pinned to group 1 (first tee
 // time); everyone else is shuffled and spread evenly, group 1 topped up first.
 // Returns Map<signupId,{tee_time,group_num}> and mutates nothing.
+// Fourballs, but never more groups than there are tee times to put them on.
+function drawGroupCount(n,teeTimes){return Math.max(1,Math.min(Math.ceil(n/4),teeTimes.length||1));}
 function buildDrawAssignment(signups,teeTimes){
   const n=signups.length;
-  const numGroups=n<=4?1:n<=8?2:3;
+  const numGroups=drawGroupCount(n,teeTimes);
   const early=signups.filter(s=>s.early_tee_request);
   const pool=shuffleDraw(signups.filter(s=>!s.early_tee_request));
   const out=new Map();
