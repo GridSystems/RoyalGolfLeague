@@ -5567,7 +5567,7 @@ function scoreGrouping(groups,weights){
 }
 
 // One candidate allocation. Early requesters are pinned to group 1 (first tee
-// time); everyone else is shuffled and spread evenly, group 1 topped up first.
+// time); everyone else is shuffled and spread evenly, the larger groups last.
 // Returns Map<signupId,{tee_time,group_num}> and mutates nothing.
 // Fourballs, but never more groups than there are tee times to put them on.
 function drawGroupCount(n,teeTimes){return Math.max(1,Math.min(Math.ceil(n/4),teeTimes.length||1));}
@@ -5581,7 +5581,7 @@ function buildDrawAssignment(signups,teeTimes){
   const baseSize=Math.floor(n/numGroups),extra=n%numGroups;
   let pi=0;
   for(let gi=0;gi<numGroups;gi++){
-    const target=baseSize+(gi<extra?1:0);
+    const target=baseSize+(gi>=numGroups-extra?1:0);  // smallest groups tee off first
     const alreadyIn=gi===0?early.length:0;
     for(let j=alreadyIn;j<target&&pi<pool.length;j++){
       const s=pool[pi++];out.set(s.id,{tee_time:teeTimes[gi]||teeTimes[0],group_num:gi+1});
