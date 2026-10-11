@@ -50,6 +50,9 @@ setTimeout(async function(){
     allRounds=[round(1,1,'2026-10-10',5),round(2,2,'2026-10-10',4),round(3,3,'2026-10-10',3),round(4,4,'2026-10-10',6)];
     seasonEntries=[{id:1,season:'Winter 2027',player_id:1,paid_at:'2026-10-01T10:00:00Z',amount:175},{id:2,season:'Winter 2027',player_id:4,paid_at:null,amount:null}];
     T('inPrizes: entered and not social',inPrizes(players[0],'Winter 2027')&&inPrizes(players[3],'Winter 2027')&&!inPrizes(players[1],'Winter 2027')&&!inPrizes(players[2],'Winter 2027'));
+    seasonEntries.push({id:9,season:'Winter 2027',player_id:3,paid_at:null,amount:null});
+    T('Winter: a social-flagged player who enters is in the prizes',inPrizes(players[2],'Winter 2027')&&!inPrizes(players[2],'Summer 2026'));
+    seasonEntries.pop();
     T('Winter eclectic lists entrants only',JSON.stringify(eclecticStandings('Winter 2027').map(e=>e.p.id).sort())==='[1,4]');
     T('Winter standings list entrants only',JSON.stringify(seasonStandings('Winter 2027').map(s=>s.p.id).sort())==='[1,4]');
     allRounds.push(round(5,2,'2026-10-05',4));seasonEntries.push({id:3,season:'Winter 2027',player_id:2,paid_at:null,amount:null,entered_at:'2026-11-01T09:00:00Z'});
@@ -69,7 +72,9 @@ setTimeout(async function(){
     T('Today: a non-entrant gets no prize place',/1st/.test(document.getElementById('todayTable').innerHTML)&&!/2nd/.test(document.getElementById('todayTable').innerHTML));
     const rankCellOf=pid=>{const row=[...document.querySelectorAll('#todayTable tbody tr')].find(tr=>tr.textContent.includes(players.find(p=>p.id===pid).name));return row?row.querySelector('td').innerHTML:'';};
     T('Today: non-social non-entrant\'s rank cell has no Social tag',!/Social/.test(rankCellOf(2)));
-    T('Today: social member\'s rank cell still shows Social',/Social/.test(rankCellOf(3)));
+    T('Today in Winter: the Social flag is not shown',!/Social/.test(document.getElementById('todayTable').innerHTML));
+    allRounds=allRounds.map(r=>({...r,date:'2026-09-20'}));today=()=>'2026-09-20';renderTodayLb();
+    T('Today in Summer: a social member still shows Social',/Social/.test(rankCellOf(3)));
     // tees non-empty so loadData doesn't try to seed them; everything else empty; season_entries fails.
     reset(u=>u.includes('/season_entries')?{__status:500,message:'boom'}:u.includes('/tees')?[{id:'platinum',name:'Royal Platinum',color:'#b0a0c0',rating:77.6,slope:153,dist:[]}]:[]);
     seasonEntries=[{id:9}];
@@ -96,7 +101,7 @@ setTimeout(async function(){
     T('Withdraw round 1: an RLS-filtered delete (0 rows) keeps the entry and the unpaid banner',!!entryOf(1,'Winter 2027')&&/payment not yet recorded/.test(ban())&&!/Enter Winter 2027/.test(ban()));
     seasonEntries=[{id:12,season:'Winter 2027',player_id:1,paid_at:'2026-09-29T10:00:00Z',amount:175}];renderEntryBanner();
     T('paid: entered and paid, no Withdraw',/entered in Winter 2027 and paid/.test(ban())&&!/withdrawEntry/.test(ban()));
-    activeId=2;renderEntryBanner();T('social members see no banner',ban()==='');
+    activeId=2;renderEntryBanner();T('social-flagged members can enter too',/Enter Winter 2027/.test(ban()));
     activeId=3;renderEntryBanner();T('pending members see no banner',ban()==='');
     const saved2=SEASONS.splice(1,1);activeId=1;renderEntryBanner();T('no banner when no season takes entries',ban()==='');SEASONS.push(...saved2);
     activeId=1;seasonEntries=[];renderProfile();
@@ -109,7 +114,7 @@ setTimeout(async function(){
     T('title names the entry season',document.getElementById('adminEntriesTitle').textContent==='Winter 2027 entries');
     T('summary: 2 entered · 1 paid · DKK 175 received',/2 entered · 1 paid · DKK 175 received/.test(adm()));
     T('names are escaped',!document.getElementById('adminEntriesBody').querySelector('b')&&/&lt;b&gt;Bo/.test(adm()));
-    T('enter-for lists non-social members without an entry',/value="3"/.test(adm())&&!/value="4"/.test(adm())&&!/value="2"/.test(adm()));
+    T('enter-for lists every member without an entry, social-flagged included',/value="3"/.test(adm())&&/value="4"/.test(adm())&&!/value="2"/.test(adm()));
     reset((u,b,m)=>m==='PATCH'&&u.includes('season_entries')?[{id:21,season:'Winter 2027',player_id:2,paid_at:b.paid_at,amount:b.amount,recorded_by:b.recorded_by}]:[]);
     await markEntryPaid(21);
     const patch=calls.find(c=>c.method==='PATCH');
