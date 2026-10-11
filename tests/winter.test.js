@@ -35,6 +35,15 @@ setTimeout(async function(){
     T('pay screen shows the entry season buy-in',/DKK 175/.test(payHtml())&&/Winter 2027/.test(payHtml())&&!/DKK 250/.test(payHtml()));
     today=()=>'2026-11-01';renderRules();
     T('Rules page names best 3 for Winter',[...document.querySelectorAll('.rulesBestN')].every(e=>e.textContent==='3'));
+    // ── Sundays count in winter ──
+    T('Summer: Saturday only',isPlayDay('2026-09-26')&&!isPlayDay('2026-09-27'));
+    T('Winter: Saturday and Sunday',isPlayDay('2026-10-10')&&isPlayDay('2026-10-11')&&!isPlayDay('2026-10-12'));
+    T('Winter message names both days',playDaysText('2026-10-11')==='Saturday or Sunday');
+    {const inp=document.createElement('input');const adm=isAdmin;isAdmin=()=>false;
+     inp.value='2026-10-11';validatePlayDate(inp);T('a winter Sunday is accepted',inp.value==='2026-10-11');
+     inp.value='2026-09-27';validatePlayDate(inp);T('a summer Sunday is refused',inp.value==='');
+     isAdmin=adm;}
+    today=()=>'2026-10-11';T('Log Round defaults to today on a winter Sunday',lastPlayDay()==='2026-10-11');
     // ── Task 3: entries decide the prizes ──
     today=()=>'2026-11-01';
     players=[P(1,'Ann'),P(2,'Bo'),P(3,'Cy',{is_social:true}),P(4,'Di')];

@@ -350,7 +350,7 @@ select option { background: #1a3a2a; }
       <div class="ph"><span class="pt">Round Setup — Royal Golf Club</span><span style="font-size:0.75rem;color:rgba(255,255,255,0.35)">Step 1 of 2</span></div>
       <div class="pb">
         <div class="fg" style="margin-bottom:1.2rem">
-          <div class="fgi"><label>Date</label><input type="date" id="roundDate" onchange="validateSaturdayDate(this)"></div>
+          <div class="fgi"><label>Date</label><input type="date" id="roundDate" onchange="validatePlayDate(this)"></div>
           <div class="fgi"><label>Tee Time</label><input type="time" id="roundTeeTime" placeholder="e.g. 09:30"></div>
           <div class="fgi"><label>Notes</label><input type="text" id="roundNotes" placeholder="Weather, conditions…"></div>
         </div>
@@ -1904,7 +1904,7 @@ function renderGpsStart(){
         <div class="fg">
           <div class="fgi">
             <label>Date</label>
-            <input type="date" id="gpsDate" value="${today()}" onchange="validateSaturdayDate(this)">
+            <input type="date" id="gpsDate" value="${today()}" onchange="validatePlayDate(this)">
           </div>
           <div class="fgi">
             <label>Starting Hole</label>
@@ -5505,14 +5505,19 @@ function upcomingSaturday(){
   d.setDate(d.getDate()+(day===6?0:(6-day+7)%7));
   return d.toISOString().split('T')[0];
 }
-function validateSaturdayDate(inp){
+// Days a round may be logged on in the season `date` falls in, e.g. "Saturday or Sunday".
+function playDays(date){return seasonInfo(seasonOf(date)).days;}
+function playDaysText(date){return playDays(date).map(d=>['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][d]).join(' or ');}
+function isPlayDay(date){return playDays(date).includes(new Date(date+'T00:00:00').getDay());}
+// Log Round's default date: today when it is a play day, else the last Saturday.
+function lastPlayDay(){const t=today();return isPlayDay(t)?t:lastSaturday();}
+function validatePlayDate(inp){
   if(!inp.value)return;
-  const d=new Date(inp.value+'T00:00:00');
-  if(d.getDay()!==6){
+  if(!isPlayDay(inp.value)){
     // Admins may log any date — midweek corrections, and testing the resume flow, which keys
-    // off today() and so can only be exercised from a non-Saturday on an admin device.
-    if(isAdmin()){toast('Non-Saturday date — admin only');return;}
-    alert('Rounds must be on a Saturday — please select a Saturday.');
+    // off today() and so can only be exercised from a non-play day on an admin device.
+    if(isAdmin()){toast(`Not a ${playDaysText(inp.value)} — admin only`);return;}
+    alert(`Rounds must be on a ${playDaysText(inp.value)}.`);
     inp.value='';
   }
 }
@@ -5962,10 +5967,11 @@ function scrollToMyEclectic(){
 // the next one starts. Rounds, fines and payments all belong to the season their date falls in.
 // `eclectic` is that season's eclectic handicap allowance (60% from Winter 2027: the 95% card
 // rewarded high handicaps — see the rank-bias analysis of 2026-09-10).
+// `days` are the weekdays a round may be logged on (0=Sun … 6=Sat); winter counts Sundays too.
 const SEASONS=[
-  {name:'Summer 2026',from:'0000-01-01',eclectic:0.95,best:4,buyIn:250,entry:false},
-  {name:'Winter 2027',from:'2026-10-04',eclectic:0.60,best:3,buyIn:175,entry:true, // day after the Summer 2026 final (3 Oct)
-   notes:'The season ends on 1 April, or the first day the club moves back to summer tees, whichever is earliest. For the day, tees can be chosen until Summer tees are closed. At that point, tee 54 is assumed.'},
+  {name:'Summer 2026',from:'0000-01-01',eclectic:0.95,best:4,buyIn:250,entry:false,days:[6]},
+  {name:'Winter 2027',from:'2026-10-04',eclectic:0.60,best:3,buyIn:175,entry:true,days:[6,0], // day after the Summer 2026 final (3 Oct)
+   notes:'Rounds played on a Saturday or a Sunday both count. The season ends on 1 April, or the first day the club moves back to summer tees, whichever is earliest. For the day, tees can be chosen until Summer tees are closed. At that point, tee 54 is assumed.'},
 ];
 function seasonOf(date){let s=SEASONS[0];for(const x of SEASONS)if(date>=x.from)s=x;return s.name;}
 function seasonInfo(season){return SEASONS.find(s=>s.name===season);}
@@ -6970,7 +6976,7 @@ function resolveSignedInPlayer(){
   return true;
 }
 async function init(){
-  document.getElementById('roundDate').value=lastSaturday();
+  document.getElementById('roundDate').value=lastPlayDay();
   let dataOk=false;
   try{
     await loadData();
