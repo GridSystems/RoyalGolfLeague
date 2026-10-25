@@ -1,5 +1,5 @@
 -- Royal Golf Club — explicit Data API grants
--- Run once in Supabase SQL Editor (project qvjybtcbymexheqrjkai).
+-- Run in Supabase SQL Editor (project qvjybtcbymexheqrjkai).
 -- Safe to re-run (GRANT is idempotent).
 --
 -- Required because from Oct 30 2026 Supabase no longer auto-grants
@@ -8,6 +8,16 @@
 -- anon has NO access to anything here since release B (phase2b_enforce.sql). Never grant it
 -- anything in this file: re-running it would hand back what release B took away. The only thing
 -- anon may touch is public.require_current_app() (the version gate).
+
+BEGIN;
+-- A table without row level security would be wide open to every member once granted below.
+DO $$ DECLARE bad text; BEGIN
+  SELECT string_agg(c.relname, ', ' ORDER BY c.relname) INTO bad FROM pg_class c
+   WHERE c.relnamespace = 'public'::regnamespace AND c.relkind IN ('r', 'p') AND NOT c.relrowsecurity;
+  IF bad IS NOT NULL THEN
+    RAISE EXCEPTION 'Table(s) without row level security: %. Enable RLS and add p2_* policies first. Nothing was granted.', bad;
+  END IF;
+END $$;
 
 GRANT USAGE ON SCHEMA public TO authenticated;
 
@@ -42,3 +52,4 @@ GRANT SELECT ON public.audit_log TO authenticated;
 -- has no grants here. It is SECURITY DEFINER, called only from triggers, RLS policies and the
 -- public.run_draw / public.log_admin_mode / public.admin_member_emails functions, whose own
 -- EXECUTE grants are set in phase2a_auth.sql alongside the schema they belong to.
+COMMIT;

@@ -225,3 +225,13 @@ test('grants.sql after B1 and after B2 gives nothing to anon and changes nothing
   await as(db, await persona(db, { playerId: 2 }));
   assert.ok((await db.query(`SELECT id, user_id FROM public.players`)).rows.length > 10);
 });
+
+test('grants.sql refuses while a table has no row level security, granting nothing', async () => {
+  const db = await world();
+  await db.exec(`CREATE TABLE public.t_open(id int); REVOKE ALL ON public.t_open FROM authenticated`);
+  const err = await run(db, sqlFile('grants.sql'));
+  assert.match(err, /without row level security: t_open\. Enable RLS/);
+  assert.equal((await one(db, `SELECT has_table_privilege('authenticated', 'public.t_open', 'SELECT') ok`)).ok, false);
+  await db.exec(`ALTER TABLE public.t_open ENABLE ROW LEVEL SECURITY`);
+  assert.equal(await run(db, sqlFile('grants.sql')), null);
+});
