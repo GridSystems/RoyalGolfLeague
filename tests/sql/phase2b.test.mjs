@@ -206,3 +206,22 @@ test('cleanup re-run is harmless', async () => {
   assert.equal(await run(db, sqlFile('phase2b_cleanup.sql')), null);
   assert.equal(await run(db, sqlFile('phase2b_cleanup.sql')), null);
 });
+
+// grants.sql is the standing "safe to re-run" script: it must never give anon anything back, and it
+// must leave logged-in members exactly as release A / B1 left them.
+test('grants.sql after B1 and after B2 gives nothing to anon and changes nothing for members', async () => {
+  const db = await world();
+  const before = await accessState(db);
+  assert.equal(await run(db, sqlFile('grants.sql')), null);
+  const after = await accessState(db);
+  for (const k of Object.keys(before)) assert.deepEqual(after[k], before[k], k);
+  const open = async () => (await db.query(`SELECT tablename FROM pg_tables WHERE schemaname='public'
+    AND (has_table_privilege('anon', 'public.' || tablename, 'SELECT,INSERT,UPDATE,DELETE') OR has_any_column_privilege('anon', 'public.' || tablename, 'SELECT,INSERT,UPDATE'))`)).rows;
+  assert.deepEqual(await open(), []);
+  assert.equal((await one(db, `SELECT has_function_privilege('anon', 'public.login(text,text)', 'EXECUTE') ok`)).ok, false);
+  assert.equal(await run(db, sqlFile('phase2b_cleanup.sql')), null);
+  assert.equal(await run(db, sqlFile('grants.sql')), null, 'runs after B2 (no legacy_id)');
+  assert.deepEqual(await open(), []);
+  await as(db, await persona(db, { playerId: 2 }));
+  assert.ok((await db.query(`SELECT id, user_id FROM public.players`)).rows.length > 10);
+});

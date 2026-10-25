@@ -1,7 +1,9 @@
 -- Royal Golf Club — Phase 2 release B2. Run a week after phase2b_enforce.sql, once nothing looks wrong.
 -- Drops the PIN functions, the players columns pin, pin_failures, pin_locked_until and legacy_id, and
 -- schema phase2b_backup. After this, phase2b_rollback.sql no longer works and the PIN login can't
--- come back. players.email and players.user_id stay.
+-- come back. players.email and players.user_id stay. phase2a_rollback.sql can no longer be re-applied
+-- after this. One transaction: it all happens or none of it.
+BEGIN;
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM pg_policies WHERE schemaname='public' AND policyname='anon_all') THEN
     RAISE EXCEPTION 'Run phase2b_enforce.sql first. Nothing was changed.';
@@ -32,3 +34,4 @@ ALTER TABLE public.players DROP COLUMN IF EXISTS pin, DROP COLUMN IF EXISTS pin_
   DROP COLUMN IF EXISTS pin_locked_until, DROP COLUMN IF EXISTS legacy_id;
 DROP SCHEMA IF EXISTS phase2b_backup CASCADE;
 NOTIFY pgrst, 'reload schema';
+COMMIT;
