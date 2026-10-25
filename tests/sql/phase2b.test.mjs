@@ -188,6 +188,7 @@ test('cleanup drops the PIN machinery and keeps members working', async () => {
   const c = await cols(db);
   for (const gone of ['pin', 'pin_failures', 'pin_locked_until', 'legacy_id']) assert.ok(!c.includes(gone), gone);
   for (const kept of ['email', 'user_id']) assert.ok(c.includes(kept), kept);
+  assert.equal((await one(db, `SELECT to_regclass('private.phase2b_report') n`)).n, null);
   assert.equal((await one(db, `SELECT to_regnamespace('phase2b_backup') n`)).n, null);
   assert.ok(!/legacy_id/.test((await one(db, `SELECT pg_get_functiondef('private.protect_player_fields'::regproc) d`)).d));
   // Members still read players and update their own profile; protected fields stay protected.

@@ -213,11 +213,13 @@
 
 ## Runbook (user, after merge)
 
+0. **Message the members on the Admin tab's move-over list.** PIN-only members lose sign-in at the v4 push (step 1), not at B1. Tell them to use "Set it up" with their email, check Spam, and open the link on the same phone.
 1. **Push app version 4.** PIN-only players now see the "PIN sign-in has ended" line. Old version-3 tabs keep working until step 3. Wait **at least 10 minutes** (Pages `max-age=600`). Check that `https://gridsystems.github.io/RoyalGolfLeague/?v=4` shows no "Use my old PIN".
 2. **Rehearse** `supabase/phase2b_enforce.sql` in the SQL Editor as it is (switch `true`). Expected: `REHEARSAL OK` with `ALL CHECKS PASSED`.
    If B1's checks raise about objects in `public` that `postgres` doesn't own, stop and tell Claude. Don't force it.
-3. **Real run**: switch to `false`, then run. Then re-run `supabase/grants.sql` (authenticated only; it refuses while any table has RLS off, so rehearse that the same way if in doubt).
+3. **Real run**: switch to `false`, then run. Then re-run `supabase/grants.sql` (authenticated only; it has no rehearsal switch, but it refuses before granting anything if a table lacks RLS).
 4. **Live checks (Claude can do these from outside):**
+   - every check sends the headers `apikey`, `Authorization: Bearer <public key>` and `x-app-version: 4` (without the version header the gate answers 426 first, which looks like a pass for the wrong reason);
    - the public key gets 401 on `rounds`, `players?select=id,name` and `rpc/check_pin`;
    - a request with `x-app-version: 3` gets 426;
    - the app signed in loads normally;
@@ -225,7 +227,7 @@
    - the next Friday-noon draw happens.
 5. **A week later, if nothing looks wrong:** run `supabase/phase2b_cleanup.sql`.
    After B2, `phase2b_rollback.sql` and `phase2a_rollback.sql` can no longer be re-applied.
-6. **Standing rules afterwards:** create tables in the SQL editor (dashboard-created tables run as `supabase_admin` and still get Supabase's default grants), enable RLS, add `p2_*` policies, re-run `grants.sql`. Functions created later need an explicit `GRANT EXECUTE … TO authenticated`.
+6. **Standing rules afterwards:** create tables in the SQL editor (dashboard-created tables run as `supabase_admin` and still get Supabase's default grants), enable RLS, add `p2_*` policies, re-run `grants.sql`. In `public`, a new function is callable through /rpc by every logged-in user immediately (Supabase's default grant to `authenticated` stays), pending and unlinked logins included; if it isn't for every member, `REVOKE EXECUTE … FROM authenticated` and grant narrower. In `private` or any other schema, nobody can call it until it gets an explicit `GRANT EXECUTE … TO authenticated`.
 7. **Later, once the move-over list is empty:** drop `players.email` (separate change).
 
 Rollback before step 5: `supabase/phase2b_rollback.sql`. App v4 can stay.

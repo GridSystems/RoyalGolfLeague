@@ -48,6 +48,11 @@ setTimeout(async function(){
     T('signed-out delete is visible',w.__alerts.some(m=>m.includes('Sign in to the Saturday League app on this device first')),JSON.stringify(w.__alerts));
     w.__alerts.length=0;await w.loadSurveyPoints();
     T('signed-out load is visible',w.__alerts.some(m=>m.includes('Sign in to the Saturday League app on this device first')),JSON.stringify(w.__alerts));
+    // RLS filters a DELETE without admin mode: PostgREST answers 200 [] with return=representation, not 42501.
+    w.eval("_sb={auth:{getSession:async()=>({data:{session:{access_token:'t7'}}})}};surveyPoints=[{id:7,hole:1,type:'tee'}];");
+    const dc=[];w.fetch=async(u,o)=>{dc.push(o);return{ok:true,status:200,json:async()=>[],text:async()=>'[]'};};
+    w.__alerts.length=0;await w.deleteSurveyPoint(7);
+    T('empty delete result is admin mode',w.__alerts.some(m=>m.includes('Unlock admin mode in the app (Admin tab), then try again'))&&w.eval('surveyPoints.length')===1&&dc[0].headers.Prefer==='return=representation',JSON.stringify([w.__alerts,dc[0]&&dc[0].headers]));
     fr.remove();
 
     tokens.push('t4');respond=()=>({__status:500,code:'XX'});msg='';

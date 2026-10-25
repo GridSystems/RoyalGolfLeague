@@ -290,8 +290,12 @@ async function sbSurveyInsert(b){
   return r.json();
 }
 async function sbSurveyDelete(id){
-  const r=await fetch(`${SB_URL}/rest/v1/survey_points?id=eq.${id}`,{method:'DELETE',headers:await sbHeaders()});
+  // Without admin mode RLS filters the DELETE and PostgREST answers 204, not 42501, so ask for the
+  // deleted rows back. The id is a point we know exists: [] means refused. The mapper can't unlock admin mode itself.
+  const r=await fetch(`${SB_URL}/rest/v1/survey_points?id=eq.${id}`,{method:'DELETE',headers:await sbHeaders({'Prefer':'return=representation'})});
   if(!r.ok)throw await sbFail(r);
+  const rows=await r.json();
+  if(!rows.length)throw new Error('Unlock admin mode in the app (Admin tab), then try again');
 }
 
 // ── Auto-detect tile coordinate utilities ────────────────────────────────
@@ -525,7 +529,7 @@ async function sbUpsertTeeStrips(hole, strips) {
   // Delete all existing strips for this hole (handles renumbering cleanly)
   const del = await fetch(`${SB_URL}/rest/v1/tee_strips?hole=eq.${hole}`, {
     method: 'DELETE',
-    headers:await sbHeaders()
+    headers:await sbHeaders({'Prefer': 'return=representation'})
   });
   if (!del.ok) throw await sbFail(del);
 
@@ -552,7 +556,7 @@ async function sbUpsertFairwayPolygons(hole, polygons) {
     // No polygons left — delete the row
     const r = await fetch(`${SB_URL}/rest/v1/fairway_polygons?hole=eq.${hole}`, {
       method: 'DELETE',
-      headers:await sbHeaders()
+      headers:await sbHeaders({'Prefer': 'return=representation'})
     });
     if (!r.ok) throw await sbFail(r);
     return;
@@ -569,7 +573,7 @@ async function sbUpsertFairwaySpines(hole, waypoints) {
     // Empty waypoints means straight line — delete the row entirely
     const r = await fetch(`${SB_URL}/rest/v1/fairway_spines?hole=eq.${hole}`, {
       method: 'DELETE',
-      headers:await sbHeaders()
+      headers:await sbHeaders({'Prefer': 'return=representation'})
     });
     if (!r.ok) throw await sbFail(r);
     return;

@@ -33,5 +33,6 @@ END $$;
 ALTER TABLE public.players DROP COLUMN IF EXISTS pin, DROP COLUMN IF EXISTS pin_failures,
   DROP COLUMN IF EXISTS pin_locked_until, DROP COLUMN IF EXISTS legacy_id;
 DROP SCHEMA IF EXISTS phase2b_backup CASCADE;
+DROP TABLE IF EXISTS private.phase2b_report;
 NOTIFY pgrst, 'reload schema';
 COMMIT;

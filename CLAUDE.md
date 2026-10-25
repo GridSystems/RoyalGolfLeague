@@ -80,23 +80,27 @@ rollback: `season_entries_rollback.sql`.
 permission rules for logged-in members — `p2_*` policies `TO authenticated`, e.g.
 members read/write their own rounds and sign-ups, admins (admin mode) everything,
 pending sign-ups only their own row. See **Supabase Auth** under Admin system for
-how a request becomes `authenticated`. Release B (`supabase/phase2b_enforce.sql`) removed
-the old PIN route's `anon_all` policies and every anonymous privilege: the public key now
-gets 401 on every table and function except `require_current_app()` (the version gate,
-which must answer 426) and Supabase Auth. Only signed-in members reach the data.
+how a request becomes `authenticated`. Once release B (`supabase/phase2b_enforce.sql`, B1) has
+run, it has removed the old PIN route's `anon_all` policies and every anonymous privilege in
+`public`: the public key then gets 401 on every table and function except `require_current_app()`
+(the version gate, which must answer 426) and Supabase Auth. Only signed-in members reach the
+data. (`anon` keeps dormant EXECUTE on `private.*`, unreachable without schema USAGE.)
+*Release B SQL status: B1 not yet run; B2 not yet run. Update this line when they are run.*
 
 **Credentials are hidden (Phase 0, 2026-09-24):** `players.email` is readable by no API
-role — SELECT/UPDATE on `players` are column-level grants. PINs are gone: B1 revoked the
-PIN functions and `phase2b_cleanup.sql` (B2) drops them, the `pin`/`pin_failures`/
+role — SELECT/UPDATE on `players` are column-level grants. PINs are going: once B1 has run the
+PIN functions are revoked, and once `phase2b_cleanup.sql` (B2) has run it drops them, the `pin`/`pin_failures`/
 `pin_locked_until` columns and `legacy_id`. `email` stays until the Admin tab's move-over
 list is empty, because `private.link_login` matches a new login by it.
 **Adding a column to `players`?** Add it to `PLAYER_COLS` in `index.html` *and* to the
 column grants in `supabase/grants.sql` / `phase0b_hide_credentials.sql`, or the app
 can't read it. Never grant SELECT on `players` table-wide.
-**Creating a function?** B1 ran `ALTER DEFAULT PRIVILEGES FOR ROLE postgres REVOKE EXECUTE ON
-FUNCTIONS FROM PUBLIC`, which covers every schema. A function created later in the SQL editor
-(public or private) is callable by nobody until it gets an explicit `GRANT EXECUTE … TO
-authenticated`. **Creating a table?** Create it in the SQL editor (a table made from the
+**Creating a function?** B1 removes only PUBLIC and `anon` from new functions' default EXECUTE.
+Supabase's own default privilege (`GRANT ALL ON FUNCTIONS … TO authenticated` in `public`) stays.
+So in `public`, a new function is callable through /rpc by every logged-in user at once,
+pending and unlinked logins included; if it isn't meant for every member, `REVOKE EXECUTE … FROM
+authenticated` and grant narrower. In `private` (or any other schema) nobody can call it until it
+gets an explicit `GRANT EXECUTE … TO authenticated`. **Creating a table?** Create it in the SQL editor (a table made from the
 dashboard runs as `supabase_admin` and still gets Supabase's default grants), enable RLS, add
 `p2_*` policies, then re-run `supabase/grants.sql`. It grants to `authenticated` only, never
 `anon`, runs in one transaction and refuses (naming the tables) while any public table has RLS off.
@@ -422,7 +426,8 @@ A second tournament format beside the one-day team event: `tournaments.format='l
   callable) into `audit_log` (admin-only read, self-trims after 12 months); triggers
   on `auth.users`/`auth.mfa_factors` catch `OTHERS` and only `RAISE WARNING` — a
   logging failure must never block a login. Rollback: `supabase/phase2a_rollback.sql`
-  (re-applicable afterwards).
+  (re-applicable afterwards). After B1, run `phase2b_rollback.sql` first; after B2,
+  `phase2a_rollback.sql` can't be used.
 
 ---
 
