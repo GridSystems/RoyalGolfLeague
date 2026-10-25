@@ -35,7 +35,7 @@ test('real run: ids are 1..N and the report says all checks passed', async () =>
 test('real run: orphans resolved as decided, money unchanged', async () => {
   const db = await freshDb();
   const gone = 999999, tid = SNAPSHOT.tournaments[0].id, pid = SNAPSHOT.players[0].id;
-  await db.query(`INSERT INTO public.fines(id, player_id, fine_type_id, date, amount, issued_by) VALUES (1799999999001, $1, $2, '2026-06-06', 20, $3)`, [gone, SNAPSHOT.fine_types[0].id, pid]);
+  await db.query(`INSERT INTO public.fines(id, player_id, fine_type_id, date, amount, issued_by) VALUES (1799999999001, $1, $2, '2026-06-06', 20.01, $3)`, [gone, SNAPSHOT.fine_types[0].id, pid]);
   await db.query(`INSERT INTO public.fines(id, player_id, fine_type_id, round_id, date, amount, issued_by) VALUES (1799999999002, $1, $2, 1799999999999, '2026-06-06', 10, $1)`, [pid, SNAPSHOT.fine_types[0].id]);
   await db.query(`INSERT INTO public.saturday_signups(id, player_id, date) VALUES (1799999999003, $1, '2026-06-06')`, [gone]);
   await db.query(`INSERT INTO public.tournament_players(id, tournament_id, player_id, team) VALUES (1799999999004, $1, $2, 'a')`, [tid, gone]);
@@ -43,7 +43,7 @@ test('real run: orphans resolved as decided, money unchanged', async () => {
   const before = await dkk(); assert.equal(await run(db, REAL()), null); const after = await dkk();
   assert.equal(String(after.s), String(before.s)); assert.equal(after.n, before.n);
   const fm = await one(db, `SELECT p.id, p.name, p.archived_at IS NOT NULL AS archived, p.legacy_id FROM public.players p
-    JOIN public.fines f ON f.player_id = p.id WHERE f.amount = 20 AND f.date = '2026-06-06'`);
+    JOIN public.fines f ON f.player_id = p.id WHERE f.amount = 20.01`);
   assert.ok(fm && fm.name === 'Former member' && fm.archived && fm.legacy_id === null);
   assert.equal((await one(db, `SELECT count(*)::int n FROM public.fines WHERE player_id=$1`, [fm.id])).n, 1);
   assert.equal((await one(db, `SELECT count(*)::int n FROM public.fines f WHERE round_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM public.rounds r WHERE r.id=f.round_id)`)).n, 0);

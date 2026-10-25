@@ -2,15 +2,20 @@ import test from 'node:test'; import assert from 'node:assert/strict';
 import { productionDb, as, persona, run, sqlFile } from './testbed.mjs';
 const real = f => sqlFile(f).replace(/SELECT true AS rehearsal/, 'SELECT false AS rehearsal');
 const one = async (db, q, p) => (await db.query(q, p)).rows[0];
-const fails = async (db, sql, p) => { try { await db.query(sql, p); return false; } catch { return true; } };
+// The SQLSTATE a statement fails with. Refused for lack of a privilege is 42501; any other error
+// (e.g. run_draw's own validation) shows its own code and fails the test.
+const code = async (db, sql) => { try { await db.query(sql); return 'no error'; } catch (e) { return e.code || e.message; } };
+const DENIED = '42501';
 const anonAll = async db => (await one(db, `SELECT count(*)::int n FROM pg_policies WHERE policyname='anon_all'`)).n;
 const headers = async (db, v) => db.query(`SELECT set_config('request.headers', $1, false)`, [JSON.stringify({ 'x-app-version': v })]);
 
-// Production after release A, plus the default privileges Supabase gives objects created later
-// in the SQL editor (the testbed has none of its own, so B1's revoke would otherwise prove nothing).
+// Production after release A, plus what Supabase grants that the testbed doesn't: ALL on sequences
+// (the testbed has USAGE only), and the default privileges for objects created later in the SQL
+// editor (without them B1's revoke would prove nothing).
 async function releaseA() {
   const db = await productionDb(); assert.equal(await run(db, real('phase2a_auth.sql')), null);
-  await db.exec(`ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated;
+  await db.exec(`GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated;
+                 ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated;
                  ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON SEQUENCES TO anon, authenticated;
                  ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON FUNCTIONS TO anon, authenticated;`);
   return db;
@@ -33,6 +38,13 @@ test('rehearsal changes nothing; real run applies; second run refuses', async ()
   const report = (await db.query(`SELECT line FROM private.phase2b_report ORDER BY ord`)).rows.map(r => r.line);
   assert.equal(report.at(-1), 'ALL CHECKS PASSED');
   assert.ok(report.includes('version gate: requests need x-app-version >= 4'));
+  // Everything B1 removes is kept for the rollback. All of these hold rows in this world.
+  for (const t of ['anon_policies', 'anon_table_grants', 'anon_column_grants', 'anon_function_grants',
+    'anon_sequence_grants', 'default_acl', 'private_schema_acl'])
+    assert.ok((await one(db, `SELECT count(*)::int n FROM phase2b_backup.${t}`)).n > 0, t);
+  const seq = (await db.query(`SELECT DISTINCT privilege_type p FROM phase2b_backup.anon_sequence_grants ORDER BY 1`)).rows.map(r => r.p);
+  assert.ok(seq.includes('SELECT') && seq.includes('UPDATE') && seq.includes('USAGE'), seq.join());
+  assert.ok((await one(db, `SELECT bool_or(aclitem::text LIKE 'anon=U%') ok FROM phase2b_backup.private_schema_acl, unnest(nspacl) aclitem`)).ok, 'private ACL had anon USAGE');
 });
 
 test('anon can read and write nothing', async () => {
@@ -40,17 +52,17 @@ test('anon can read and write nothing', async () => {
   const tables = (await db.query(`SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY 1`)).rows.map(r => r.tablename);
   assert.ok(tables.length > 10);
   await as(db, null);
-  for (const t of tables) assert.ok(await fails(db, `SELECT 1 FROM public.${t} LIMIT 1`), t);
-  assert.ok(await fails(db, `SELECT id, name FROM public.players`));
-  assert.ok(await fails(db, `UPDATE public.players SET name='x' WHERE id=2`));
-  assert.ok(await fails(db, `INSERT INTO public.saturday_signups(player_id,date) VALUES (2,'2026-10-10')`));
+  for (const t of tables) assert.equal(await code(db, `SELECT 1 FROM public.${t} LIMIT 1`), DENIED, t);
+  assert.equal(await code(db, `SELECT id, name FROM public.players`), DENIED);
+  assert.equal(await code(db, `UPDATE public.players SET name='x' WHERE id=2`), DENIED);
+  assert.equal(await code(db, `INSERT INTO public.saturday_signups(player_id,date) VALUES (2,'2026-10-10')`), DENIED);
 });
 
 test('anon cannot call any public function except the gate', async () => {
   const db = await world();
   await as(db, null);
   for (const sql of [`SELECT public.run_draw('2026-11-14', '[]', '[]')`, `SELECT public.login('a','1')`,
-    `SELECT public.check_pin(1,'1')`, `SELECT public.has_pin(1)`]) assert.ok(await fails(db, sql), sql);
+    `SELECT public.check_pin(1,'1')`, `SELECT public.has_pin(1)`]) assert.equal(await code(db, sql), DENIED, sql);
   await headers(db, '4');
   await db.query(`SELECT public.require_current_app()`);
 });
@@ -58,8 +70,8 @@ test('anon cannot call any public function except the gate', async () => {
 test('members cannot call the PIN functions either', async () => {
   const db = await world();
   await as(db, await persona(db, { playerId: 2 }));
-  assert.ok(await fails(db, `SELECT public.check_pin(1,'1')`));
-  assert.ok(await fails(db, `SELECT public.login('a','1')`));
+  assert.equal(await code(db, `SELECT public.check_pin(1,'1')`), DENIED);
+  assert.equal(await code(db, `SELECT public.login('a','1')`), DENIED);
 });
 
 test('gate is 4', async () => {

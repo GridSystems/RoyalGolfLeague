@@ -28,7 +28,8 @@ END $$;
 CREATE SCHEMA IF NOT EXISTS phase2b_backup;
 REVOKE ALL ON SCHEMA phase2b_backup FROM PUBLIC, anon, authenticated;
 DROP TABLE IF EXISTS phase2b_backup.anon_policies, phase2b_backup.anon_table_grants, phase2b_backup.anon_column_grants,
-  phase2b_backup.anon_function_grants, phase2b_backup.anon_sequence_grants;
+  phase2b_backup.anon_function_grants, phase2b_backup.anon_sequence_grants, phase2b_backup.default_acl,
+  phase2b_backup.private_schema_acl;
 CREATE TABLE phase2b_backup.anon_policies AS
   SELECT tablename, format('CREATE POLICY %I ON public.%I AS %s FOR %s TO %s%s%s', policyname, tablename,
            permissive, cmd, (SELECT string_agg(quote_ident(r), ', ') FROM unnest(roles) r),
@@ -47,16 +48,29 @@ CREATE TABLE phase2b_backup.anon_function_grants AS
     FROM information_schema.routine_privileges rp
     JOIN pg_proc p ON p.pronamespace = 'public'::regnamespace AND p.proname || '_' || p.oid = rp.specific_name
    WHERE rp.grantee IN ('anon', 'PUBLIC') AND rp.specific_schema = 'public';
+-- From the ACL itself: information_schema.usage_privileges reports only USAGE on a sequence.
+-- Re-issue: GRANT <privilege_type> ON SEQUENCE public.<sequence_name> TO anon.
 CREATE TABLE phase2b_backup.anon_sequence_grants AS
-  SELECT DISTINCT object_name AS sequence_name, privilege_type FROM information_schema.usage_privileges
-   WHERE object_type = 'SEQUENCE' AND grantee = 'anon' AND object_schema = 'public';
+  SELECT DISTINCT c.relname AS sequence_name, a.privilege_type FROM pg_class c, aclexplode(c.relacl) a
+   WHERE c.relnamespace = 'public'::regnamespace AND c.relkind = 'S' AND a.grantee = 'anon'::regrole;
+-- Section 6 changes postgres's default privileges, global (nspname null) and in public. The rows
+-- as they were; no row = none existed (the rollback deletes any row B1 created). Re-issue: put
+-- defaclacl back on the pg_default_acl row, e.g. by GRANTs per aclexplode(defaclacl) entry.
+CREATE TABLE phase2b_backup.default_acl AS
+  SELECT d.defaclrole::regrole::text AS role, n.nspname, d.defaclobjtype, d.defaclacl
+    FROM pg_default_acl d LEFT JOIN pg_namespace n ON n.oid = d.defaclnamespace
+   WHERE d.defaclrole = 'postgres'::regrole AND (d.defaclnamespace = 0 OR n.nspname = 'public');
+-- Section 5 revokes anon's USAGE on schema private; the whole ACL as it was.
+CREATE TABLE phase2b_backup.private_schema_acl AS
+  SELECT nspacl FROM pg_namespace WHERE nspname = 'private';
 DO $$ BEGIN
   INSERT INTO p2b_report(line) VALUES ('backed up: ' ||
     (SELECT count(*) FROM phase2b_backup.anon_policies) || ' anon_all policies, ' ||
     (SELECT count(*) FROM phase2b_backup.anon_table_grants) || ' table grants, ' ||
     (SELECT count(*) FROM phase2b_backup.anon_column_grants) || ' column grants, ' ||
     (SELECT count(*) FROM phase2b_backup.anon_function_grants) || ' function grants, ' ||
-    (SELECT count(*) FROM phase2b_backup.anon_sequence_grants) || ' sequence grants');
+    (SELECT count(*) FROM phase2b_backup.anon_sequence_grants) || ' sequence grants, ' ||
+    (SELECT count(*) FROM phase2b_backup.default_acl) || ' default-privilege rows, schema private ACL');
 END $$;
 
 -- ===== SECTION 3: tables and sequences =====================================================
