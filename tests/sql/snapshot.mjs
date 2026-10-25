@@ -1,11 +1,14 @@
 // Read-only snapshot of live data for the PGlite testbed and the before/after renders.
 // It contains personal data, so it is written to %TEMP%\rgc-phase1 and must never be committed.
 // Usage: node tests/sql/snapshot.mjs [file name, default snapshot.json]
+// After release B the public key reads nothing; use a member login. In the app's browser console run
+//   JSON.parse(localStorage['sb-qvjybtcbymexheqrjkai-auth-token']).access_token
+// then:  $env:RGC_TOKEN='<token>'; node tests/sql/snapshot.mjs   (admin mode is needed for gps_shots rows other than your own)
 import fs from 'node:fs'; import path from 'node:path'; import os from 'node:os';
 const repo = path.resolve(import.meta.dirname, '../..');
 const key = fs.readFileSync(path.join(repo, 'CLAUDE.md'), 'utf8').match(/Key:\s+(\S+)/)[1];
 // x-app-version: the version gate (Phase 1) refuses requests without it.
-const H = { apikey: key, Authorization: 'Bearer ' + key, 'x-app-version': '3' };
+const H = { apikey: key, Authorization: 'Bearer ' + (process.env.RGC_TOKEN || key), 'x-app-version': '4' };
 // players.email and .pin are not readable with the public key; ask for the rest.
 const PLAYER_COLS = 'id,name,color,handicap,hcp_history,created_at,is_admin,approved,is_social,bag,dgu_number';
 const TABLES = ['players', 'rounds', 'fine_types', 'fines', 'fine_payments', 'saturday_events', 'saturday_signups',

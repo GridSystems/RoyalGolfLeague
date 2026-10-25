@@ -258,24 +258,38 @@
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.1/dist/umd/supabase.min.js" integrity="sha384-q36VSR1ktH2hgqgm+0LDeyqPW8CyZHSxfDSttSPm5ReOJzB+sYThmh7D4fE+jWTs" crossorigin="anonymous"></script>
 <script>
 // ── Supabase (survey_points) ───────────────────────────────────────────────
 const SB_URL  = 'https://qvjybtcbymexheqrjkai.supabase.co';
 const SB_KEY  = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF2anlidGNieW1leGhlcXJqa2FpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQzNDUyMDAsImV4cCI6MjA4OTkyMTIwMH0.ODg9C2HU4exSpTt5ABfODz_vz3v0Uz_tQsL3XAuWJ-4';
-const SB_H    = {'Content-Type':'application/json','apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'x-app-version':'3'}; // version gate: keep in step with APP_VERSION in index.html
+const SB_H    = {'Content-Type':'application/json','apikey':SB_KEY,'x-app-version':'4'}; // version gate: keep in step with APP_VERSION in index.html
+// Same origin as index.html, so this client shares the app's stored login. The token is fetched per request: getSession() refreshes it.
+let _sb=null;
+async function sbHeaders(extra){
+  _sb=_sb||window.supabase.createClient(SB_URL,SB_KEY,{auth:{flowType:'pkce',persistSession:true,autoRefreshToken:true}});
+  const {data}=await _sb.auth.getSession();
+  if(!data||!data.session)throw new Error('Sign in to the Saturday League app on this device first');
+  return {...SB_H,'Authorization':'Bearer '+data.session.access_token,...extra};
+}
+// 42501 / 401: the database refused the write because admin mode (a TOTP code in the last 12 hours) isn't active.
+async function sbFail(r){
+  const t=await r.text();
+  return new Error(r.status===401||t.includes('42501')?'Unlock admin mode in the app (Admin tab), then try again':t);
+}
 async function sbSurveyGet(){
-  const r=await fetch(`${SB_URL}/rest/v1/survey_points?select=*&order=recorded_at.asc`,{headers:SB_H});
-  if(!r.ok)throw new Error(await r.text());
+  const r=await fetch(`${SB_URL}/rest/v1/survey_points?select=*&order=recorded_at.asc`,{headers:await sbHeaders()});
+  if(!r.ok)throw await sbFail(r);
   return r.json();
 }
 async function sbSurveyInsert(b){
-  const r=await fetch(`${SB_URL}/rest/v1/survey_points`,{method:'POST',headers:{...SB_H,'Prefer':'return=representation'},body:JSON.stringify(b)});
-  if(!r.ok)throw new Error(await r.text());
+  const r=await fetch(`${SB_URL}/rest/v1/survey_points`,{method:'POST',headers:await sbHeaders({'Prefer':'return=representation'}),body:JSON.stringify(b)});
+  if(!r.ok)throw await sbFail(r);
   return r.json();
 }
 async function sbSurveyDelete(id){
-  const r=await fetch(`${SB_URL}/rest/v1/survey_points?id=eq.${id}`,{method:'DELETE',headers:SB_H});
-  if(!r.ok)throw new Error(await r.text());
+  const r=await fetch(`${SB_URL}/rest/v1/survey_points?id=eq.${id}`,{method:'DELETE',headers:await sbHeaders()});
+  if(!r.ok)throw await sbFail(r);
 }
 
 // ── Auto-detect tile coordinate utilities ────────────────────────────────
@@ -499,19 +513,19 @@ const HOLE_TEES=[
 async function sbUpsertGreenPolygon(hole,vertices){
   const r=await fetch(`${SB_URL}/rest/v1/green_polygons?on_conflict=hole`,{
     method:'POST',
-    headers:{...SB_H,'Prefer':'resolution=merge-duplicates,return=minimal'},
+    headers:await sbHeaders({'Prefer':'resolution=merge-duplicates,return=minimal'}),
     body:JSON.stringify({hole,vertices})
   });
-  if(!r.ok)throw new Error(await r.text());
+  if(!r.ok)throw await sbFail(r);
 }
 
 async function sbUpsertTeeStrips(hole, strips) {
   // Delete all existing strips for this hole (handles renumbering cleanly)
   const del = await fetch(`${SB_URL}/rest/v1/tee_strips?hole=eq.${hole}`, {
     method: 'DELETE',
-    headers: SB_H
+    headers:await sbHeaders()
   });
-  if (!del.ok) throw new Error(await del.text());
+  if (!del.ok) throw await sbFail(del);
 
   if (!strips.length) return; // nothing to insert
 
@@ -526,44 +540,44 @@ async function sbUpsertTeeStrips(hole, strips) {
   }));
   const ins = await fetch(`${SB_URL}/rest/v1/tee_strips`, {
     method: 'POST',
-    headers: { ...SB_H, 'Prefer': 'return=minimal' },
+    headers:await sbHeaders({'Prefer': 'return=minimal'}),
     body: JSON.stringify(rows)
   });
-  if (!ins.ok) throw new Error(await ins.text());
+  if (!ins.ok) throw await sbFail(ins);
 }
 async function sbUpsertFairwayPolygons(hole, polygons) {
   if (!polygons.length) {
     // No polygons left — delete the row
     const r = await fetch(`${SB_URL}/rest/v1/fairway_polygons?hole=eq.${hole}`, {
       method: 'DELETE',
-      headers: SB_H
+      headers:await sbHeaders()
     });
-    if (!r.ok) throw new Error(await r.text());
+    if (!r.ok) throw await sbFail(r);
     return;
   }
   const r = await fetch(`${SB_URL}/rest/v1/fairway_polygons?on_conflict=hole`, {
     method: 'POST',
-    headers: { ...SB_H, 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+    headers:await sbHeaders({'Prefer': 'resolution=merge-duplicates,return=minimal'}),
     body: JSON.stringify({ hole, polygons })
   });
-  if (!r.ok) throw new Error(await r.text());
+  if (!r.ok) throw await sbFail(r);
 }
 async function sbUpsertFairwaySpines(hole, waypoints) {
   if (!Array.isArray(waypoints) || waypoints.length === 0) {
     // Empty waypoints means straight line — delete the row entirely
     const r = await fetch(`${SB_URL}/rest/v1/fairway_spines?hole=eq.${hole}`, {
       method: 'DELETE',
-      headers: SB_H
+      headers:await sbHeaders()
     });
-    if (!r.ok) throw new Error(await r.text());
+    if (!r.ok) throw await sbFail(r);
     return;
   }
   const r = await fetch(`${SB_URL}/rest/v1/fairway_spines?on_conflict=hole`, {
     method: 'POST',
-    headers: { ...SB_H, 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+    headers:await sbHeaders({'Prefer': 'resolution=merge-duplicates,return=minimal'}),
     body: JSON.stringify({ hole, waypoints })
   });
-  if (!r.ok) throw new Error(await r.text());
+  if (!r.ok) throw await sbFail(r);
 }
 
 // ── Survey feature config ──────────────────────────────────────────────────

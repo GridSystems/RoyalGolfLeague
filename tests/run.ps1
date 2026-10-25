@@ -1,14 +1,14 @@
-# Runs one browser test file against a copy of index.html in headless Chrome.
+# Runs one browser test file against a copy of a page (default index.html) in headless Chrome.
 # Network is blocked (DNS mapped to 127.0.0.1:1) so nothing reaches Supabase.
-param([Parameter(Mandatory)][string]$Test, [string]$Data)
+param([Parameter(Mandatory)][string]$Test, [string]$Data, [string]$Page = 'index.html')
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 $work = Join-Path $env:TEMP 'rgc-tests'; New-Item -ItemType Directory -Force $work | Out-Null
-$page = Join-Path $work 'page.html'; $dump = Join-Path $work 'dump.html'
+$built = Join-Path $work 'page.html'; $dump = Join-Path $work 'dump.html'
 $dataArg = if ($Data) { (Resolve-Path $Data).Path } else { '""' }
-node (Join-Path $PSScriptRoot 'build-page.js') (Join-Path $root 'index.html') (Resolve-Path $Test).Path $dataArg $page
+node (Join-Path $PSScriptRoot 'build-page.js') (Join-Path $root $Page) (Resolve-Path $Test).Path $dataArg $built
 if ($LASTEXITCODE -ne 0) { 'BUILD FAILED'; exit 1 }
-$u = 'file:///' + ($page -replace '\\','/')
+$u = 'file:///' + ($built -replace '\\','/')
 Start-Process -Wait -NoNewWindow -FilePath 'C:\Program Files\Google\Chrome\Application\chrome.exe' -ArgumentList '--headless=new','--disable-gpu',"--user-data-dir=$work\profile",'--host-resolver-rules="MAP * 127.0.0.1:1"','--virtual-time-budget=10000','--dump-dom',$u -RedirectStandardOutput $dump -RedirectStandardError "$work\chrome.err"
 $d = Get-Content $dump -Encoding UTF8 -Raw
 $failed = $false
