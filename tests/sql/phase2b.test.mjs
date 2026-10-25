@@ -169,3 +169,40 @@ test('link by email still works after B1', async () => {
   await db.query(`UPDATE auth.users SET email_confirmed_at = now() WHERE id=$1`, [u]);
   assert.equal((await one(db, `SELECT user_id::text u FROM public.players WHERE id=$1`, [p])).u, u);
 });
+
+// ---- B2: phase2b_cleanup.sql ---------------------------------------------------------------
+const PIN_FNS = `'login','has_pin','check_pin','set_first_pin','admin_reset_pin','_check_pin'`;
+const cols = async db => (await db.query(`SELECT column_name c FROM information_schema.columns WHERE table_schema='public' AND table_name='players'`)).rows.map(r => r.c);
+
+test('cleanup refuses before B1', async () => {
+  const db = await releaseA();
+  assert.match(await run(db, sqlFile('phase2b_cleanup.sql')), /Run phase2b_enforce\.sql first/);
+  assert.ok((await cols(db)).includes('pin'));
+  assert.ok(await anonAll(db) > 10);
+});
+
+test('cleanup drops the PIN machinery and keeps members working', async () => {
+  const db = await world();
+  assert.equal(await run(db, sqlFile('phase2b_cleanup.sql')), null);
+  assert.equal((await one(db, `SELECT count(*)::int n FROM pg_proc WHERE pronamespace='public'::regnamespace AND proname IN (${PIN_FNS})`)).n, 0);
+  const c = await cols(db);
+  for (const gone of ['pin', 'pin_failures', 'pin_locked_until', 'legacy_id']) assert.ok(!c.includes(gone), gone);
+  for (const kept of ['email', 'user_id']) assert.ok(c.includes(kept), kept);
+  assert.equal((await one(db, `SELECT to_regnamespace('phase2b_backup') n`)).n, null);
+  assert.ok(!/legacy_id/.test((await one(db, `SELECT pg_get_functiondef('private.protect_player_fields'::regproc) d`)).d));
+  // Members still read players and update their own profile; protected fields stay protected.
+  await as(db, await persona(db, { playerId: 2 }));
+  assert.ok((await db.query(`SELECT id FROM public.players`)).rows.length > 10);
+  assert.equal((await db.query(`UPDATE public.players SET name='Renamed' WHERE id=2`)).affectedRows, 1);
+  // Past the column grants, so the trigger itself is what refuses (same claims, owner role).
+  await db.exec('RESET ROLE');
+  for (const set of ['is_admin = true', `email = 'x@y.dk'`])
+    await assert.rejects(db.query(`UPDATE public.players SET ${set} WHERE id=2`),
+      e => e.code === '42501' && /Only an admin in admin mode/.test(e.message), set);
+});
+
+test('cleanup re-run is harmless', async () => {
+  const db = await world();
+  assert.equal(await run(db, sqlFile('phase2b_cleanup.sql')), null);
+  assert.equal(await run(db, sqlFile('phase2b_cleanup.sql')), null);
+});
