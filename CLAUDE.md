@@ -39,7 +39,6 @@ hcp_history  jsonb  [{date, value, note}] — sorted ascending by date
 is_admin     boolean
 created_at   timestamptz
 archived_at  timestamptz (null = active; set by "Remove player")
-legacy_id    bigint (pre-Phase-1 timestamp id; dropped by phase2b_cleanup.sql)
 ```
 
 **rounds**
@@ -85,11 +84,10 @@ run, it has removed the old PIN route's `anon_all` policies and every anonymous 
 `public`: the public key then gets 401 on every table and function except `require_current_app()`
 (the version gate, which must answer 426) and Supabase Auth. Only signed-in members reach the
 data. (`anon` keeps dormant EXECUTE on `private.*`, unreachable without schema USAGE.)
-*Release B SQL status: B1 (`phase2b_enforce.sql`) run 2026-10-25 — verified from outside: public key gets 401 everywhere, version 3 gets 426. B2 (`phase2b_cleanup.sql`) not yet run — due from 2026-11-01. Update this line when it is.*
+*Release B SQL status: B1 (`phase2b_enforce.sql`) run 2026-10-25 — verified from outside: public key gets 401 everywhere, version 3 gets 426. B2 (`phase2b_cleanup.sql`) run 2026-10-25 — verified: the PIN functions are gone (404). `phase1_cleanup.sql` and `drop_readonly_user.sql` also run that day.*
 
 **Credentials are hidden (Phase 0, 2026-09-24):** `players.email` is readable by no API
-role — SELECT/UPDATE on `players` are column-level grants. PINs are going: once B1 has run the
-PIN functions are revoked, and once `phase2b_cleanup.sql` (B2) has run it drops them, the `pin`/`pin_failures`/
+role — SELECT/UPDATE on `players` are column-level grants. PINs are gone: B2 (`phase2b_cleanup.sql`) dropped the PIN functions, the `pin`/`pin_failures`/
 `pin_locked_until` columns and `legacy_id`. `email` stays until the Admin tab's move-over
 list is empty, because `private.link_login` matches a new login by it.
 **Adding a column to `players`?** Add it to `PLAYER_COLS` in `index.html` *and* to the
@@ -437,8 +435,8 @@ A second tournament format beside the one-day team event: `tournaments.format='l
   callable) into `audit_log` (admin-only read, self-trims after 12 months); triggers
   on `auth.users`/`auth.mfa_factors` catch `OTHERS` and only `RAISE WARNING` — a
   logging failure must never block a login. Rollback: `supabase/phase2a_rollback.sql`
-  (re-applicable afterwards). After B1, run `phase2b_rollback.sql` first; after B2,
-  `phase2a_rollback.sql` can't be used.
+  (re-applicable afterwards). B2 has run, so neither
+  `phase2b_rollback.sql` nor `phase2a_rollback.sql` can be used any more.
 
 ---
 
