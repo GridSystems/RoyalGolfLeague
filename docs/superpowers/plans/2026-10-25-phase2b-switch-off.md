@@ -215,7 +215,8 @@
 
 1. **Push app version 4.** PIN-only players now see the "PIN sign-in has ended" line. Old version-3 tabs keep working until step 3. Wait **at least 10 minutes** (Pages `max-age=600`). Check that `https://gridsystems.github.io/RoyalGolfLeague/?v=4` shows no "Use my old PIN".
 2. **Rehearse** `supabase/phase2b_enforce.sql` in the SQL Editor as it is (switch `true`). Expected: `REHEARSAL OK` with `ALL CHECKS PASSED`.
-3. **Real run**: switch to `false`, then run.
+   If B1's checks raise about objects in `public` that `postgres` doesn't own, stop and tell Claude. Don't force it.
+3. **Real run**: switch to `false`, then run. Then re-run `supabase/grants.sql` (authenticated only; it refuses while any table has RLS off, so rehearse that the same way if in doubt).
 4. **Live checks (Claude can do these from outside):**
    - the public key gets 401 on `rounds`, `players?select=id,name` and `rpc/check_pin`;
    - a request with `x-app-version: 3` gets 426;
@@ -223,6 +224,8 @@
    - course mapper loads after signing in to the app;
    - the next Friday-noon draw happens.
 5. **A week later, if nothing looks wrong:** run `supabase/phase2b_cleanup.sql`.
-6. **Later, once the move-over list is empty:** drop `players.email` (separate change).
+   After B2, `phase2b_rollback.sql` and `phase2a_rollback.sql` can no longer be re-applied.
+6. **Standing rules afterwards:** create tables in the SQL editor (dashboard-created tables run as `supabase_admin` and still get Supabase's default grants), enable RLS, add `p2_*` policies, re-run `grants.sql`. Functions created later need an explicit `GRANT EXECUTE … TO authenticated`.
+7. **Later, once the move-over list is empty:** drop `players.email` (separate change).
 
 Rollback before step 5: `supabase/phase2b_rollback.sql`. App v4 can stay.

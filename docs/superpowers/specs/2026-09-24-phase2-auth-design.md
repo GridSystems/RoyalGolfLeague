@@ -152,6 +152,12 @@ audit_log(id bigint identity, at timestamptz default now(), actor_player_id bigi
 2. **App:** remove the PIN route, `reconcileStoredPlayer`, `legacy_id` from `PLAYER_COLS`;
    `APP_VERSION=4`.
 
+**As built:** see `docs/superpowers/plans/2026-10-25-phase2b-switch-off.md`. Four deviations: (1)
+`players.email` stays (it is the "Set it up" matching key) until the move-over list is empty;
+(2) release B is split into B1 `phase2b_enforce.sql` (reversible) and B2 `phase2b_cleanup.sql`
+(a week later, destructive); (3) the app ships first, since v4 works on a gate-3 database;
+(4) `course-mapper.html` and `tests/sql/snapshot.mjs` move to a member's login.
+
 ## Testing
 
 - **RLS matrix (PGlite):** stand-in `auth` schema (`auth.users`, `auth.uid()`, `auth.jwt()` reading
