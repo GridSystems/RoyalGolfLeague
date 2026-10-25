@@ -48,6 +48,19 @@ setTimeout(async function(){
     await saveGroupRound();
     T('declining the removal saves nothing',!deletes.length&&!patches.length);
     window.confirm=()=>true;
+
+    // ── Pickups count towards the 9-hole minimum (8 scores + 4 pickups = 12 played) ──
+    setup();HE.scores[2]=Array(18).fill(4);HE.pickups[2]=Array(18).fill(false);
+    HE.scores[3]=[5,5,5,5,5,5,5,5,null,null,null,null,...Array(6).fill(null)];
+    HE.pickups[3]=[false,false,false,false,false,false,false,false,true,true,true,true,...Array(6).fill(false)];
+    await saveGroupRound();
+    T('8 scores + 4 pickups saves',!alerts.some(m=>/at least 9/.test(m))&&patches.some(x=>x.id===103),alerts.join(' | '));
+    setup();HE.scores[2]=Array(18).fill(4);HE.pickups[2]=Array(18).fill(false);
+    HE.scores[3]=[5,5,5,5,5,5,null,null,...Array(10).fill(null)];
+    HE.pickups[3]=[false,false,false,false,false,false,true,true,...Array(10).fill(false)];
+    await saveGroupRound();
+    T('6 scores + 2 pickups (8 played) is still blocked',alerts.some(m=>/at least 9 holes for Cy/.test(m))&&!patches.length,alerts.join(' | '));
+
     setup();deleteRows=()=>[];   // database refused (policy not applied yet)
     T('a refused delete still takes them out of the group',await heRemovePlayer(2)===true&&HE.playerList.length===2&&toasts.some(m=>/ask an admin/.test(m)));
     T('the stored group forgets them',!JSON.parse(localStorage.getItem('sl_active_group')).players.some(x=>x.id===2));

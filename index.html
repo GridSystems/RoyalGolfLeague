@@ -5686,7 +5686,9 @@ async function saveGroupRound(){
     const filled=HE.scores[p.id].filter(x=>x!==null).length;
     // No scores at all is a no-show (every hole picked up): offer to remove them, don't block the group
     if(!filled){if(!await heRemovePlayer(p.id))return;continue;}
-    if(filled<9){alert(`Enter at least 9 scores for ${p.name}.`);return;}
+    // A pickup is a completed hole (0 points), so it counts towards the 9 played
+    const played=HE.scores[p.id].filter((x,i)=>x!==null||HE.pickups?.[p.id]?.[i]).length;
+    if(played<9){alert(`Enter at least 9 holes for ${p.name} (a pickup counts).`);return;}
   }
   if(!HE.playerList.length)return;
   // Check rounds still exist in DB
