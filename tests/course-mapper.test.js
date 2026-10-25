@@ -53,6 +53,18 @@ setTimeout(async function(){
     const dc=[];w.fetch=async(u,o)=>{dc.push(o);return{ok:true,status:200,json:async()=>[],text:async()=>'[]'};};
     w.__alerts.length=0;await w.deleteSurveyPoint(7);
     T('empty delete result is admin mode',w.__alerts.some(m=>m.includes('Unlock admin mode in the app (Admin tab), then try again'))&&w.eval('surveyPoints.length')===1&&dc[0].headers.Prefer==='return=representation',JSON.stringify([w.__alerts,dc[0]&&dc[0].headers]));
+    // Stored XSS: a survey point type and a server error message are text, never markup.
+    const X=`Bo<img src=x onerror="window.__xss=1"><b id=xssB>"q" O'Neil');window.__xss=2;//`,clean=()=>!w.document.querySelector('img[src="x"],#xssB');
+    w.__X=X;w.eval("surveyPanelOpen=true;surveySampling=null;surveyHole=1;surveyPoints=[{id:8,hole:1,type:__X,accuracy:3}];");
+    if(!w.document.getElementById('surveyPanelBody'))w.document.body.insertAdjacentHTML('beforeend','<div id="surveyPanelBody"></div>');
+    w.renderSurveyPanel();
+    T('xss: survey point type is text',clean()&&w.document.getElementById('surveyPanelBody').textContent.includes("O'Neil"),w.document.getElementById('surveyPanelBody').innerHTML.slice(0,200));
+    w.eval("surveyPanelOpen=false;surveySampling={type:'tee',samples:[{coords:{latitude:1,longitude:2,accuracy:3}}]};");
+    w.sbSurveyInsert=async()=>{throw new Error(X);};
+    w.document.body.insertAdjacentHTML('beforeend','<div class="sv-gps-row"></div>');
+    await w.finishSampling();
+    T('xss: a save error is text',clean()&&[...w.document.querySelectorAll('.sv-gps-row')].some(r=>r.textContent.includes("O'Neil")),'');
+    await new Promise(r=>setTimeout(r,50));T('xss: no script ran',w.__xss===undefined,String(w.__xss));
     fr.remove();
 
     tokens.push('t4');respond=()=>({__status:500,code:'XX'});msg='';

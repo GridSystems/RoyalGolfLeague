@@ -264,6 +264,8 @@
 const SB_URL  = 'https://qvjybtcbymexheqrjkai.supabase.co';
 const SB_KEY  = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF2anlidGNieW1leGhlcXJqa2FpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQzNDUyMDAsImV4cCI6MjA4OTkyMTIwMH0.ODg9C2HU4exSpTt5ABfODz_vz3v0Uz_tQsL3XAuWJ-4';
 const SB_H    = {'Content-Type':'application/json','apikey':SB_KEY,'x-app-version':'4'}; // version gate: keep in step with APP_VERSION in index.html
+// Text from the database or a server error goes into HTML only through this (same as index.html's escHtml).
+function escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 // Same origin as index.html, so this client shares the app's stored login. The token is fetched per request: getSession() refreshes it.
 let _sb=null;
 async function sbHeaders(extra){
@@ -1550,7 +1552,7 @@ async function finishDrawTee() {
     await sbUpsertTeeStrips(hole, teeStrips[hole]);
   } catch (err) {
     console.error('finishDrawTee:', err);
-    bar.innerHTML = '<span style="color:#e74c3c">⚠ Save failed — ' + err.message + '</span>' +
+    bar.innerHTML = '<span style="color:#e74c3c">⚠ Save failed — ' + escHtml(err.message) + '</span>' +
       '<button onclick="finishDrawTee()" style="padding:5px 12px;border-radius:5px;border:none;background:#2ecc71;color:#000;font-size:12px;font-weight:700;cursor:pointer">Retry</button>' +
       '<button onclick="cancelDrawTee()"  style="padding:5px 12px;border-radius:5px;border:none;background:#e94560;color:#fff;font-size:12px;font-weight:700;cursor:pointer">✕ Cancel</button>';
     return;
@@ -2155,7 +2157,7 @@ async function finishDrawFairway() {
   } catch (err) {
     console.error('finishDrawFairway:', err);
     bar.innerHTML =
-      '<span style="color:#e74c3c">⚠ Save failed — ' + err.message + '</span>' +
+      '<span style="color:#e74c3c">⚠ Save failed — ' + escHtml(err.message) + '</span>' +
       '<button onclick="finishDrawFairway()" style="padding:5px 12px;border-radius:5px;border:none;background:#2ecc71;color:#000;font-size:12px;font-weight:700;cursor:pointer">Retry</button>' +
       '<button onclick="cancelDrawFairway()" style="padding:5px 12px;border-radius:5px;border:none;background:#e94560;color:#fff;font-size:12px;font-weight:700;cursor:pointer">✕ Cancel</button>';
     return;
@@ -2285,7 +2287,7 @@ async function finishSpine() {
   } catch (err) {
     console.error('finishSpine:', err);
     bar.innerHTML =
-      '<span style="color:#e74c3c">⚠ Save failed — ' + err.message + '</span>' +
+      '<span style="color:#e74c3c">⚠ Save failed — ' + escHtml(err.message) + '</span>' +
       '<button onclick="finishSpine()" style="padding:5px 12px;border-radius:5px;border:none;background:#2ecc71;color:#000;font-size:12px;font-weight:700;cursor:pointer">Retry</button>' +
       '<button onclick="cancelSpine()" style="padding:5px 12px;border-radius:5px;border:none;background:#e94560;color:#fff;font-size:12px;font-weight:700;cursor:pointer">✕ Cancel</button>';
     return;
@@ -2842,7 +2844,7 @@ async function pushAllPolygons(){
       await sbUpsertGreenPolygon(h,verts);
       lines.push(`<span style="color:#27ae60">H${h}:✓</span>`);
     }catch(e){
-      lines.push(`<span style="color:#e74c3c" title="${e.message.replace(/"/g,'')}">H${h}:✗ ${e.message}</span>`);
+      lines.push(`<span style="color:#e74c3c" title="${escHtml(e.message)}">H${h}:✗ ${escHtml(e.message)}</span>`);
       console.error('pushAllPolygons hole',h,e);
     }
     logEl.innerHTML=lines.join(' ');
@@ -2992,7 +2994,7 @@ function renderSurveyPanel() {
     listHtml += '<div class="sv-list-empty">No points yet for this hole.</div>';
   } else {
     listHtml += '<div class="sv-list">' + labelled.map(p =>
-      `<div class="sv-list-item"><span class="sv-list-dot" style="background:${SURVEY_COLORS[p.type]||'#888'}"></span><span class="sv-list-name">${p.label}</span><span class="sv-list-acc">±${p.accuracy.toFixed(0)}m</span><button class="sv-list-del" onclick="deleteSurveyPoint('${p.id}')">×</button></div>`
+      `<div class="sv-list-item"><span class="sv-list-dot" style="background:${SURVEY_COLORS[p.type]||'#888'}"></span><span class="sv-list-name">${escHtml(p.label)}</span><span class="sv-list-acc">±${p.accuracy.toFixed(0)}m</span><button class="sv-list-del" onclick="deleteSurveyPoint('${p.id}')">×</button></div>`
     ).join('') + '</div>';
   }
 
@@ -3064,7 +3066,7 @@ async function finishSampling() {
   } catch(e) {
     console.error('Failed to save survey point:', e);
     const bar = document.querySelector('.sv-gps-row');
-    if (bar) { bar.innerHTML = '<span class="sv-gps-coords" style="color:#e74c3c">⚠ Save failed — ' + e.message + '</span>'; setTimeout(() => renderSurveyPanel(), 4000); }
+    if (bar) { bar.innerHTML = '<span class="sv-gps-coords" style="color:#e74c3c">⚠ Save failed — ' + escHtml(e.message) + '</span>'; setTimeout(() => renderSurveyPanel(), 4000); }
   }
 }
 
