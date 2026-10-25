@@ -4,8 +4,9 @@ setTimeout(async function(){
   const out=[];const T=(n,c,d='')=>out.push((c?'PASS ':'FAIL ')+n+(c?'':' :: '+d));
   const alerts=[],toasts=[],patches=[];let dbRows={};   // round id -> what the database holds
   window.toast=m=>toasts.push(m);window.setLoading=()=>{};window.confirm=()=>true;window.alert=m=>alerts.push(m);
-  window.sbUpdate=async(t,id,b)=>{patches.push({t,id,b});return[b];};
-  window.sbGet=async(t,q)=>{const id=+(/id=eq\.(\d+)/.exec(q)||[])[1];return dbRows[id]?[dbRows[id]]:[];};
+  const clone=x=>JSON.parse(JSON.stringify(x));let getDelay=0;   // getDelay: a slow read, for the race test
+  window.sbUpdate=async(t,id,b)=>{patches.push({t,id,b});dbRows[id]=clone(b);return[b];};
+  window.sbGet=async(t,q)=>{const id=+(/^id=eq\.(\d+)/.exec(q)||[])[1],row=dbRows[id]&&clone(dbRows[id]);if(getDelay)await new Promise(r=>setTimeout(r,getDelay));return row?[row]:[];};
   window.sbDelete=async(t,id)=>[{id}];window.startWeatherRefresh=()=>{};
   const P=(id,name)=>({id,name,color:id,hcp_history:[{date:'2026-01-01',value:18,note:''}],approved:true,is_social:false});
   const tick=()=>new Promise(r=>setTimeout(r,20));
@@ -33,7 +34,9 @@ setTimeout(async function(){
     setup();
     const link=btn(card(),/^A player stopped playing…$/),pad=document.getElementById('heKeypad');
     T('the link is on the card',!!link);
-    T('and not inside or beside the keypad',!!pad&&!pad.contains(link)&&link.parentElement!==pad.parentElement&&!link.closest('#heActions'));
+    for(let e=card();e;e=e.parentElement)if(getComputedStyle(e).display==='none')e.style.display='block';   // lay it out to measure
+    const gap=link.getBoundingClientRect().top-pad.getBoundingClientRect().bottom;
+    T('and well clear of the keypad, below a divider',!pad.contains(link)&&!link.closest('#heActions')&&gap>=40&&getComputedStyle(link.parentElement).borderTopStyle==='solid',gap);
     link.click();
     T('tapping it opens the picker',document.getElementById('stopModal').style.display==='flex');
     const names=[...body().querySelectorAll('button')].map(b=>b.textContent.trim());
@@ -104,6 +107,23 @@ setTimeout(async function(){
     setup();const other=holes(HE.scores[2],HE.pickups[2],Array.from({length:18},(_,i)=>i>=12));
     dbRows={102:{holes:other}};await hePatchRound(2);
     T('a merge keeps the other phone\'s stopped flags',lastPatch(102).holes.slice(12).every(h=>h.stopped)&&HE.stopped[2].slice(12).every(Boolean));
+    // The other phone then undoes (the database loses the flags): this phone's next PATCH must not put them back
+    dbRows[102]={holes:holes(HE.scores[2],HE.pickups[2])};await hePatchRound(2);
+    T('after the other phone\'s Undo, the next PATCH here leaves them cleared',!lastPatch(102).holes.some(h=>h.stopped)&&!HE.stopped[2].some(Boolean),JSON.stringify(lastPatch(102).holes));
+    // A stop made while a hole PATCH is still reading the database
+    setup();dbRows={102:{holes:holes(HE.scores[2],HE.pickups[2])}};getDelay=60;
+    const inFlight=hePatchRound(2);await tick();getDelay=0;
+    await stopBo();await inFlight;await new Promise(r=>setTimeout(r,100));
+    T('a stop made during an in-flight PATCH sticks',dbRows[102].holes.slice(12).every(h=>h.stopped)&&HE.stopped[2].slice(12).every(Boolean)&&!HE.stopDirty[2],JSON.stringify(dbRows[102].holes.map(h=>!!h.stopped)));
+
+    // ── Two players with the same first name ──
+    setup();players.push(P(4,'Bo Dahl'));HE.playerList.push({p:players[3],phcp:18,tee:getTee('platinum'),teeId:'platinum'});
+    HE.scores[4]=[...HE.scores[2]];HE.pickups[4]=Array(18).fill(false);HE.roundIds[4]=104;allRounds.push({id:104,player_id:4,date:today(),holes:[]});heRender();
+    btn(card(),/stopped playing/).click();const nm=[...body().querySelectorAll('button')].map(b=>b.textContent.trim());
+    T('two Bos are told apart by full name',nm.includes('Bo Berg')&&nm.includes('Bo Dahl')&&nm.includes('Ann'),nm.join('|'));
+    btn(body(),/^Bo Dahl$/).click();
+    T('and the confirmation names the right one',/^Bo Dahl stopped after hole 12\?/.test(body().textContent.trim())&&!!btn(body(),/^Yes, Bo Dahl stopped$/),body().textContent);
+    closeModal('stopModal');
 
     // ── Finished for progress, not played for points ──
     setup();await stopBo();
@@ -111,7 +131,7 @@ setTimeout(async function(){
     localStorage.removeItem('sl_active_group');activeId=2;checkForResumableRounds();
     T("the resume offer no longer lists Bo's round",document.getElementById('resumePanel').style.display==='none');
     activeId=1;resumingRound=null;
-    T('nor does the group-resume list',!resumeCandidateRounds().some(r=>r.id===102));
+    T('but the group-resume list keeps a stopped team-mate',resumeCandidateRounds().some(r=>r.id===102));
     const p2=players[1],pts=calcHolePoints(bo,p2);
     T('stopped holes score no points',pts.slice(12).every(x=>x===null)&&pts.slice(0,12).filter(Boolean).length===11);
     const ecl=eclecticCard(p2,[bo],0.95);
@@ -149,6 +169,16 @@ setTimeout(async function(){
     await heInit(players.map(p=>({p,index:18,teeId:'platinum'})),today(),'',1);
     T('heInit adopts the stopped round',HE.roundIds[2]===102&&inserted===2,`${HE.roundIds[2]} / ${inserted}`);
     T('and restores its stopped holes',!!HE.stopped&&HE.stopped[2].slice(12).every(Boolean)&&!HE.stopped[2].slice(0,12).some(Boolean));
+    // ── Manual "Continue →" resume: the start hole is inferred, a stopped team-mate comes along ──
+    players=[P(1,'Ann Ash'),P(2,'Bo Berg')];activeId=1;localStorage.removeItem('sl_active_group');
+    const tenth=stop=>Array.from({length:18},(_,i)=>({hole:i+1,score:i>=9&&i<=13?4:null,par:HOLE_PARS[i],hcp:HOLE_HCP[i],...(stop&&!(i>=9&&i<=13)?{stopped:true}:{})}));
+    allRounds=[{id:201,player_id:1,date:today(),tee_id:'57',holes:tenth(false)},{id:202,player_id:2,date:today(),tee_id:'57',holes:tenth(true)}];
+    T('inferStartHole: 10–14 played is a 10th-tee start (1–7 played is a 1st)',inferStartHole(allRounds.map(r=>r.holes))===10&&inferStartHole([tenth(false).map((h,i)=>({...h,score:i<7?4:null}))])===1);
+    resumeRound(201);await startResumeEntry();
+    T('manual resume: startHole 10, opens on 15',HE.startHole===10&&HE.currentHole===15,`${HE.startHole}/${HE.currentHole}`);
+    T('manual resume brings the stopped team-mate, still stopped',HE.playerList.some(x=>x.p.id===2)&&/Stopped after 14/.test(card().textContent));
+    HE.stopped[2]=Array(18).fill(false);const plan=heStopPlan(2);
+    T('and stopping again follows the real play order',!!plan&&plan.after===14&&plan.holes.join()==='15,16,17,18,1,2,3,4,5,6,7,8,9',JSON.stringify(plan));
     // ── end ──
   }catch(e){out.push('FAIL EXCEPTION :: '+e.stack);}
   localStorage.removeItem('sl_active_group');

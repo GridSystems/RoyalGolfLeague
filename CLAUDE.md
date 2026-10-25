@@ -268,7 +268,9 @@ Per-player best nett score per hole across the season. Ranked by total nett. "My
    DB change. The flow skips them, their row shows "Stopped after N · Undo", Today shows
    "Stopped after N". `holeDone()` (score, pickup or stopped) is the "done" test for progress and
    resume; points, the 9-hole Save minimum, records and the eclectic still count only scores and
-   pickups. The dual-scorer merge keeps the other phone's flag unless this phone just undid it.
+   pickups. On an unplayed hole the database owns `stopped` unless this phone changed it since its
+   last good write (`HE.stopDirty`); `hePatchRound` runs one at a time per round, so a stale patch
+   can't land last. Rounds store no start hole: a manual resume infers it (`inferStartHole`).
 
 **GPS off-course guard:** `COURSE_BOUNDS` is the course plus ~1 km; five consecutive fixes
 outside it stop the GPS watch. Fixes vaguer than `GPS_OOB_MAX_ACC_M` (100 m) never count.

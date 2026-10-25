@@ -3016,17 +3016,25 @@ const heLive=(pid,h)=>!HE.stopped?.[pid]?.[h-1];
 function heStopPlan(pid){const order=heOrderedHoles(HE.startHole),last=order.map(h=>hePlayed(pid,h)).lastIndexOf(true);
   return last<0||last===17?null:{after:order[last],holes:order.slice(last+1),kept:order.filter(h=>hePlayed(pid,h)).length};}
 const heStopCandidates=()=>HE.playerList.filter(({p})=>!HE.stopped?.[p.id]?.some(Boolean)&&heStopPlan(p.id));
+// The longest run of holes nobody in the group has played (wrapping 18→1) ends just before the start
+function inferStartHole(cards){
+  const pl=i=>cards.some(c=>{const h=c?.[(i+18)%18];return h&&(h.score!=null||h.pickup);});let best=0,start=1;
+  for(let i=0;i<18;i++)if(pl(i)&&!pl(i-1)){let n=1;while(n<18&&!pl(i-1-n))n++;if(n>best){best=n;start=i+1;}}
+  return start;
+}
+// First name, unless someone else in the group shares it
+const heName=p=>{const f=p.name.split(' ')[0];return escHtml(HE.playerList.some(x=>x.p.id!==p.id&&x.p.name.split(' ')[0]===f)?p.name:f);};
 const holeList=hs=>hs.reduce((a,h,i)=>{if(i&&h===hs[i-1]+1)a[a.length-1][1]=h;else a.push([h,h]);return a;},[]).map(([a,b])=>a===b?a:`${a}–${b}`).join(', ');
 function heStopPick(){
   heFlushInputs();const list=heStopCandidates();if(!list.length)return;
   document.getElementById('stopModalTitle').textContent='Who stopped playing?';
-  document.getElementById('stopModalBody').innerHTML=list.map(({p})=>`<button class="btn btn-ghost" onclick="heStopAsk(${p.id})" style="border-left:4px solid ${clr(p)}">${escHtml(p.name.split(' ')[0])}</button>`).join('')
+  document.getElementById('stopModalBody').innerHTML=list.map(({p})=>`<button class="btn btn-ghost" onclick="heStopAsk(${p.id})" style="border-left:4px solid ${clr(p)}">${heName(p)}</button>`).join('')
     +`<div style="display:flex;justify-content:flex-end"><button class="btn btn-ghost btn-sm" onclick="closeModal('stopModal')">Cancel</button></div>`;
   document.getElementById('stopModal').style.display='flex';
 }
 function heStopAsk(pid){
   const pl=HE.playerList.find(x=>x.p.id===pid),plan=heStopPlan(pid);if(!pl||!plan)return;
-  const n=escHtml(pl.p.name.split(' ')[0]),k=plan.kept,m=plan.holes.length;
+  const n=heName(pl.p),k=plan.kept,m=plan.holes.length;
   document.getElementById('stopModalTitle').textContent='Stopped playing';
   document.getElementById('stopModalBody').innerHTML=`<div style="font-size:0.88rem;line-height:1.5">${n} stopped after hole ${plan.after}? Hole${m>1?'s':''} ${holeList(plan.holes)} will be marked not played. They keep their ${k} hole${k===1?'':'s'}.</div>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:0.4rem"><button class="btn btn-ghost btn-sm" onclick="closeModal('stopModal')">Cancel</button><button class="btn btn-primary btn-sm" onclick="heStopConfirm(${pid})">Yes, ${n} stopped</button></div>`;
@@ -3034,9 +3042,12 @@ function heStopAsk(pid){
 async function heStopConfirm(pid){
   closeModal('stopModal');const plan=heStopPlan(pid);if(!plan)return;
   if(!HE.stopped)HE.stopped={};const st=HE.stopped[pid]=Array(18).fill(false);plan.holes.forEach(h=>st[h-1]=true);
-  heRender();await hePatchRound(pid);
+  heStopDirty(pid);heRender();await hePatchRound(pid);
 }
-async function heUndoStop(pid){if(HE.stopped)HE.stopped[pid]=Array(18).fill(false);heRender();await hePatchRound(pid,true);}
+async function heUndoStop(pid){if(HE.stopped)HE.stopped[pid]=Array(18).fill(false);heStopDirty(pid);heRender();await hePatchRound(pid);}
+// The database is the authority on `stopped` unless this phone changed it since its last good write.
+// A counter, not a flag: a patch that started before the change must not clear it.
+const heStopDirty=pid=>{if(!HE.stopDirty)HE.stopDirty={};HE.stopDirty[pid]=(HE.stopDirty[pid]||0)+1;};
 
 let selectedStartHole=1;
 function setStartHole(val){
@@ -3217,8 +3228,12 @@ function saveActiveGroup(){
 }
 
 // Silently PATCH the round for a player with current scores — no spinner, fire-and-forget
-async function hePatchRound(pid,undo){   // undo: drop stopped flags even if the database still has them
+// One at a time per round, so an older patch can't land after a newer one.
+const _hePatchQ={};
+function hePatchRound(pid){return _hePatchQ[pid]=(_hePatchQ[pid]||Promise.resolve()).then(()=>hePatchRoundNow(pid)).catch(e=>console.warn('Patch failed for',pid,e));}
+async function hePatchRoundNow(pid){
   const rid=HE.roundIds[pid];if(!rid)return;
+  const dirty=HE.stopDirty?.[pid]||0;
   // Check round still exists locally — if deleted by admin, abort and redirect
   if(!allRounds.find(x=>x.id===rid)){
     const p=HE.playerList.find(x=>x.p.id===pid);
@@ -3241,19 +3256,20 @@ async function hePatchRound(pid,undo){   // undo: drop stopped flags even if the
       holes=local.map((mine,i)=>{
         if(mine.score!=null||mine.pickup)return mine;
         const theirs=cur.holes[i];
-        // Neither has played it: the other phone's stopped flag stands, unless this one just undid it
-        if(!theirs||(theirs.score==null&&!theirs.pickup))return !undo&&theirs?.stopped&&!mine.stopped?{...mine,stopped:true}:mine;
+        // Neither has played it: `stopped` is the database's, unless this phone changed it (heStopDirty)
+        if(!theirs||(theirs.score==null&&!theirs.pickup)){const{stopped:_,...m}=mine;return(dirty?mine.stopped:theirs?.stopped)?{...m,stopped:true}:m;}
         return{hole:i+1,score:theirs.pickup?null:(theirs.score??null),par:HOLE_PARS[i],hcp:HOLE_HCP[i],...(theirs.pickup?{pickup:true}:{})};
       });
       // Reflect the other scorer's holes back into this device so the card shows them
       HE.scores[pid]=holes.map(h=>h.pickup?null:(h.score??null));
       if(HE.pickups&&HE.pickups[pid])HE.pickups[pid]=holes.map(h=>!!h.pickup);
-      if(HE.stopped)HE.stopped[pid]=holes.map(h=>!!h.stopped);
+      if(HE.stopped&&(HE.stopDirty?.[pid]||0)===dirty)HE.stopped[pid]=holes.map(h=>!!h.stopped);   // not over a stop made meanwhile
     }
   }catch(e){console.warn('Merge read failed, writing local only for',pid,e);}
   try{
     await sbUpdate('rounds',rid,{holes});
     const r=allRounds.find(x=>x.id===rid);if(r)r.holes=holes;
+    if(dirty&&HE.stopDirty?.[pid]===dirty)HE.stopDirty[pid]=0;
   }catch(e){console.warn('Patch failed for',pid,e);}
 }
 
@@ -3411,7 +3427,7 @@ function heRender(){
       </div>`:''}
     </div>
   </div>
-  ${heStopCandidates().length?`<div style="text-align:center;margin-top:0.9rem"><button id="heStopLink" onclick="heStopPick()" style="background:none;border:0;padding:4px 8px;font-size:0.78rem;color:rgba(255,255,255,0.45);text-decoration:underline;cursor:pointer">A player stopped playing…</button></div>`:''}`;
+  ${heStopCandidates().length?`<div style="text-align:center;margin-top:2.5rem;padding-top:0.9rem;border-top:1px solid rgba(255,255,255,0.08)"><button id="heStopLink" onclick="heStopPick()" style="background:none;border:0;padding:4px 8px;font-size:0.78rem;color:rgba(255,255,255,0.45);text-decoration:underline;cursor:pointer">A player stopped playing…</button></div>`:''}`;
 
   window.scrollTo(0,_scrollY);
 
@@ -3644,7 +3660,7 @@ function resumeCandidateRounds(){
     // A pickup is played, not pending — counting it as unscored keeps finished rounds on offer
     const done=ar.holes.filter(holeDone).length;   // and so is a stopped one
     // Include partial rounds OR 0-scored rounds that were pre-created in the same tee time group
-    const isPartial=done>0&&done<18;
+    const isPartial=(done>0&&done<18)||hasStopped(ar);   // a stopped team-mate stays in the group
     const isGrouped=done===0&&myTeeTime&&ar.tee_time===myTeeTime;
     if(isPartial||isGrouped){seen.add(ar.player_id);return true;}
     return false;
@@ -3691,16 +3707,11 @@ async function startResumeEntry(){
   // pickup:true where HE.pickups says so — without this the next patch wipes every pickup.
   const pickups={[p.id]:r.holes.map(h=>h?!!h.pickup:false)},stopped={[p.id]:r.holes.map(h=>!!h?.stopped)};
   const roundIds={[p.id]:r.id};
-  // A pickup is stored with score:null but is NOT unplayed — skip it or we resume on a hole
-  // that's already done.
-  const firstUnscored=r.holes.find(h=>h&&!holeDone(h));
-  const startAtHole=firstUnscored?firstUnscored.hole:1;
-
   // Restore existing rounds for additional players — no new rounds created
   const td=today();
   for(const pid of resumeGroupPlayerIds){
     const ap=players.find(x=>x.id===pid);if(!ap)continue;
-    const apr=allRounds.find(ar=>ar.player_id===pid&&ar.date===td&&roundOpen(ar));
+    const apr=allRounds.find(ar=>ar.player_id===pid&&ar.date===td&&(roundOpen(ar)||hasStopped(ar)));
     if(!apr)continue;
     const aTee=getTee(apr.tee_id||'57');
     const aIndex=hcpOnDate(ap,apr.date);
@@ -3711,8 +3722,12 @@ async function startResumeEntry(){
     playerList.push({p:ap,phcp:aPhcp,index:aIndex,tee:aTee,teeId:apr.tee_id||'57'});
   }
 
+  // The round stores no start hole: infer it, then open on the first hole anyone still needs
+  // (a pickup or a stopped hole is not unplayed).
+  const startHole=inferStartHole(playerList.map(({p})=>allRounds.find(x=>x.id===roundIds[p.id])?.holes));
+  const startAtHole=heOrderedHoles(startHole).find(h=>playerList.some(({p})=>scores[p.id][h-1]==null&&!pickups[p.id][h-1]&&!stopped[p.id][h-1]))||startHole;
   groupPlayerIds=playerList.map(x=>x.p.id);
-  HE={playerList,scores,pickups,stopped,roundIds,currentHole:startAtHole,currentPidx:0,startHole:startAtHole,date:r.date,notes:r.notes||''};
+  HE={playerList,scores,pickups,stopped,roundIds,currentHole:startAtHole,currentPidx:0,startHole,date:r.date,notes:r.notes||''};
   document.getElementById('logStep1b').style.display='none';
   document.getElementById('logStep2').style.display='block';
   resumingRound=null;resumeGroupPlayerIds=[];resumePlayerTees={};
