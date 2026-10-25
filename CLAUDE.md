@@ -85,7 +85,7 @@ run, it has removed the old PIN route's `anon_all` policies and every anonymous 
 `public`: the public key then gets 401 on every table and function except `require_current_app()`
 (the version gate, which must answer 426) and Supabase Auth. Only signed-in members reach the
 data. (`anon` keeps dormant EXECUTE on `private.*`, unreachable without schema USAGE.)
-*Release B SQL status: B1 not yet run; B2 not yet run. Update this line when they are run.*
+*Release B SQL status: B1 (`phase2b_enforce.sql`) run 2026-10-25 — verified from outside: public key gets 401 everywhere, version 3 gets 426. B2 (`phase2b_cleanup.sql`) not yet run — due from 2026-11-01. Update this line when it is.*
 
 **Credentials are hidden (Phase 0, 2026-09-24):** `players.email` is readable by no API
 role — SELECT/UPDATE on `players` are column-level grants. PINs are going: once B1 has run the
@@ -420,7 +420,7 @@ A second tournament format beside the one-day team event: `tournaments.format='l
   UPDATE/DELETE result — RLS filtering rows looks identical to "not found"); the app
   prompts once for the authenticator code (`requireAdminMode()`, shared across
   concurrent callers, throws on cancel) and retries. RLS policies are `p2_*`,
-  `TO authenticated`; release B dropped `anon_all` and every anon privilege — the Admin tab's
+  `TO authenticated`; release B (B1, 2026-10-25) dropped `anon_all` and every anon privilege in `public` — the Admin tab's
   move-over list tracks who still has to move to the new login. Every
   admin/auth-relevant change is written by `private.audit()` (never directly
   callable) into `audit_log` (admin-only read, self-trims after 12 months); triggers
