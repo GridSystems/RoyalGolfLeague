@@ -45,12 +45,12 @@ setTimeout(async function(){
   _session={user:{id:'u1'},access_token:''};
 
   // ── seed every user-text field with X ──
-  tees=[..._TEES_SEED,{id:'xss',name:X,color:'#123456',rating:70,slope:130,dist:Array(18).fill(300)}];
+  tees=[..._TEES_SEED,{id:X,name:'bad id',color:'#fff',rating:70,slope:130,dist:Array(18).fill(X)},{id:'xss',name:X,color:X,rating:70,slope:130,dist:Array(18).fill(300)}];
   const P=(id,x={})=>({id,name:X+' '+id,color:id%10,dgu_number:X,handicap:18,hcp_history:[{date:'2026-01-01',value:18,note:X}],approved:true,is_social:false,is_admin:false,bag:[X,'Driver'],archived_at:null,user_id:null,...x});
   players=[P(1,{is_admin:true,user_id:'u1'}),P(2),P(3,{is_social:true}),...[4,5,6,7,8,9,10,11,12,13,14,15,16].map(i=>P(i)),P(17,{archived_at:'2026-09-01T00:00:00Z'})];
   pendingPlayers=[P(50,{approved:false})];activeId=1;
   const holes=(n,s=4)=>HOLE_PARS.map((par,i)=>({hole:i+1,score:i<n?s+(i%2):null,par,hcp:HOLE_HCP[i]}));
-  const R=(id,pid,date,n,x={})=>({id,player_id:pid,date,tee_id:'xss',tee_name:X,tee_color:'#123456',rating:70,slope:130,hcp_index:18,course_hcp:19,playing_hcp:18,notes:X,tee_time:X,holes:holes(n),...x});
+  const R=(id,pid,date,n,x={})=>({id,player_id:pid,date,tee_id:'xss',tee_name:X,tee_color:X,rating:70,slope:130,hcp_index:18,course_hcp:19,playing_hcp:18,notes:X,tee_time:X,holes:holes(n),...x});
   allRounds=[R(1,1,TD,5,{marker_holes:holes(5,6)}),R(2,2,TD,5),R(3,3,TD,4),R(4,4,TD,3),
     ...[1,2,3,4].flatMap(pid=>[R(10+pid,pid,'2026-10-17',18),R(20+pid,pid,'2026-10-10',18,{holes:holes(18,3)})]),
     ...[1,2,3,4].map(pid=>R(30+pid,pid,'2026-08-01',18,{holes:holes(18,1)}))];   // aces and eagles for the records rows
@@ -74,6 +74,10 @@ setTimeout(async function(){
     ...mlFixtures(G).map((r,i)=>({id:100+i,tournament_id:2,status:'pending',result:null,start_hole:1,outcome:'played',played_on:null,tee_id:null,team_a_p2_id:null,team_b_p2_id:null,_teeId:'xss',...r}))];
   tournamentScores=[[11,1,4],[11,3,5],[11,2,5],[11,4,6],[100,1,4],[100,4,5]].map(([match_id,player_id,gross],i)=>({id:i+1,match_id,hole:1,player_id,gross}));
   tmLoaded=true;
+  // Shaped the way loadData's rows are (sbGet → sbShape): what the database can hold, the app sees shaped.
+  tees=sbShape('tees',tees);players=sbShape('players',players);pendingPlayers=sbShape('players',pendingPlayers);allRounds=sbShape('rounds',allRounds);
+  T('shape: a tee with a bad id is dropped, a bad colour is null, dist numbers',!tees.some(t=>t.id===X)&&tees.dropped===1&&getTee('xss').color===null&&getTee('xss').dist[0]===300,JSON.stringify(getTee('xss')));
+  T('shape: a round tee_color that is not #hex is null',allRounds.every(r=>r.tee_color===null),allRounds[0].tee_color);
   const tee=getTee('xss');
   const startHE=()=>{HE={playerList:[1,2,3,4].map(id=>({p:players.find(p=>p.id===id),phcp:18,tee,teeId:'xss'})),
     scores:{1:[4,5,null,...Array(15).fill(null)],2:[5,4,null,...Array(15).fill(null)],3:Array(18).fill(null),4:[4,null,...Array(16).fill(null)]},
@@ -151,6 +155,9 @@ setTimeout(async function(){
     // ── Admin: everything, then the editing forms ──
     activeTournamentId=1;
     await step('Admin',()=>$('view-admin'),'full',async()=>{showView('admin',null);await tick(100);});
+    // Inside <select> the parser drops tags, so the img/#xssB checks can't fail there: compare option text instead.
+    for(const [id,n] of [['adminRoundPlayer',2],['satAddPlayer_'+sats[0],5]]){const o=[...document.querySelectorAll('#'+CSS.escape(id)+' option')];
+      T('option text is the raw name: #'+id,o.some(x=>x.textContent===X+' '+n)&&o.every(x=>!x.textContent.includes('Bo')||x.textContent.includes('<img')),o.map(x=>x.textContent).slice(0,3).join(' | '));}
     await step('Admin: audit log',()=>$('auditPanel'),'full',()=>renderAuditPanel());
     for(const id of [2,3])await step(`Admin: tournament ${id===2?'league (drawn)':'league (entries)'}`,()=>$('adminTournamentBody'),'full',()=>{activeTournamentId=id;renderAdminTournament();});
     await step('Admin: edit tee',()=>$('view-admin'),null,()=>{_editingTeeId='xss';renderAdminTees();});
@@ -177,7 +184,7 @@ setTimeout(async function(){
     // ── jsonb "numbers" a member writes themselves: shaped where API rows enter (sbGet/sbInsert/sbUpdate) ──
     {const S='<img src=x onerror="window.__xss=3">';
       const rawR={...R(90,2,TD,0),holes:HOLE_PARS.map((par,i)=>({hole:i===8?S:i+1,score:i<3?S:i<6?'5':i<9?4:null,par:i===0?S:par,hcp:i===1?'x':HOLE_HCP[i],...(i===6?{pickup:'yes'}:{}),...(i===7?{stopped:S}:{})})),marker_holes:[{hole:1,score:S,par:4,hcp:4}]};
-      const rawP={...P(2),hcp_history:[{date:'2026-01-01',value:S,note:X},{date:'2026-06-01',value:'14.2'}],bag:[X,7]};
+      const rawP={...P(2),hcp_history:[{date:'2026-01-01',value:S,note:X},{date:'2026-06-01',value:'14,2'},{date:'2026-07-01',value:'+2.1'},{date:'2026-08-01',value:'1,2,3'}],bag:[X,7]};
       const calls=[];window.fetch=async(url,o={})=>{calls.push(o.method||'GET');const body=JSON.stringify(String(url).includes('/rounds')?[rawR]:[rawP]);return{ok:true,status:200,json:async()=>JSON.parse(body),text:async()=>body};};
       const [r]=await realGet('rounds'),[p]=await realGet('players'),[u]=await realUpdate('rounds',90,{notes:'x'}),[ins]=await realInsert('players',{name:'x'});
       const h=r.holes;
@@ -185,7 +192,7 @@ setTimeout(async function(){
       T('shape: numeric strings become numbers, nulls stay null',h[3].score===5&&h[6].score===4&&h[10].score===null&&h[2].par===5,JSON.stringify([h[3],h[10]]));
       T('shape: flags are booleans, no keys added',h[6].pickup===false&&h[7].stopped===false&&!('pickup' in h[0])&&!('stopped' in h[0]),JSON.stringify([h[0],h[6],h[7]]));
       T('shape: marker_holes too',r.marker_holes[0].score===null&&r.marker_holes[0].hole===1,JSON.stringify(r.marker_holes));
-      T('shape: hcp_history value number-or-null, date and note strings',p.hcp_history[0].value===null&&p.hcp_history[1].value===14.2&&p.hcp_history[0].note===X&&typeof p.hcp_history[1].date==='string'&&!('note' in p.hcp_history[1]),JSON.stringify(p.hcp_history));
+      T('shape: hcp_history value number-or-null, date and note strings',p.hcp_history[0].value===null&&p.hcp_history[1].value===14.2&&p.hcp_history[2].value===2.1&&p.hcp_history[3].value===null&&p.hcp_history[0].note===X&&typeof p.hcp_history[1].date==='string'&&!('note' in p.hcp_history[1]),JSON.stringify(p.hcp_history));
       T('shape: bag entries are strings',p.bag[0]===X&&p.bag[1]==='7',JSON.stringify(p.bag));
       T('shape: sbUpdate and sbInsert rows are shaped too',u.holes[0].score===null&&ins.hcp_history[0].value===null&&calls.join()==='GET,GET,PATCH,POST',calls.join());
       players=players.map(x=>x.id===2?p:x);allRounds=[r,...allRounds];activeId=2;
@@ -196,6 +203,12 @@ setTimeout(async function(){
       await step('jsonb: Admin',()=>$('view-admin'),'full',async()=>{showView('admin',null);await tick(100);});
       await step('jsonb: admin round edit',()=>$('editRoundModal'),'full',()=>openEditRound(90));
       closeModal('editRoundModal');activeId=1;}
+    // ── loadData's tee seeding: an empty table is seeded; a table of only bad rows falls back without re-seeding ──
+    window.sbGet=realGet;window.sbInsert=realInsert;
+    for(const [rows,want] of [[[],'seeds'],[[{id:X,name:'bad',color:'#fff'}],'falls back']]){const posts=[];
+      window.fetch=async(url,o={})=>{url=String(url);if(o.method==='POST')posts.push(url);const b=url.includes('/tees?')&&o.method!=='POST'?rows:o.method==='POST'&&url.includes('/tees')?JSON.parse(o.body):[];return{ok:true,status:200,json:async()=>JSON.parse(JSON.stringify(b)),text:async()=>JSON.stringify(b)};};
+      await loadData();
+      T('loadData: a tees table '+(want==='seeds'?'with no rows seeds':'of only bad rows falls back'),tees.length===_TEES_SEED.length&&(want==='seeds')===posts.some(u=>u.includes('/tees')),posts.join());}
     await check('final sweep',document.body,null);
   }catch(e){out.push('FAIL EXCEPTION :: '+e.stack);}
   await new Promise(r=>setTimeout(r,150));

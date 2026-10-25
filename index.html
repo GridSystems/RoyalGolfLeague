@@ -922,19 +922,23 @@ const PLAYER_COLS='id,name,color,handicap,hcp_history,created_at,is_admin,approv
 const sbSel=t=>t==='players'?'select='+PLAYER_COLS:'';
 // Archived players (people who left) keep their history but are left out of every pick list.
 const activePlayers=()=>players.filter(p=>!p.archived_at);
-// Members write these jsonb fields themselves and the database doesn't type them, so a "score" could be
-// markup. Every API row is shaped here on the way in: numbers become finite numbers or null, flags booleans,
-// dates/notes strings. Only keys already present are touched. (Typed columns need nothing; admin-only jsonb —
-// tees.dist, tournaments.deadlines, saturday_events.tee_times — is left as it is.)
-const sbNum=v=>v==null?v:typeof v==='number'?(isFinite(v)?v:null):typeof v==='string'&&v.trim()!==''&&isFinite(+v)?+v:null;
-const sbHoles=hs=>Array.isArray(hs)?hs.map(h=>{if(!h||typeof h!=='object')return null;const o={...h};
-  for(const k of['hole','score','par','hcp'])if(k in o)o[k]=sbNum(o[k]);for(const k of['pickup','stopped'])if(k in o)o[k]=o[k]===true;return o;}):null;
-const SB_SHAPE={
-  rounds:r=>{if('holes' in r)r.holes=sbHoles(r.holes)||[];if('marker_holes' in r)r.marker_holes=sbHoles(r.marker_holes);},
-  players:p=>{if('hcp_history' in p)p.hcp_history=Array.isArray(p.hcp_history)?p.hcp_history.filter(e=>e&&typeof e==='object').map(e=>{const o={...e};
-      if('date' in o)o.date=String(o.date??'');if('value' in o)o.value=sbNum(o.value);if(o.note!=null)o.note=String(o.note);return o;}):[];
-    if('bag' in p)p.bag=Array.isArray(p.bag)?p.bag.map(String):null;}};
-function sbShape(t,rows){const f=SB_SHAPE[t];if(f&&Array.isArray(rows))rows.forEach(r=>{if(r&&typeof r==='object')f(r);});return rows;}
+// Members write these fields themselves and the database doesn't type them, so a "score" or a tee colour could
+// be markup. Every API row is shaped here on the way in: numbers → finite number or null, flags → booleans,
+// colours → #hex or null, dates/notes/clubs → strings. Only keys already present are touched.
+const sbNum=v=>v==null?v:(typeof v==='number'||typeof v==='string'&&v.trim())&&isFinite(+v)?+v:null;
+const sbHex=v=>/^#[0-9a-f]{3,8}$/i.test(v)?v:null;
+const sbHoles=hs=>Array.isArray(hs)?hs.map(h=>{if(!h||typeof h!=='object')return null;
+  for(const k of['hole','score','par','hcp'])if(k in h)h[k]=sbNum(h[k]);for(const k of['pickup','stopped'])if(k in h)h[k]=h[k]===true;return h;}):null;
+const SB_SHAPE={   // return false to drop a row
+  rounds:r=>{if('holes' in r)r.holes=sbHoles(r.holes)||[];if('marker_holes' in r)r.marker_holes=sbHoles(r.marker_holes);if('tee_color' in r)r.tee_color=sbHex(r.tee_color);},
+  players:p=>{if('hcp_history' in p)p.hcp_history=Array.isArray(p.hcp_history)?p.hcp_history.filter(e=>e&&typeof e==='object').map(e=>{
+      if('date' in e)e.date=String(e.date??'');   // legacy hand-typed "14,2" keeps its value
+      if('value' in e)e.value=sbNum(typeof e.value==='string'&&e.value.split(',').length===2?e.value.replace(',','.'):e.value);if(e.note!=null)e.note=String(e.note);return e;}):[];
+    if('bag' in p)p.bag=Array.isArray(p.bag)?p.bag.map(String):null;},
+  tees:t=>{if(!/^[A-Za-z0-9_-]+$/.test(t.id)){console.warn('tee row dropped — bad id:',t.id);return false;}
+    if('color' in t)t.color=sbHex(t.color);if('dist' in t)t.dist=Array.isArray(t.dist)?t.dist.map(sbNum):null;}};
+// The result says how many rows were dropped (rows.dropped), so "no rows" and "no good rows" stay apart.
+function sbShape(t,rows){const f=SB_SHAPE[t];if(!f||!Array.isArray(rows))return rows;const out=rows.filter(r=>f(r)!==false);out.dropped=rows.length-out.length;return out;}
 async function sbGet(t,p=''){const go=()=>fetch(`${SUPABASE_URL}/rest/v1/${t}?${[sbSel(t),p].filter(Boolean).join('&')}`,{headers:hdr()});return sbShape(t,await (await sbCheck(await go(),go)).json());}
 // onConflict ('col,col'): an upsert on that unique key — a row already there is updated, not duplicated.
 async function sbInsert(t,b,onConflict){const go=()=>fetch(`${SUPABASE_URL}/rest/v1/${t}?${[sbSel(t),onConflict&&'on_conflict='+onConflict].filter(Boolean).join('&')}`,{method:'POST',headers:hdr({'Prefer':(onConflict?'resolution=merge-duplicates,':'')+'return=representation'}),body:JSON.stringify(b)});return sbShape(t,await (await sbCheck(await go(),go)).json());}
@@ -1429,7 +1433,7 @@ function calcHolePoints(round,player){const tee=getTee(round.tee_id||'platinum')
 
 // ── Storage ───────────────────────────────────────────────────────────────────
 let pendingPlayers=[];
-async function loadData(){let _teesFetchOk=false;try{tees=await sbGet('tees','order=archived.asc,name.asc');_teesFetchOk=true;}catch(e){console.warn('tees fetch failed:',e);tees=[];}if(_teesFetchOk&&tees.length===0)await seedTees();const all=await sbGet('players','order=created_at.asc');pendingPlayers=all.filter(p=>p.approved===false);players=all.filter(p=>p.approved!==false);allRounds=await sbGet('rounds','order=date.desc');fineTypes=await sbGet('fine_types','order=name.asc');allFines=await sbGet('fines','order=created_at.desc');try{finePayments=await sbGet('fine_payments','order=date.desc');}catch(e){console.warn('fine_payments load failed:',e);finePayments=[];}try{saturdayEvents=await sbGet('saturday_events','order=date.asc');}catch(e){saturdayEvents=[];}try{saturdaySignups=await sbGet('saturday_signups','order=created_at.asc');}catch(e){saturdaySignups=[];}try{const pg=await sbGet('green_polygons','');greenPolygons={};pg.forEach(r=>{greenPolygons[r.hole]=r.vertices;});}catch(e){console.warn('green_polygons load failed:',e);}try{const fp=await sbGet('fairway_polygons','');fairwayPolygons={};fp.forEach(r=>{fairwayPolygons[r.hole]=r.polygons;});}catch(e){console.warn('fairway_polygons load failed:',e);}
+async function loadData(){let _teesFetchOk=false;try{tees=await sbGet('tees','order=archived.asc,name.asc');_teesFetchOk=true;}catch(e){console.warn('tees fetch failed:',e);tees=[];}if(_teesFetchOk&&!tees.length){if(tees.dropped)tees=[..._TEES_SEED];else await seedTees();}/* every row bad: use the built-in tees, never re-seed over them */const all=await sbGet('players','order=created_at.asc');pendingPlayers=all.filter(p=>p.approved===false);players=all.filter(p=>p.approved!==false);allRounds=await sbGet('rounds','order=date.desc');fineTypes=await sbGet('fine_types','order=name.asc');allFines=await sbGet('fines','order=created_at.desc');try{finePayments=await sbGet('fine_payments','order=date.desc');}catch(e){console.warn('fine_payments load failed:',e);finePayments=[];}try{saturdayEvents=await sbGet('saturday_events','order=date.asc');}catch(e){saturdayEvents=[];}try{saturdaySignups=await sbGet('saturday_signups','order=created_at.asc');}catch(e){saturdaySignups=[];}try{const pg=await sbGet('green_polygons','');greenPolygons={};pg.forEach(r=>{greenPolygons[r.hole]=r.vertices;});}catch(e){console.warn('green_polygons load failed:',e);}try{const fp=await sbGet('fairway_polygons','');fairwayPolygons={};fp.forEach(r=>{fairwayPolygons[r.hole]=r.polygons;});}catch(e){console.warn('fairway_polygons load failed:',e);}
 try{seasonEntries=await sbGet('season_entries','order=entered_at.asc');}catch(e){seasonEntries=[];}   // missing until season_entries.sql runs
 let tmOk=true;const tmGet=async(t,q)=>{try{return await sbGet(t,q);}catch(e){tmOk=false;return[];}};
 tournaments=await tmGet('tournaments','order=created_at.desc');
@@ -1796,7 +1800,7 @@ function renderGpsStart(){
           <div class="fgi full">
             <label>Tee</label>
             <div class="tee-sel" id="gpsTeeSelect">
-              ${tees.filter(t=>!t.archived).map(t=>`<div class="tee-opt${t.id==='platinum'?' selected':''}" onclick="selectGpsTee('${t.id}',this)"><span class="tee-dot" style="background:${t.color}"></span>${escHtml(t.name)}</div>`).join('')}
+              ${tees.filter(t=>!t.archived).map(t=>`<div class="tee-opt${t.id==='platinum'?' selected':''}" onclick="selectGpsTee('${t.id}',this)"><span class="tee-dot" style="background:${t.color||'#888'}"></span>${escHtml(t.name)}</div>`).join('')}
             </div>
           </div>
         </div>
@@ -2963,7 +2967,7 @@ async function renderGpsStats(){
 }
 
 // ── Tee selectors ─────────────────────────────────────────────────────────────
-function buildTeeSelectorEl(cid,active,sv){const el=document.getElementById(cid);if(!el)return;el.innerHTML=tees.filter(t=>!t.archived).map(t=>`<div class="tee-opt${t.id===active?' selected':''}" onclick="selectTee('${cid}','${t.id}','${sv}')"><span class="tee-dot" style="background:${t.color};border:1px solid rgba(255,255,255,0.25)"></span>${escHtml(t.name)} <span style="font-size:0.68rem;color:rgba(255,255,255,0.32)">${t.rating}/${t.slope}</span></div>`).join('');}
+function buildTeeSelectorEl(cid,active,sv){const el=document.getElementById(cid);if(!el)return;el.innerHTML=tees.filter(t=>!t.archived).map(t=>`<div class="tee-opt${t.id===active?' selected':''}" onclick="selectTee('${cid}','${t.id}','${sv}')"><span class="tee-dot" style="background:${t.color||'#888'};border:1px solid rgba(255,255,255,0.25)"></span>${escHtml(t.name)} <span style="font-size:0.68rem;color:rgba(255,255,255,0.32)">${t.rating}/${t.slope}</span></div>`).join('');}
 function selectTee(cid,teeId,sv){if(sv==='selTeeId'){selTeeId=teeId;groupPlayerIds.forEach(pid=>{playerTees[pid]=teeId;});buildPlayerCheckboxes();}if(sv==='erSelTeeId'){erSelTeeId=teeId;buildEditScorecard();}if(sv==='beTeeId'){BE.teeId=teeId;}buildTeeSelectorEl(cid,teeId,sv);}
 
 // ── Scorecard builder (for edit modal) ───────────────────────────────────────
@@ -3341,7 +3345,7 @@ function heRender(){
     const isCurPlayer=pidx===s.currentPidx;
     const rowBg=isCurPlayer?'background:rgba(130,170,240,0.05);':'';
     const teeLbl=pTee?(pTee.id==='champion'?'Ch':pTee.id==='platinum'?'Pt':pTee.id):'';
-    const teeDot=pTee?`<span style="background:${pTee.color};color:#fff;font-size:0.52rem;font-weight:700;border-radius:3px;padding:1px 3px;margin-left:3px;vertical-align:middle">${teeLbl}</span>`:'';
+    const teeDot=pTee?`<span style="background:${pTee.color||'#888'};color:#fff;font-size:0.52rem;font-weight:700;border-radius:3px;padding:1px 3px;margin-left:3px;vertical-align:middle">${teeLbl}</span>`:'';
     const scoreTD=h=>{
       const isCur=h===hole;
       const val=s.scores[p.id][h-1];
@@ -6701,7 +6705,7 @@ function renderAdminTees(){
   };
   const teeRow=(t)=>{
     if(_editingTeeId===t.id)return editForm(t);
-    return`<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.06);${t.archived?'opacity:0.45':''}"><div style="width:14px;height:14px;border-radius:50%;background:${t.color};border:1px solid rgba(255,255,255,0.2);flex-shrink:0"></div><div style="flex:1;font-size:0.85rem">${escHtml(t.name)}</div><div style="font-size:0.78rem;color:rgba(255,255,255,0.45);white-space:nowrap">CR ${t.rating} / ${t.slope}</div><button class="btn btn-ghost btn-sm" onclick="_editingTeeId='${t.id}';_addingTee=false;renderAdminTees()">Edit</button><button class="btn btn-ghost btn-sm" onclick="archiveTee('${t.id}')">${t.archived?'Restore':'Archive'}</button></div>`;
+    return`<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.06);${t.archived?'opacity:0.45':''}"><div style="width:14px;height:14px;border-radius:50%;background:${t.color||'#888'};border:1px solid rgba(255,255,255,0.2);flex-shrink:0"></div><div style="flex:1;font-size:0.85rem">${escHtml(t.name)}</div><div style="font-size:0.78rem;color:rgba(255,255,255,0.45);white-space:nowrap">CR ${t.rating} / ${t.slope}</div><button class="btn btn-ghost btn-sm" onclick="_editingTeeId='${t.id}';_addingTee=false;renderAdminTees()">Edit</button><button class="btn btn-ghost btn-sm" onclick="archiveTee('${t.id}')">${t.archived?'Restore':'Archive'}</button></div>`;
   };
   let html='';
   if(_addingTee)html+=editForm(null);
@@ -6770,7 +6774,7 @@ function _refreshTeeSelectors(){
   buildTeeSelectorEl('beTeeSelector',BE?.teeId||'platinum','beTeeId');
   buildTeeSelectorEl('erTeeSelector',typeof erSelTeeId!=='undefined'?erSelTeeId:'platinum','erSelTeeId');
   const _gpsSel=document.getElementById('gpsTeeSelect');
-  if(_gpsSel)_gpsSel.innerHTML=tees.filter(t=>!t.archived).map(t=>`<div class="tee-opt${t.id===gpsTeeId?' selected':''}" onclick="selectGpsTee('${t.id}',this)"><span class="tee-dot" style="background:${t.color}"></span>${escHtml(t.name)}</div>`).join('');
+  if(_gpsSel)_gpsSel.innerHTML=tees.filter(t=>!t.archived).map(t=>`<div class="tee-opt${t.id===gpsTeeId?' selected':''}" onclick="selectGpsTee('${t.id}',this)"><span class="tee-dot" style="background:${t.color||'#888'}"></span>${escHtml(t.name)}</div>`).join('');
 }
 function toggleAdminSection(bodyId,chevId){const body=document.getElementById(bodyId);if(!body)return;const isOpen=body.style.display!=='none';body.style.display=isOpen?'none':'';const chev=document.getElementById(chevId);if(chev)chev.style.transform=isOpen?'':'rotate(90deg)';}
 
