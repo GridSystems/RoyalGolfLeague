@@ -105,6 +105,62 @@ test('new table after B1 is closed to anon', async () => {
   assert.equal(r.at, true, 'logged-in users keep the Supabase default');
 });
 
+// Everything B1 touches, as one comparable value: policies, what anon and authenticated may do on
+// every table, column, sequence and function in public, schema private's ACL, and postgres's
+// default privileges (global and in public). ACL arrays are sorted: their order isn't meaningful.
+const sortedAcl = col => `(SELECT array_agg(a::text ORDER BY a::text) FROM unnest(${col}) a)`;
+async function accessState(db) {
+  await db.exec('RESET ROLE');
+  const q = async sql => (await db.query(sql)).rows.map(r => JSON.stringify(r));
+  const roles = `(VALUES ('anon'), ('authenticated')) r(role)`;
+  return {
+    policies: await q(`SELECT * FROM pg_policies WHERE schemaname='public' ORDER BY tablename, policyname`),
+    tables: await q(`SELECT r.role, c.relname, p.priv, has_table_privilege(r.role, c.oid, p.priv) ok FROM ${roles}, pg_class c,
+      unnest(ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER']) p(priv)
+      WHERE c.relnamespace='public'::regnamespace AND c.relkind IN ('r','p','v','m','f') ORDER BY 1, 2, 3`),
+    columns: await q(`SELECT r.role, a.attrelid::regclass::text t, a.attname, p.priv, has_column_privilege(r.role, a.attrelid, a.attnum, p.priv) ok
+      FROM ${roles}, pg_attribute a JOIN pg_class c ON c.oid = a.attrelid, unnest(ARRAY['SELECT','INSERT','UPDATE']) p(priv)
+      WHERE c.relnamespace='public'::regnamespace AND c.relkind IN ('r','p','v','m','f') AND a.attnum > 0 AND NOT a.attisdropped ORDER BY 1, 2, 3, 4`),
+    sequences: await q(`SELECT r.role, c.relname, p.priv, CASE WHEN c.relkind='S' THEN has_sequence_privilege(r.role, c.oid, p.priv) END ok
+      FROM ${roles}, pg_class c, unnest(ARRAY['USAGE','SELECT','UPDATE']) p(priv)
+      WHERE c.relnamespace='public'::regnamespace AND c.relkind='S' ORDER BY 1, 2, 3`),
+    functions: await q(`SELECT r.role, p.oid::regprocedure::text f, has_function_privilege(r.role, p.oid, 'EXECUTE') ok
+      FROM ${roles}, pg_proc p WHERE p.pronamespace='public'::regnamespace ORDER BY 1, 2`),
+    // The ACLs themselves (NULL = the built-in default), so a grant that only came back through
+    // PUBLIC still counts as missing.
+    functionAcls: await q(`SELECT p.oid::regprocedure::text f, ${sortedAcl(`coalesce(p.proacl, acldefault('f', p.proowner))`)} acl
+      FROM pg_proc p WHERE p.pronamespace='public'::regnamespace ORDER BY 1`),
+    privateAcl: await q(`SELECT ${sortedAcl('nspacl')} acl FROM pg_namespace WHERE nspname='private'`),
+    defaultAcl: await q(`SELECT n.nspname, d.defaclobjtype, ${sortedAcl('d.defaclacl')} acl FROM pg_default_acl d
+      LEFT JOIN pg_namespace n ON n.oid = d.defaclnamespace WHERE d.defaclrole='postgres'::regrole ORDER BY 1 NULLS FIRST, 2`),
+  };
+}
+
+test('rollback restores release A exactly, and B1 re-applies', async () => {
+  const db = await releaseA();
+  const before = await accessState(db);
+  assert.ok(before.defaultAcl.length >= 3, 'the world models Supabase default privileges');
+  assert.equal(await run(db, real('phase2b_enforce.sql')), null);
+  assert.notDeepEqual(await accessState(db), before, 'B1 changed something');
+  assert.equal(await run(db, sqlFile('phase2b_rollback.sql')), null);
+  const after = await accessState(db);
+  for (const k of Object.keys(before)) assert.deepEqual(after[k], before[k], k);
+  assert.equal((await one(db, `SELECT to_regnamespace('phase2b_backup') n`)).n, null, 'backup schema dropped');
+  await as(db, null);
+  assert.ok((await db.query(`SELECT id FROM public.players`)).rows.length > 10, 'anon reads players again');
+  await headers(db, '3');
+  await db.query(`SELECT public.require_current_app()`);
+  await db.exec('RESET ROLE');
+  assert.equal(await run(db, real('phase2b_enforce.sql')), null, 'B1 re-applies');
+  assert.equal(await anonAll(db), 0);
+});
+
+test('rollback refuses when B1 was never applied', async () => {
+  const db = await releaseA();
+  assert.match(await run(db, sqlFile('phase2b_rollback.sql')), /Nothing to roll back/);
+  assert.ok(await anonAll(db) > 10);
+});
+
 test('link by email still works after B1', async () => {
   const db = await world();
   const p = (await one(db, `SELECT id FROM public.players WHERE approved AND archived_at IS NULL AND user_id IS NULL ORDER BY id LIMIT 1`)).id;

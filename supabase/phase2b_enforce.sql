@@ -43,11 +43,12 @@ CREATE TABLE phase2b_backup.anon_column_grants AS
   SELECT DISTINCT c.table_name, c.column_name, c.privilege_type FROM information_schema.role_column_grants c
    WHERE c.grantee = 'anon' AND c.table_schema = 'public'
      AND NOT EXISTS (SELECT 1 FROM phase2b_backup.anon_table_grants t WHERE t.table_name = c.table_name AND t.privilege_type = c.privilege_type);
+-- authenticated too: section 4 takes the PIN functions from logged-in users as well.
 CREATE TABLE phase2b_backup.anon_function_grants AS
   SELECT DISTINCT rp.grantee, p.oid::regprocedure::text AS signature, rp.privilege_type
     FROM information_schema.routine_privileges rp
     JOIN pg_proc p ON p.pronamespace = 'public'::regnamespace AND p.proname || '_' || p.oid = rp.specific_name
-   WHERE rp.grantee IN ('anon', 'PUBLIC') AND rp.specific_schema = 'public';
+   WHERE rp.grantee IN ('anon', 'authenticated', 'PUBLIC') AND rp.specific_schema = 'public';
 -- From the ACL itself: information_schema.usage_privileges reports only USAGE on a sequence.
 -- Re-issue: GRANT <privilege_type> ON SEQUENCE public.<sequence_name> TO anon.
 CREATE TABLE phase2b_backup.anon_sequence_grants AS
