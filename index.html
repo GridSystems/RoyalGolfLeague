@@ -773,6 +773,10 @@ select option { background: #1a3a2a; }
     <button class="btn btn-ghost btn-sm" onclick="closeModal('conflictModal')">Close</button>
   </div>
 </div></div>
+<div class="modal-bg" id="stopModal" style="display:none"><div class="modal modal-sm">
+  <h3 id="stopModalTitle">Stopped playing</h3>
+  <div id="stopModalBody" style="display:flex;flex-direction:column;gap:8px;margin-top:0.75rem"></div>
+</div></div>
 
 
 <div class="modal-bg" id="pickerModal" style="display:none"><div class="modal modal-sm">
@@ -2977,7 +2981,7 @@ function getScoresFromInputs(pfx){return Array.from({length:18},(_,i)=>({hole:i+
 function liveTotals(pfx,phcp){let oT=0,iT=0,oP=0,iP=0,oPts=0,iPts=0,oC=0,iC=0;for(let i=0;i<18;i++){const el=document.getElementById(`${pfx}${i+1}`);const val=el&&el.value?parseInt(el.value):null;const par=HOLE_PARS[i];const isF=i<9;if(isF)oP+=par;else iP+=par;if(val!=null){const d=val-par;const vpEl=document.getElementById(`${pfx}vp${i+1}`);if(vpEl){vpEl.textContent=ds(d);vpEl.style.color=vpC(d);}if(isF){oT+=val;oC++;}else{iT+=val;iC++;}if(phcp!=null&&!isNaN(phcp)){const str=strokesOnHole(phcp,i);const pts=stablefordPts(val,par,str);const ptEl=document.getElementById(`${pfx}pt${i+1}`);if(ptEl&&pts!=null){ptEl.textContent=pts;ptEl.style.color=ptC(pts);}if(isF)oPts+=pts||0;else iPts+=pts||0;}}else{const vpEl=document.getElementById(`${pfx}vp${i+1}`);if(vpEl)vpEl.textContent='';const ptEl=document.getElementById(`${pfx}pt${i+1}`);if(ptEl)ptEl.textContent='';}}const set=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=v;};const setC=(id,c)=>{const e=document.getElementById(id);if(e)e.style.color=c;};if(oC>0){set(`${pfx}tot_out`,oT);const d=oT-oP;set(`${pfx}vp_out`,ds(d));setC(`${pfx}vp_out`,vpC(d));}else{set(`${pfx}tot_out`,'—');set(`${pfx}vp_out`,'');}if(iC>0){set(`${pfx}tot_in`,iT);const d=iT-iP;set(`${pfx}vp_in`,ds(d));setC(`${pfx}vp_in`,vpC(d));}else{set(`${pfx}tot_in`,'—');set(`${pfx}vp_in`,'');}if(oC+iC>0){const t=oT+iT;set(`${pfx}tot_total`,t);const d=t-(oP+iP);set(`${pfx}vp_total`,ds(d));setC(`${pfx}vp_total`,vpC(d));}else{set(`${pfx}tot_total`,'—');set(`${pfx}vp_total`,'');}if(phcp!=null&&!isNaN(phcp)){if(oC>0)set(`${pfx}pts_out`,oPts);else set(`${pfx}pts_out`,'—');if(iC>0)set(`${pfx}pts_in`,iPts);else set(`${pfx}pts_in`,'—');if(oC+iC>0)set(`${pfx}pts_total`,oPts+iPts);else set(`${pfx}pts_total`,'—');}}
 
 // ── Hole-by-hole entry ────────────────────────────────────────────────────────
-let HE={playerList:[],scores:{},pickups:{},roundIds:{},currentHole:1,currentPidx:0,startHole:1,tee:null,teeId:'',date:'',notes:''};
+let HE={playerList:[],scores:{},pickups:{},stopped:{},roundIds:{},currentHole:1,currentPidx:0,startHole:1,tee:null,teeId:'',date:'',notes:''};
 let _heKeypadBuffer='';
 
 // Returns holes 1-18 in play order starting from startHole, wrapping around
@@ -3000,6 +3004,39 @@ function hePrevHole(currentHole,startHole){
 }
 // Position in sequence (0-based)
 function heHolePos(currentHole,startHole){return heOrderedHoles(startHole).indexOf(currentHole);}
+// A player who stops mid-round: the holes left after their last played one get stopped:true
+// (score null, no pickup). Done for progress and resume; not played for points, the 9-hole
+// minimum, records or the eclectic — those only count scores and pickups.
+const holeDone=h=>!!h&&(h.score!=null||!!h.pickup||!!h.stopped);
+const roundOpen=r=>r.holes.filter(holeDone).length<18,hasStopped=r=>Array.isArray(r.holes)&&r.holes.some(h=>h&&h.stopped);
+// Stopped holes run unbroken to the end of play order, so the hole before the run is the last played
+const stoppedAfter=flags=>{const i=flags.findIndex((s,i)=>s&&!flags[(i+17)%18]);return i<0?null:(i+17)%18+1;};
+const hePlayed=(pid,h)=>HE.scores[pid][h-1]!=null||!!HE.pickups?.[pid]?.[h-1];
+const heLive=(pid,h)=>!HE.stopped?.[pid]?.[h-1];
+function heStopPlan(pid){const order=heOrderedHoles(HE.startHole),last=order.map(h=>hePlayed(pid,h)).lastIndexOf(true);
+  return last<0||last===17?null:{after:order[last],holes:order.slice(last+1),kept:order.filter(h=>hePlayed(pid,h)).length};}
+const heStopCandidates=()=>HE.playerList.filter(({p})=>!HE.stopped?.[p.id]?.some(Boolean)&&heStopPlan(p.id));
+const holeList=hs=>hs.reduce((a,h,i)=>{if(i&&h===hs[i-1]+1)a[a.length-1][1]=h;else a.push([h,h]);return a;},[]).map(([a,b])=>a===b?a:`${a}–${b}`).join(', ');
+function heStopPick(){
+  heFlushInputs();const list=heStopCandidates();if(!list.length)return;
+  document.getElementById('stopModalTitle').textContent='Who stopped playing?';
+  document.getElementById('stopModalBody').innerHTML=list.map(({p})=>`<button class="btn btn-ghost" onclick="heStopAsk(${p.id})" style="border-left:4px solid ${clr(p)}">${escHtml(p.name.split(' ')[0])}</button>`).join('')
+    +`<div style="display:flex;justify-content:flex-end"><button class="btn btn-ghost btn-sm" onclick="closeModal('stopModal')">Cancel</button></div>`;
+  document.getElementById('stopModal').style.display='flex';
+}
+function heStopAsk(pid){
+  const pl=HE.playerList.find(x=>x.p.id===pid),plan=heStopPlan(pid);if(!pl||!plan)return;
+  const n=escHtml(pl.p.name.split(' ')[0]),k=plan.kept,m=plan.holes.length;
+  document.getElementById('stopModalTitle').textContent='Stopped playing';
+  document.getElementById('stopModalBody').innerHTML=`<div style="font-size:0.88rem;line-height:1.5">${n} stopped after hole ${plan.after}? Hole${m>1?'s':''} ${holeList(plan.holes)} will be marked not played. They keep their ${k} hole${k===1?'':'s'}.</div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:0.4rem"><button class="btn btn-ghost btn-sm" onclick="closeModal('stopModal')">Cancel</button><button class="btn btn-primary btn-sm" onclick="heStopConfirm(${pid})">Yes, ${n} stopped</button></div>`;
+}
+async function heStopConfirm(pid){
+  closeModal('stopModal');const plan=heStopPlan(pid);if(!plan)return;
+  if(!HE.stopped)HE.stopped={};const st=HE.stopped[pid]=Array(18).fill(false);plan.holes.forEach(h=>st[h-1]=true);
+  heRender();await hePatchRound(pid);
+}
+async function heUndoStop(pid){if(HE.stopped)HE.stopped[pid]=Array(18).fill(false);heRender();await hePatchRound(pid,true);}
 
 let selectedStartHole=1;
 function setStartHole(val){
@@ -3020,7 +3057,7 @@ function setStartHole(val){
 
 async function heInit(playerList,date,notes,startHole){
   startWeatherRefresh();
-  const scores={},roundIds={},pickups={};
+  const scores={},roundIds={},pickups={},stopped={};
   const adopted=[];
   setLoading(true,'Starting round…');
   try{
@@ -3033,7 +3070,7 @@ async function heInit(playerList,date,notes,startHole){
       let existing=null;
       try{
         const rows=await sbGet('rounds',`player_id=eq.${p.id}&date=eq.${date}&order=created_at.asc`);
-        existing=rows.find(r=>Array.isArray(r.holes)&&r.holes.filter(h=>h&&(h.score!=null||h.pickup)).length<18)||null;
+        existing=rows.find(r=>Array.isArray(r.holes)&&(roundOpen(r)||hasStopped(r)))||null;   // a stopped card is still today's
       }catch(e){console.warn('existing-round lookup failed for',p.id,e);}
       if(existing){
         const eTee=getTee(existing.tee_id||entry.teeId||'platinum');
@@ -3041,6 +3078,7 @@ async function heInit(playerList,date,notes,startHole){
         entry.phcp=index!=null?calcPlayingHcp(index,eTee):null;
         scores[p.id]=Array.from({length:18},(_,i)=>existing.holes[i]?existing.holes[i].score:null);
         pickups[p.id]=Array.from({length:18},(_,i)=>existing.holes[i]?!!existing.holes[i].pickup:false);
+        stopped[p.id]=Array.from({length:18},(_,i)=>!!existing.holes[i]?.stopped);
         roundIds[p.id]=existing.id;
         const ai=allRounds.findIndex(x=>x.id===existing.id);
         if(ai>=0)allRounds[ai]=existing;else allRounds.unshift(existing);
@@ -3052,7 +3090,7 @@ async function heInit(playerList,date,notes,startHole){
       entry.tee=tee;
       const courseHcp=index!=null?calcCourseHcp(index,tee):null;
       entry.phcp=index!=null?calcPlayingHcp(index,tee):null;
-      scores[p.id]=Array(18).fill(null);pickups[p.id]=Array(18).fill(false);
+      scores[p.id]=Array(18).fill(null);pickups[p.id]=Array(18).fill(false);stopped[p.id]=Array(18).fill(false);
       const holes=Array.from({length:18},(_,i)=>({hole:i+1,score:null,par:HOLE_PARS[i],hcp:HOLE_HCP[i]}));
       const payload={player_id:p.id,course:'Royal Golf Club, Copenhagen',date,tee_time:HE.teeTime||null,tee_id:entry.teeId,tee_name:tee.name,tee_color:tee.color,rating:tee.rating,slope:tee.slope,hcp_index:index,course_hcp:courseHcp,playing_hcp:entry.phcp,notes,holes};
       const[saved]=await sbInsert('rounds',payload);
@@ -3064,8 +3102,8 @@ async function heInit(playerList,date,notes,startHole){
   if(adopted.length)toast(`Continuing today's round — ${adopted.join(', ')} holes already scored`);
   // Open on the first hole anyone still needs (a pickup counts as played). For a fresh round
   // every hole is unplayed, so this resolves to startHole — no special case needed.
-  const resumeAt=heOrderedHoles(startHole).find(h=>playerList.some(({p})=>scores[p.id][h-1]==null&&!pickups[p.id][h-1]));
-  HE={playerList,scores,pickups,roundIds,currentHole:resumeAt||startHole,currentPidx:0,startHole,date,notes,teeTime:HE.teeTime||null};
+  const resumeAt=heOrderedHoles(startHole).find(h=>playerList.some(({p})=>scores[p.id][h-1]==null&&!pickups[p.id][h-1]&&!stopped[p.id][h-1]));
+  HE={playerList,scores,pickups,stopped,roundIds,currentHole:resumeAt||startHole,currentPidx:0,startHole,date,notes,teeTime:HE.teeTime||null};
   saveActiveGroup();
   heRender();
 }
@@ -3179,7 +3217,7 @@ function saveActiveGroup(){
 }
 
 // Silently PATCH the round for a player with current scores — no spinner, fire-and-forget
-async function hePatchRound(pid){
+async function hePatchRound(pid,undo){   // undo: drop stopped flags even if the database still has them
   const rid=HE.roundIds[pid];if(!rid)return;
   // Check round still exists locally — if deleted by admin, abort and redirect
   if(!allRounds.find(x=>x.id===rid)){
@@ -3191,7 +3229,7 @@ async function hePatchRound(pid){
     buildPlayerCheckboxes();
     return;
   }
-  const local=HE.scores[pid].map((score,i)=>{const pu=HE.pickups&&HE.pickups[pid]&&HE.pickups[pid][i];return{hole:i+1,score:pu?null:score,par:HOLE_PARS[i],hcp:HOLE_HCP[i],...(pu?{pickup:true}:{})};});
+  const local=HE.scores[pid].map((score,i)=>{const pu=HE.pickups&&HE.pickups[pid]&&HE.pickups[pid][i],st=!pu&&score==null&&!!HE.stopped?.[pid]?.[i];return{hole:i+1,score:pu?null:score,par:HOLE_PARS[i],hcp:HOLE_HCP[i],...(pu?{pickup:true}:{}),...(st?{stopped:true}:{})};});
   // This PATCH replaces all 18 holes, so a blind write blanks any hole another scorer has
   // entered that this device hasn't seen. Two people may score the same group at once, so
   // merge first: keep our value where we have one, take theirs where we don't. We never
@@ -3203,12 +3241,14 @@ async function hePatchRound(pid){
       holes=local.map((mine,i)=>{
         if(mine.score!=null||mine.pickup)return mine;
         const theirs=cur.holes[i];
-        if(!theirs||(theirs.score==null&&!theirs.pickup))return mine;
+        // Neither has played it: the other phone's stopped flag stands, unless this one just undid it
+        if(!theirs||(theirs.score==null&&!theirs.pickup))return !undo&&theirs?.stopped&&!mine.stopped?{...mine,stopped:true}:mine;
         return{hole:i+1,score:theirs.pickup?null:(theirs.score??null),par:HOLE_PARS[i],hcp:HOLE_HCP[i],...(theirs.pickup?{pickup:true}:{})};
       });
       // Reflect the other scorer's holes back into this device so the card shows them
       HE.scores[pid]=holes.map(h=>h.pickup?null:(h.score??null));
       if(HE.pickups&&HE.pickups[pid])HE.pickups[pid]=holes.map(h=>!!h.pickup);
+      if(HE.stopped)HE.stopped[pid]=holes.map(h=>!!h.stopped);
     }
   }catch(e){console.warn('Merge read failed, writing local only for',pid,e);}
   try{
@@ -3230,6 +3270,9 @@ function heRender(){
   const nextH=isLast?null:order[pos+1];
   const prevH=pos>0?order[pos-1]:null;
   const card=document.getElementById('holeEntryCard');if(!card)return;
+  // A stopped player has no turn on a stopped hole: hand it to the next player who does
+  const nP=s.playerList.length;
+  if(nP&&!heLive(s.playerList[s.currentPidx]?.p.id,hole)){const k=[...Array(nP).keys()].map(k=>(s.currentPidx+k)%nP).find(k=>heLive(s.playerList[k].p.id,hole));if(k!=null)s.currentPidx=k;}
 
   const firstTee=s.playerList[0]?.tee||getTee('platinum');
   const curEntry=s.playerList[s.currentPidx];const curPlayer=curEntry?.p;
@@ -3239,7 +3282,7 @@ function heRender(){
   // Progress dots in play order
   const dots=order.map(h=>{
     const isCur=h===hole;
-    const filled=s.playerList.every(({p})=>s.scores[p.id][h-1]!==null||(HE.pickups&&HE.pickups[p.id]&&HE.pickups[p.id][h-1]));
+    const filled=s.playerList.every(({p})=>s.scores[p.id][h-1]!==null||(HE.pickups&&HE.pickups[p.id]&&HE.pickups[p.id][h-1])||!heLive(p.id,h));
     const partial=s.playerList.some(({p})=>s.scores[p.id][h-1]!==null||(HE.pickups&&HE.pickups[p.id]&&HE.pickups[p.id][h-1]));
     const state=holeState(h);
     let bg;
@@ -3274,6 +3317,7 @@ function heRender(){
       const isCur=h===hole;
       const val=s.scores[p.id][h-1];
       const pu=HE.pickups&&HE.pickups[p.id]&&HE.pickups[p.id][h-1];
+      if(!heLive(p.id,h))return`<td title="Not played" style="${TD}${isCur?curBg:''}color:rgba(255,255,255,0.3)">–</td>`;
       if(isCur&&isCurPlayer){
         const disp=_heKeypadBuffer||(val!=null?String(val):'');
         return`<td style="${TD}${curBg}padding:4px 2px"><div id="heScoreDisplay" style="width:40px;min-height:28px;text-align:center;font-family:'DM Mono',monospace;font-size:0.9rem;font-weight:600;background:rgba(0,0,0,0.45);border:1px solid rgba(130,170,240,0.85);border-radius:6px;color:var(--cream);display:flex;align-items:center;justify-content:center;margin:0 auto">${disp||'<span style="color:rgba(255,255,255,0.2)">·</span>'}</div></td>`;
@@ -3289,6 +3333,7 @@ function heRender(){
     const outSum=fS.length?fS.reduce((a,b)=>a+b,0):'';
     const inSum=bS.length?bS.reduce((a,b)=>a+b,0):'';
     const totSum=aS.length?aS.reduce((a,b)=>a+b,0):'';
+    const sa=stoppedAfter(HE.stopped?.[p.id]||[]);
     const totPts=s.scores[p.id].reduce((sum,score,i)=>{if(score===null)return sum;return sum+(stablefordPts(score,HOLE_PARS[i],phcp!=null?strokesOnHole(phcp,i):0)||0);},0);
     return`<tr style="${rowBg}">
       <td style="padding:4px 8px;font-size:0.8rem;font-weight:${isCurPlayer?'600':'500'};white-space:nowrap;border-bottom:1px solid rgba(255,255,255,0.05);position:sticky;left:0;z-index:1;background:#1a3a2a">
@@ -3296,6 +3341,7 @@ function heRender(){
           <div style="width:20px;height:20px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.58rem;font-weight:700;color:#fff;flex-shrink:0">${ini(p.name)}</div>
           <span>${p.name.split(' ')[0]}</span>${teeDot}${phcp!=null?`<span style="font-size:0.68rem;color:rgba(255,255,255,0.4);margin-left:2px">(${phcp})</span>`:''}
         </div>
+        ${sa?`<div style="font-size:0.62rem;font-weight:400;color:rgba(255,255,255,0.45);margin-top:1px">Stopped after ${sa} · <button onclick="heUndoStop(${p.id})" style="background:none;border:0;padding:0;font-size:inherit;color:#82aaf0;text-decoration:underline;cursor:pointer">Undo</button></div>`:''}
       </td>
       ${F.map(h=>scoreTD(h)).join('')}
       <td style="${TD}${SEP}font-weight:600;color:rgba(255,255,255,0.55)">${outSum}</td>
@@ -3349,14 +3395,14 @@ function heRender(){
         <button class="btn btn-warn btn-sm" onclick="showAddFine(${hole})" style="font-size:0.8rem">🚨 Fine</button>
         <button class="btn btn-primary" style="min-width:90px" onclick="heNext()">${nextLabel}</button>
       </div>
-      ${curPlayer?`<div style="margin-top:0.7rem">
+      ${curPlayer&&heLive(curPlayer.id,hole)?`<div style="margin-top:0.7rem">
         <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:0.45rem;padding-bottom:0.4rem;border-bottom:1px solid rgba(255,255,255,0.06)">
           <div style="width:22px;height:22px;border-radius:50%;background:${clr(curPlayer)};display:flex;align-items:center;justify-content:center;font-size:0.58rem;font-weight:700;color:#fff;flex-shrink:0">${ini(curPlayer.name)}</div>
           <span style="font-size:0.95rem;font-weight:600;color:var(--cream)">${curPlayer.name.split(' ')[0]}</span>
           ${curEntry.phcp!=null?`<span style="font-size:0.72rem;color:rgba(255,255,255,0.35)">(HCP ${curEntry.phcp})</span>`:''}
           ${heHasScores(curPlayer.id)?'':`<button class="btn btn-ghost btn-sm" onclick="heRemovePlayer(${curPlayer.id})" style="font-size:0.7rem;padding:2px 8px">Didn't turn up?</button>`}
         </div>
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;max-width:320px;margin:0 auto;padding:0 4px">
+        <div id="heKeypad" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;max-width:320px;margin:0 auto;padding:0 4px">
           ${[1,2,3,4,5,6,7,8,9].map(d=>`<button onclick="heKeypadDigit(${d})" style="font-family:'DM Mono',monospace;font-size:1.35rem;font-weight:600;color:var(--cream);background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:10px;padding:9px 0;touch-action:manipulation;cursor:pointer;-webkit-tap-highlight-color:transparent">${d}</button>`).join('')}
           <button onclick="heKeypadPickup()" style="font-size:0.8rem;font-weight:700;color:#f0a030;background:rgba(240,160,48,0.08);border:1px solid rgba(240,160,48,0.3);border-radius:10px;padding:9px 0;touch-action:manipulation;cursor:pointer;-webkit-tap-highlight-color:transparent">Pickup</button>
           <button onclick="heKeypadBackspace()" style="font-size:1.3rem;color:rgba(255,255,255,0.6);background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:9px 0;touch-action:manipulation;cursor:pointer;-webkit-tap-highlight-color:transparent">⌫</button>
@@ -3364,7 +3410,8 @@ function heRender(){
         </div>
       </div>`:''}
     </div>
-  </div>`;
+  </div>
+  ${heStopCandidates().length?`<div style="text-align:center;margin-top:0.9rem"><button id="heStopLink" onclick="heStopPick()" style="background:none;border:0;padding:4px 8px;font-size:0.78rem;color:rgba(255,255,255,0.45);text-decoration:underline;cursor:pointer">A player stopped playing…</button></div>`:''}`;
 
   window.scrollTo(0,_scrollY);
 
@@ -3381,8 +3428,9 @@ async function heEnter(pidx){
   const pos=order.indexOf(HE.currentHole);
   const nextH=pos<17?order[pos+1]:null;
 
-  if(pidx<HE.playerList.length-1){
-    HE.currentPidx=pidx+1;
+  const nextP=HE.playerList.findIndex((x,i)=>i>pidx&&heLive(x.p.id,HE.currentHole));   // skip anyone stopped
+  if(nextP>=0){
+    HE.currentPidx=nextP;
     heRender();
   } else {
     heFlushInputs();hePatchAll();
@@ -3417,7 +3465,7 @@ async function heRemovePlayer(pid){
   if(rid){try{deleted=(await sbDelete('rounds',rid)).length>0;}catch(e){}
     if(deleted)allRounds=allRounds.filter(r=>r.id!==rid);}
   HE.playerList=HE.playerList.filter(x=>x.p.id!==pid);
-  delete HE.scores[pid];delete HE.roundIds[pid];if(HE.pickups)delete HE.pickups[pid];
+  delete HE.scores[pid];delete HE.roundIds[pid];if(HE.pickups)delete HE.pickups[pid];if(HE.stopped)delete HE.stopped[pid];
   groupPlayerIds=groupPlayerIds.filter(x=>x!==pid);
   HE.currentPidx=Math.min(HE.currentPidx,Math.max(0,HE.playerList.length-1));_heKeypadBuffer='';
   toast(deleted?`${name} removed`:`${name} removed from the group — ask an admin to delete their round`);
@@ -3455,28 +3503,29 @@ async function autoResumeGroup(){
   const playerList=[];
   const scores={};
   const roundIds={};
-  const pickups={};
+  const pickups={},stopped={};
   let startAtHole=1;
   for(const{id,teeId}of saved.players){
     const p=players.find(x=>x.id===id)||pendingPlayers.find(x=>x.id===id);
     if(!p)continue;
-    const r=allRounds.find(ar=>ar.player_id===id&&ar.date===td&&ar.holes.filter(h=>h&&(h.score!=null||h.pickup)).length<18);
+    const r=allRounds.find(ar=>ar.player_id===id&&ar.date===td&&(roundOpen(ar)||hasStopped(ar)));   // a stopped player stays in the group
     if(!r)continue;
     const tee=getTee(teeId||'platinum');
     const index=hcpOnDate(p,td);
     const phcp=index!=null?calcPlayingHcp(index,tee):null;
-    scores[id]=r.holes.map(h=>h?h.score:null);pickups[id]=r.holes.map(h=>h?!!h.pickup:false);
+    scores[id]=r.holes.map(h=>h?h.score:null);pickups[id]=r.holes.map(h=>h?!!h.pickup:false);stopped[id]=r.holes.map(h=>!!h?.stopped);
     roundIds[id]=r.id;
     playerList.push({p,phcp,index,tee,teeId:teeId||'platinum'});
-    const firstUnscored=r.holes.find(h=>h&&h.score==null&&!h.pickup);
+    const firstUnscored=r.holes.find(h=>h&&!holeDone(h));
     const resumeHole=firstUnscored?firstUnscored.hole:18;
-    if(id===saved.scorerPlayerId||startAtHole===1){
+    if(firstUnscored&&(id===saved.scorerPlayerId||startAtHole===1)){
       startAtHole=resumeHole;
     }
   }
-  if(!playerList.length){localStorage.removeItem('sl_active_group');checkForResumableRounds();return;}
+  // Nothing to resume if every card is finished or stopped
+  if(!playerList.some(({p})=>roundOpen(allRounds.find(r=>r.id===roundIds[p.id])))){localStorage.removeItem('sl_active_group');checkForResumableRounds();return;}
   groupPlayerIds=playerList.map(x=>x.p.id);
-  HE={playerList,scores,pickups,roundIds,currentHole:startAtHole,currentPidx:0,startHole:saved.startHole||1,date:td,notes:'',teeTime:null};
+  HE={playerList,scores,pickups,stopped,roundIds,currentHole:startAtHole,currentPidx:0,startHole:saved.startHole||1,date:td,notes:'',teeTime:null};
   document.getElementById('logStep1').style.display='none';
   document.getElementById('logStep1b').style.display='none';
   document.getElementById('logStep2').style.display='block';
@@ -3512,7 +3561,7 @@ function checkForResumableRounds(){
   // Include rounds with 0 scores — they may have been pre-created when another group member started
   // A picked-up hole is played, not pending — counting it as unscored offers finished rounds
   // as "resumable" and points them at a hole that's already done.
-  const holesDone=r=>r.holes.filter(h=>h&&(h.score!=null||h.pickup)).length;
+  const holesDone=r=>r.holes.filter(holeDone).length;   // so is a stopped hole
   const partial=allRounds.filter(r=>{
     if(r.date!==td||r.player_id!==activeId)return false;
     return holesDone(r)<18;
@@ -3522,7 +3571,7 @@ function checkForResumableRounds(){
   const items=partial.map(r=>{
     const p=players.find(x=>x.id===r.player_id)||pendingPlayers.find(x=>x.id===r.player_id);
     const scored=holesDone(r);
-    const nextHole=r.holes.find(h=>h&&h.score==null&&!h.pickup);
+    const nextHole=r.holes.find(h=>h&&!holeDone(h));
     const nextHoleNum=nextHole?nextHole.hole:1;
     return{r,p,scored,nextHoleNum};
   }).filter(x=>x.p);
@@ -3564,8 +3613,8 @@ function resumeRound(roundId){
   // re-tick everyone to carry on is a step backwards. Untick to drop someone.
   resumeGroupPlayerIds=resumeCandidateRounds().map(ar=>ar.player_id);
 
-  const scored=r.holes.filter(h=>h&&(h.score!=null||h.pickup)).length;
-  const nextHole=r.holes.find(h=>h&&h.score==null&&!h.pickup);
+  const scored=r.holes.filter(holeDone).length;
+  const nextHole=r.holes.find(h=>h&&!holeDone(h));
   const nextHoleNum=nextHole?nextHole.hole:1;
   document.getElementById('resumeRoundInfo').innerHTML=`
     <div style="background:rgba(201,168,76,0.07);border:1px solid rgba(201,168,76,0.2);border-radius:8px;padding:10px 14px;font-size:0.85rem">
@@ -3593,7 +3642,7 @@ function resumeCandidateRounds(){
     if(ar.date!==td||ar.player_id===activeId||seen.has(ar.player_id))return false;
     if(myTeeTime&&ar.tee_time&&ar.tee_time!==myTeeTime)return false;
     // A pickup is played, not pending — counting it as unscored keeps finished rounds on offer
-    const done=ar.holes.filter(h=>h&&(h.score!=null||h.pickup)).length;
+    const done=ar.holes.filter(holeDone).length;   // and so is a stopped one
     // Include partial rounds OR 0-scored rounds that were pre-created in the same tee time group
     const isPartial=done>0&&done<18;
     const isGrouped=done===0&&myTeeTime&&ar.tee_time===myTeeTime;
@@ -3609,7 +3658,7 @@ function buildResumePlayerCheckboxes(){
   wrap.innerHTML=otherRounds.map(ar=>{
     const p=players.find(x=>x.id===ar.player_id);if(!p)return'';
     const checked=resumeGroupPlayerIds.includes(p.id);
-    const scored=ar.holes.filter(h=>h&&(h.score!=null||h.pickup)).length;
+    const scored=ar.holes.filter(holeDone).length;
     return`<div onclick="toggleResumePlayer(${p.id})" style="display:flex;align-items:center;gap:7px;padding:7px 12px;border-radius:8px;cursor:pointer;border:1px solid ${checked?'rgba(201,168,76,0.5)':'rgba(255,255,255,0.12)'};background:${checked?'rgba(201,168,76,0.1)':'rgba(0,0,0,0.2)'};transition:all 0.15s;user-select:none;width:100%">
       <div style="width:18px;height:18px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.58rem;font-weight:600;color:#fff;flex-shrink:0">${ini(p.name)}</div>
       <div style="flex:1"><span style="font-size:0.83rem;font-weight:${checked?500:400};color:${checked?'var(--gold-l)':'var(--cream)'}">${p.name}</span><span style="font-size:0.72rem;color:rgba(255,255,255,0.4);margin-left:8px">${scored?`${scored}/18 holes · `:''}${ar.tee_name||'—'}</span></div>
@@ -3640,30 +3689,30 @@ async function startResumeEntry(){
   const scores={[p.id]:r.holes.map(h=>h?h.score:null)};
   // pickups MUST be restored: hePatchRound rebuilds all 18 holes from HE and only writes
   // pickup:true where HE.pickups says so — without this the next patch wipes every pickup.
-  const pickups={[p.id]:r.holes.map(h=>h?!!h.pickup:false)};
+  const pickups={[p.id]:r.holes.map(h=>h?!!h.pickup:false)},stopped={[p.id]:r.holes.map(h=>!!h?.stopped)};
   const roundIds={[p.id]:r.id};
   // A pickup is stored with score:null but is NOT unplayed — skip it or we resume on a hole
   // that's already done.
-  const firstUnscored=r.holes.find(h=>h&&h.score==null&&!h.pickup);
+  const firstUnscored=r.holes.find(h=>h&&!holeDone(h));
   const startAtHole=firstUnscored?firstUnscored.hole:1;
 
   // Restore existing rounds for additional players — no new rounds created
   const td=today();
   for(const pid of resumeGroupPlayerIds){
     const ap=players.find(x=>x.id===pid);if(!ap)continue;
-    const apr=allRounds.find(ar=>ar.player_id===pid&&ar.date===td&&ar.holes.filter(h=>h&&(h.score!=null||h.pickup)).length<18);
+    const apr=allRounds.find(ar=>ar.player_id===pid&&ar.date===td&&roundOpen(ar));
     if(!apr)continue;
     const aTee=getTee(apr.tee_id||'57');
     const aIndex=hcpOnDate(ap,apr.date);
     const aPhcp=aIndex!=null?calcPlayingHcp(aIndex,aTee):null;
     scores[ap.id]=apr.holes.map(h=>h?h.score:null);
-    pickups[ap.id]=apr.holes.map(h=>h?!!h.pickup:false);
+    pickups[ap.id]=apr.holes.map(h=>h?!!h.pickup:false);stopped[ap.id]=apr.holes.map(h=>!!h?.stopped);
     roundIds[ap.id]=apr.id;
     playerList.push({p:ap,phcp:aPhcp,index:aIndex,tee:aTee,teeId:apr.tee_id||'57'});
   }
 
   groupPlayerIds=playerList.map(x=>x.p.id);
-  HE={playerList,scores,pickups,roundIds,currentHole:startAtHole,currentPidx:0,startHole:startAtHole,date:r.date,notes:r.notes||''};
+  HE={playerList,scores,pickups,stopped,roundIds,currentHole:startAtHole,currentPidx:0,startHole:startAtHole,date:r.date,notes:r.notes||''};
   document.getElementById('logStep1b').style.display='none';
   document.getElementById('logStep2').style.display='block';
   resumingRound=null;resumeGroupPlayerIds=[];resumePlayerTees={};
@@ -5953,10 +6002,10 @@ function renderTodayLb(){
   const _byPlayer=new Map();for(const r of _allToday){const comp=r.holes.filter(h=>h&&h.score!=null).length;const prev=_byPlayer.get(r.player_id);const prevComp=prev?prev.holes.filter(h=>h&&h.score!=null).length:-1;if(!prev||comp>prevComp||(comp===prevComp&&r.id>prev.id))_byPlayer.set(r.player_id,r);}
   const todayRounds=Array.from(_byPlayer.values());
   if(!todayRounds.length){document.getElementById('todayTable').innerHTML='<div class="empty">No rounds logged today yet.</div>';document.getElementById('todayScoreboards').innerHTML='';return;}
-  const rows=todayRounds.map(r=>{const p=players.find(x=>x.id===r.player_id);const holePts=p?calcHolePoints(r,p):[];const completed=r.holes.filter(h=>h&&(h.score!=null||h.pickup)).length;const pts=holePts.filter(x=>x!==null).reduce((s,x)=>s+(x.pts||0),0);const tee=getTee(r.tee_id||'platinum');const index=p?hcpOnDate(p,r.date):null;const phcp=index!=null?calcPlayingHcp(index,tee):null;return{r,p,pts,completed,phcp,holePts};}).sort((a,b)=>b.pts!==a.pts?b.pts-a.pts:b.completed-a.completed);
+  const rows=todayRounds.map(r=>{const p=players.find(x=>x.id===r.player_id);const holePts=p?calcHolePoints(r,p):[];const completed=r.holes.filter(holeDone).length;const stopped=stoppedAfter(r.holes.map(h=>!!h?.stopped));const pts=holePts.filter(x=>x!==null).reduce((s,x)=>s+(x.pts||0),0);const tee=getTee(r.tee_id||'platinum');const index=p?hcpOnDate(p,r.date):null;const phcp=index!=null?calcPlayingHcp(index,tee):null;return{r,p,pts,completed,stopped,phcp,holePts};}).sort((a,b)=>b.pts!==a.pts?b.pts-a.pts:b.completed-a.completed);
   let _prizeRank=0;const _prizeRanks=rows.map(row=>row.p&&!inPrizes(row.p,seasonOf(td))?null:++_prizeRank);
-  document.getElementById('todayTable').innerHTML=`<div class="rt-wrap"><table class="rt"><thead><tr><th></th><th>Player</th><th>Tee</th><th>Playing HCP</th><th>Holes</th><th>Progress</th><th>Points</th></tr></thead><tbody>${rows.map((row,i)=>{const pr=_prizeRanks[i];const rc=pr?(pr===1?'rank gold':pr===2?'rank silver':pr===3?'rank bronze':'rank'):'rank';const med=pr?(pr===1?'1st':pr===2?'2nd':pr===3?'3rd':`${pr}th`):(row.p&&isSocial(row.p,seasonOf(td))?'<span class="tag tag-social" style="font-size:0.6rem">Social</span>':'<span style="color:rgba(255,255,255,0.3)">—</span>');const pct=Math.round((row.completed/18)*100);return`<tr><td class="${rc}">${med}</td><td><div style="display:flex;align-items:center;gap:8px">${row.p?`<div class="av" style="background:${clr(row.p)}">${ini(row.p.name)}</div>${row.p.name}${isSocial(row.p,seasonOf(td))?'<span class="tag tag-social" style="font-size:0.6rem;padding:1px 5px">Social</span>':''}`:'Unknown'}</div></td><td><span style="display:inline-flex;align-items:center;gap:4px;font-size:0.76rem"><span class="tee-dot" style="background:${row.r.tee_color||'#888'}"></span>${row.r.tee_name||'—'}</span></td><td style="font-family:'DM Mono',monospace;color:rgba(255,255,255,0.5)">${row.phcp!=null?row.phcp:'—'}</td><td style="font-family:'DM Mono',monospace">${row.completed}<span style="color:rgba(255,255,255,0.3)">/18</span></td><td><div class="prog-bar"><div class="prog-fill" style="width:${pct}%"></div></div></td><td style="font-family:'DM Mono',monospace;font-weight:600;font-size:1.1rem;color:#82aaf0">${row.pts}</td></tr>`;}).join('')}</tbody></table></div>`;
-  document.getElementById('todayScoreboards').innerHTML=rows.map(row=>{if(!row.p)return'';const F=[0,1,2,3,4,5,6,7,8],B=[9,10,11,12,13,14,15,16,17];const hp=row.holePts;function cell(i){const h=row.r.holes[i];if(!h)return`<td style="color:rgba(255,255,255,0.2)">·</td>`;if(h.pickup)return`<td style="font-family:'DM Mono',monospace;font-size:0.82rem;font-weight:700;color:#f0a030">P</td>`;if(h.score==null)return`<td style="color:rgba(255,255,255,0.2)">·</td>`;const d=h.score-h.par;return`<td style="font-family:'DM Mono',monospace;font-size:0.82rem;font-weight:500;color:${vpC(d)}">${h.score}</td>`;}function ptsCell(i){const x=hp[i];if(!x)return`<td style="color:rgba(255,255,255,0.18)">·</td>`;return`<td style="font-family:'DM Mono',monospace;font-size:0.78rem;font-weight:500;color:${ptC(x.pts)}">${x.pts}</td>`;}const fPts=F.map(i=>hp[i]?.pts||0).reduce((a,b)=>a+b,0),bPts=B.map(i=>hp[i]?.pts||0).reduce((a,b)=>a+b,0);return`<div style="margin-top:1rem;padding-top:1rem;border-top:1px solid rgba(255,255,255,0.06)"><div style="display:flex;align-items:center;gap:9px;margin-bottom:0.6rem"><div class="av" style="background:${clr(row.p)};width:22px;height:22px;font-size:0.6rem">${ini(row.p.name)}</div><span style="font-weight:500;font-size:0.88rem">${row.p.name}</span><span style="font-size:0.75rem;color:rgba(255,255,255,0.38)">${row.completed} holes · HCP ${row.phcp!=null?row.phcp:'—'}</span></div><div class="scorecard-wrap"><table class="sc-table" style="min-width:500px"><thead><tr><th class="left">Hole</th>${F.map(i=>`<th>${i+1}</th>`).join('')}<th>Out</th><th class="sep"></th>${B.map(i=>`<th>${i+1}</th>`).join('')}<th>In</th><th>Total</th></tr></thead><tbody><tr><td class="left muted">Par</td>${F.map(i=>`<td class="mono muted">${HOLE_PARS[i]}</td>`).join('')}<td class="tot mono muted">35</td><td class="sep"></td>${B.map(i=>`<td class="mono muted">${HOLE_PARS[i]}</td>`).join('')}<td class="tot mono muted">37</td><td class="tot mono muted">72</td></tr><tr><td class="left" style="font-weight:500;color:var(--gold-l);font-size:0.77rem">Score</td>${F.map(i=>cell(i)).join('')}<td class="tot">${F.some(i=>row.r.holes[i]?.score)?tS(row.r.holes.slice(0,9).filter(h=>h?.score)):''}</td><td class="sep"></td>${B.map(i=>cell(i)).join('')}<td class="tot">${B.some(i=>row.r.holes[i]?.score)?tS(row.r.holes.slice(9).filter(h=>h?.score)):''}</td><td class="tot" style="font-weight:600">${row.completed?tS(row.r.holes.filter(h=>h?.score)):''}</td></tr><tr><td class="left" style="color:#82aaf0;font-size:0.77rem">Points</td>${F.map(i=>ptsCell(i)).join('')}<td class="tot" style="color:#82aaf0;font-weight:600">${fPts||'—'}</td><td class="sep"></td>${B.map(i=>ptsCell(i)).join('')}<td class="tot" style="color:#82aaf0;font-weight:600">${bPts||'—'}</td><td class="tot" style="color:#82aaf0;font-weight:700;font-size:1rem">${row.pts}</td></tr></tbody></table></div>`;}).join('');}
+  document.getElementById('todayTable').innerHTML=`<div class="rt-wrap"><table class="rt"><thead><tr><th></th><th>Player</th><th>Tee</th><th>Playing HCP</th><th>Holes</th><th>Progress</th><th>Points</th></tr></thead><tbody>${rows.map((row,i)=>{const pr=_prizeRanks[i];const rc=pr?(pr===1?'rank gold':pr===2?'rank silver':pr===3?'rank bronze':'rank'):'rank';const med=pr?(pr===1?'1st':pr===2?'2nd':pr===3?'3rd':`${pr}th`):(row.p&&isSocial(row.p,seasonOf(td))?'<span class="tag tag-social" style="font-size:0.6rem">Social</span>':'<span style="color:rgba(255,255,255,0.3)">—</span>');const pct=Math.round((row.completed/18)*100);return`<tr><td class="${rc}">${med}</td><td><div style="display:flex;align-items:center;gap:8px">${row.p?`<div class="av" style="background:${clr(row.p)}">${ini(row.p.name)}</div>${row.p.name}${isSocial(row.p,seasonOf(td))?'<span class="tag tag-social" style="font-size:0.6rem;padding:1px 5px">Social</span>':''}`:'Unknown'}</div></td><td><span style="display:inline-flex;align-items:center;gap:4px;font-size:0.76rem"><span class="tee-dot" style="background:${row.r.tee_color||'#888'}"></span>${row.r.tee_name||'—'}</span></td><td style="font-family:'DM Mono',monospace;color:rgba(255,255,255,0.5)">${row.phcp!=null?row.phcp:'—'}</td><td style="font-family:'DM Mono',monospace">${row.stopped?`<span style="font-size:0.76rem;color:rgba(255,255,255,0.55)">Stopped after ${row.stopped}</span>`:`${row.completed}<span style="color:rgba(255,255,255,0.3)">/18</span>`}</td><td><div class="prog-bar"><div class="prog-fill" style="width:${pct}%"></div></div></td><td style="font-family:'DM Mono',monospace;font-weight:600;font-size:1.1rem;color:#82aaf0">${row.pts}</td></tr>`;}).join('')}</tbody></table></div>`;
+  document.getElementById('todayScoreboards').innerHTML=rows.map(row=>{if(!row.p)return'';const F=[0,1,2,3,4,5,6,7,8],B=[9,10,11,12,13,14,15,16,17];const hp=row.holePts;function cell(i){const h=row.r.holes[i];if(!h)return`<td style="color:rgba(255,255,255,0.2)">·</td>`;if(h.pickup)return`<td style="font-family:'DM Mono',monospace;font-size:0.82rem;font-weight:700;color:#f0a030">P</td>`;if(h.score==null)return`<td style="color:rgba(255,255,255,0.2)">·</td>`;const d=h.score-h.par;return`<td style="font-family:'DM Mono',monospace;font-size:0.82rem;font-weight:500;color:${vpC(d)}">${h.score}</td>`;}function ptsCell(i){const x=hp[i];if(!x)return`<td style="color:rgba(255,255,255,0.18)">·</td>`;return`<td style="font-family:'DM Mono',monospace;font-size:0.78rem;font-weight:500;color:${ptC(x.pts)}">${x.pts}</td>`;}const fPts=F.map(i=>hp[i]?.pts||0).reduce((a,b)=>a+b,0),bPts=B.map(i=>hp[i]?.pts||0).reduce((a,b)=>a+b,0);return`<div style="margin-top:1rem;padding-top:1rem;border-top:1px solid rgba(255,255,255,0.06)"><div style="display:flex;align-items:center;gap:9px;margin-bottom:0.6rem"><div class="av" style="background:${clr(row.p)};width:22px;height:22px;font-size:0.6rem">${ini(row.p.name)}</div><span style="font-weight:500;font-size:0.88rem">${row.p.name}</span><span style="font-size:0.75rem;color:rgba(255,255,255,0.38)">${row.stopped?`Stopped after ${row.stopped}`:`${row.completed} holes`} · HCP ${row.phcp!=null?row.phcp:'—'}</span></div><div class="scorecard-wrap"><table class="sc-table" style="min-width:500px"><thead><tr><th class="left">Hole</th>${F.map(i=>`<th>${i+1}</th>`).join('')}<th>Out</th><th class="sep"></th>${B.map(i=>`<th>${i+1}</th>`).join('')}<th>In</th><th>Total</th></tr></thead><tbody><tr><td class="left muted">Par</td>${F.map(i=>`<td class="mono muted">${HOLE_PARS[i]}</td>`).join('')}<td class="tot mono muted">35</td><td class="sep"></td>${B.map(i=>`<td class="mono muted">${HOLE_PARS[i]}</td>`).join('')}<td class="tot mono muted">37</td><td class="tot mono muted">72</td></tr><tr><td class="left" style="font-weight:500;color:var(--gold-l);font-size:0.77rem">Score</td>${F.map(i=>cell(i)).join('')}<td class="tot">${F.some(i=>row.r.holes[i]?.score)?tS(row.r.holes.slice(0,9).filter(h=>h?.score)):''}</td><td class="sep"></td>${B.map(i=>cell(i)).join('')}<td class="tot">${B.some(i=>row.r.holes[i]?.score)?tS(row.r.holes.slice(9).filter(h=>h?.score)):''}</td><td class="tot" style="font-weight:600">${row.completed?tS(row.r.holes.filter(h=>h?.score)):''}</td></tr><tr><td class="left" style="color:#82aaf0;font-size:0.77rem">Points</td>${F.map(i=>ptsCell(i)).join('')}<td class="tot" style="color:#82aaf0;font-weight:600">${fPts||'—'}</td><td class="sep"></td>${B.map(i=>ptsCell(i)).join('')}<td class="tot" style="color:#82aaf0;font-weight:600">${bPts||'—'}</td><td class="tot" style="color:#82aaf0;font-weight:700;font-size:1rem">${row.pts}</td></tr></tbody></table></div>`;}).join('');}
 
 // Best-N IPS standings (N from SEASONS), highest first. Prize players only (inPrizes): no social
 // members, and entrants only in an opt-in season.

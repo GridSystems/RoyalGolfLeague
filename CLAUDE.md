@@ -263,6 +263,12 @@ Per-player best nett score per hole across the season. Ranked by total nett. "My
    `heRemovePlayer` deletes their round — the `p2_rounds_del` policy lets any member delete a
    round with no scores (`supabase/noshow_round_delete.sql`). A round with a score still needs
    its owner or an admin.
+9. **Stopped playing:** the "A player stopped playing…" link under the hole card marks every hole
+   after that player's last played one (play order) `{score:null, stopped:true}` in `holes` — no
+   DB change. The flow skips them, their row shows "Stopped after N · Undo", Today shows
+   "Stopped after N". `holeDone()` (score, pickup or stopped) is the "done" test for progress and
+   resume; points, the 9-hole Save minimum, records and the eclectic still count only scores and
+   pickups. The dual-scorer merge keeps the other phone's flag unless this phone just undid it.
 
 **GPS off-course guard:** `COURSE_BOUNDS` is the course plus ~1 km; five consecutive fixes
 outside it stop the GPS watch. Fixes vaguer than `GPS_OOB_MAX_ACC_M` (100 m) never count.
