@@ -171,17 +171,7 @@ select option { background: #1a3a2a; }
       <div style="margin-top:0.9rem;font-size:0.8rem"><span class="lock-link" onclick="showLockPanel('lockForgotPanel')">Forgot password?</span></div>
       <div style="margin-top:1rem;font-size:0.8rem;color:rgba(240,213,140,0.5)">First time on the new login? <span class="lock-link" onclick="showLockPanel('lockSetupPanel')">Set it up</span></div>
       <div style="margin-top:0.4rem;font-size:0.8rem;color:rgba(240,213,140,0.5)">New here? <span class="lock-link" onclick="showLockPanel('lockSignupPanel')">Sign up</span></div>
-      <div style="margin-top:0.9rem;font-size:0.7rem"><span class="lock-link" style="opacity:0.6" onclick="showLockPanel('lockPinPanel')">Use my old PIN</span></div>
-    </form>
-    <!-- Old PIN login (removed in release B) -->
-    <form id="lockPinPanel" style="display:none" onsubmit="return lockSubmit(submitEmailPin)">
-      <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:1rem;text-align:left">
-        <div class="fgi"><label>Email</label><input type="email" id="pinEmail" placeholder="your@email.com" maxlength="100"></div>
-        <div class="fgi"><label>PIN</label><input type="password" id="loginPin" autocomplete="one-time-code" placeholder="••••" maxlength="4" inputmode="numeric" pattern="[0-9]*"></div>
-        <div id="pinLoginError" style="color:#f08080;font-size:0.78rem;display:none"></div>
-      </div>
-      <button type="submit" class="btn btn-primary" style="width:100%">Enter with PIN</button>
-      <div style="margin-top:1rem;font-size:0.8rem"><span class="lock-link" onclick="showLockPanel('lockLoginPanel')">← Back</span></div>
+      <div style="margin-top:0.9rem;font-size:0.7rem;color:rgba(240,213,140,0.5)">Used a PIN before? PIN sign-in has ended — <span class="lock-link" onclick="showLockPanel('lockSetupPanel')">set up your email login</span>.</div>
     </form>
     <!-- Set up new login (email + password) -->
     <form id="lockSetupPanel" style="display:none" onsubmit="return lockSubmit(submitSetup)">
@@ -223,18 +213,6 @@ select option { background: #1a3a2a; }
       <button class="btn btn-primary" style="width:100%;margin-bottom:0.6rem" onclick="showLockPanel('lockSignupPanel',true)">Finish signing up</button>
       <button class="btn btn-ghost" style="width:100%" onclick="signOut()">Sign out</button>
     </div>
-    <!-- First-time PIN set panel (existing player, no PIN yet) -->
-    <form id="lockSetPinPanel" style="display:none" onsubmit="return lockSubmit(submitLockSetPin)">
-      <div id="lockSetPinName" style="font-family:'Playfair Display',serif;font-size:1rem;color:var(--gold-l);margin-bottom:0.5rem"></div>
-      <div style="font-size:0.82rem;color:rgba(255,255,255,0.45);margin-bottom:1rem;text-align:left">No PIN set yet. Choose a 4-digit PIN to secure your account.</div>
-      <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:1rem;text-align:left">
-        <div class="fgi"><label>Choose a PIN</label><input type="password" id="lockSetPinInput" autocomplete="one-time-code" placeholder="••••" maxlength="4" inputmode="numeric" pattern="[0-9]*"></div>
-        <div class="fgi"><label>Confirm PIN</label><input type="password" id="lockSetPinConfirm" autocomplete="one-time-code" placeholder="••••" maxlength="4" inputmode="numeric" pattern="[0-9]*"></div>
-        <div id="lockSetPinError" style="color:#f08080;font-size:0.78rem;display:none"></div>
-      </div>
-      <button type="submit" class="btn btn-primary" style="width:100%">Set PIN & Enter</button>
-      <div style="margin-top:1.25rem;font-size:0.8rem;color:rgba(240,213,140,0.5)"><span onclick="showLockPanel('lockLoginPanel')" style="color:var(--gold-l);cursor:pointer;text-decoration:underline">← Back</span></div>
-    </form>
     <!-- Sign-up panel -->
     <form id="lockSignupPanel" style="display:none" onsubmit="return lockSubmit(submitSignup)">
       <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:1rem;text-align:left">
@@ -575,10 +553,7 @@ select option { background: #1a3a2a; }
 
   <!-- ADMIN -->
   <div class="view" id="view-admin">
-    <div class="info-box" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
-      <span>Admin view — handicaps, bulk entry, edit rounds.</span>
-      <button class="btn btn-ghost btn-sm" onclick="document.getElementById('changePinModal').style.display='flex'">Change Admin PIN</button>
-    </div>
+    <div class="info-box">Admin view — handicaps, bulk entry, edit rounds.</div>
     <div class="panel" id="adminTeesPanel">
       <div class="ph" onclick="toggleAdminSection('adminTeesBody','achev-tees')" style="cursor:pointer;user-select:none">
         <span class="pt">Tees</span>
@@ -671,19 +646,6 @@ select option { background: #1a3a2a; }
 </div>
 
 <!-- Modals -->
-<div class="modal-bg" id="adminPinModal" style="display:none"><div class="modal modal-sm">
-  <h3>⚙ Admin Access</h3>
-  <div style="font-size:0.82rem;color:rgba(255,255,255,0.45);margin-bottom:1rem">Enter the admin PIN to continue.</div>
-  <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:1rem">
-    <div class="fgi"><label>PIN</label><input type="password" id="adminPinInput" autocomplete="one-time-code" placeholder="••••" maxlength="20" onkeydown="if(event.key==='Enter')submitAdminPin()"></div>
-    <div id="adminPinError" style="color:#f08080;font-size:0.78rem;display:none">Incorrect PIN.</div>
-  </div>
-  <div style="display:flex;gap:9px;justify-content:flex-end">
-    <button class="btn btn-ghost btn-sm" onclick="closeModal('adminPinModal')">Cancel</button>
-    <button class="btn btn-primary btn-sm" onclick="submitAdminPin()">Enter</button>
-  </div>
-</div></div>
-
 <div class="modal-bg" id="mfaModal" style="display:none"><div class="modal modal-sm">
   <div class="mt">Admin mode</div>
   <div id="mfaEnroll" style="display:none;font-size:0.82rem;color:rgba(255,255,255,0.6);margin-bottom:0.75rem">Scan this with an authenticator app (Google Authenticator, 1Password…), then enter the 6-digit code.<div id="mfaQr" style="background:#fff;padding:8px;border-radius:8px;margin:0.75rem auto;width:180px"></div></div>
@@ -726,18 +688,6 @@ select option { background: #1a3a2a; }
   <div style="display:flex;gap:9px;justify-content:flex-end">
     <button class="btn btn-ghost btn-sm" onclick="closeModal('editDguModal')">Cancel</button>
     <button class="btn btn-primary btn-sm" onclick="saveDguNumber()">Save</button>
-  </div>
-</div></div>
-
-<div class="modal-bg" id="changePinModal" style="display:none"><div class="modal modal-sm">
-  <h3>Change Admin PIN</h3>
-  <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:1rem">
-    <div class="fgi"><label>New PIN</label><input type="password" id="newPinVal" autocomplete="one-time-code" placeholder="Choose a PIN" maxlength="20"></div>
-    <div class="fgi"><label>Confirm PIN</label><input type="password" id="newPinConfirm" autocomplete="one-time-code" placeholder="Repeat PIN" maxlength="20"></div>
-  </div>
-  <div style="display:flex;gap:9px;justify-content:flex-end">
-    <button class="btn btn-ghost btn-sm" onclick="closeModal('changePinModal')">Cancel</button>
-    <button class="btn btn-primary btn-sm" onclick="saveNewPin()">Save PIN</button>
   </div>
 </div></div>
 
@@ -825,36 +775,6 @@ select option { background: #1a3a2a; }
 </div></div>
 
 
-<div class="modal-bg" id="pinModal" style="display:none"><div class="modal modal-sm">
-  <div id="pinModalHeader" style="display:flex;align-items:center;gap:12px;margin-bottom:1.25rem">
-    <div id="pinModalAvatar" style="width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.8rem;font-weight:600;color:#fff;flex-shrink:0"></div>
-    <div><div id="pinModalName" style="font-family:'Playfair Display',serif;font-size:1rem;color:var(--gold-l)"></div><div id="pinModalSub" style="font-size:0.72rem;color:rgba(255,255,255,0.4)"></div></div>
-  </div>
-  <div id="pinEnterSection">
-    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:1rem">
-      <div class="fgi"><label>Enter your PIN</label><input type="password" id="pinInput" autocomplete="one-time-code" placeholder="••••" maxlength="4" inputmode="numeric" pattern="[0-9]*" onkeydown="if(event.key==='Enter')submitPin()"></div>
-      <div id="pinError" style="color:#f08080;font-size:0.78rem;display:none">Incorrect PIN.</div>
-    </div>
-    <div style="display:flex;gap:9px;justify-content:flex-end">
-      <button class="btn btn-ghost btn-sm" onclick="closeModal('pinModal')">Cancel</button>
-      <button class="btn btn-primary btn-sm" onclick="submitPin()">Confirm</button>
-    </div>
-  </div>
-  <div id="pinSetSection" style="display:none">
-    <div style="font-size:0.82rem;color:rgba(255,255,255,0.45);margin-bottom:1rem">No PIN set yet. Confirm your email and choose a 4-digit PIN to secure your account.</div>
-    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:1rem">
-      <div class="fgi"><label>Your email</label><input type="email" id="pinSetEmail" placeholder="your@email.com" maxlength="100"></div>
-      <div class="fgi"><label>Choose a PIN</label><input type="password" id="pinSetInput" autocomplete="one-time-code" placeholder="••••" maxlength="4" inputmode="numeric" pattern="[0-9]*"></div>
-      <div class="fgi"><label>Confirm PIN</label><input type="password" id="pinSetConfirm" autocomplete="one-time-code" placeholder="••••" maxlength="4" inputmode="numeric" pattern="[0-9]*"></div>
-      <div id="pinSetError" style="color:#f08080;font-size:0.78rem;display:none"></div>
-    </div>
-    <div style="display:flex;gap:9px;justify-content:flex-end">
-      <button class="btn btn-ghost btn-sm" onclick="closeModal('pinModal')">Cancel</button>
-      <button class="btn btn-primary btn-sm" onclick="saveFirstPin()">Set PIN</button>
-    </div>
-  </div>
-</div></div>
-
 <div class="modal-bg" id="pickerModal" style="display:none"><div class="modal modal-sm">
   <h3>Who are you?</h3>
   <div id="pickerList" style="display:flex;flex-direction:column;gap:7px;margin-bottom:1rem"></div>
@@ -907,7 +827,7 @@ select option { background: #1a3a2a; }
 const SUPABASE_URL='https://qvjybtcbymexheqrjkai.supabase.co';
 const SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF2anlidGNieW1leGhlcXJqa2FpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQzNDUyMDAsImV4cCI6MjA4OTkyMTIwMH0.ODg9C2HU4exSpTt5ABfODz_vz3v0Uz_tQsL3XAuWJ-4';
 // Version gate: bump together with public.require_current_app() and course-mapper.html.
-const APP_VERSION=3;
+const APP_VERSION=4;
 const SITE_URL='https://gridsystems.github.io/RoyalGolfLeague/';
 const H={'Content-Type':'application/json','apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY,'x-app-version':String(APP_VERSION)};
 function forceReload(){location.reload();}
@@ -940,10 +860,8 @@ function jwtClaims(){try{return JSON.parse(atob(_session.access_token.split('.')
 const ADMIN_MODE_SECONDS=12*3600;
 // isAdminAccount() follows the signed-in identity (players.user_id), matching private.is_admin()'s
 // auth.uid() check — not activeId, which changes under "view as" and would drop admin mode mid-session.
-// The old PIN route has no signed-in identity, so it still goes by activeId there.
 function isAdminAccount(){
-  if(_session)return players.find(p=>p.user_id===_session.user.id)?.is_admin===true;
-  return players.find(p=>p.id===activeId)?.is_admin===true;
+  return !!_session&&players.find(p=>p.user_id===_session.user.id)?.is_admin===true;
 }
 function adminModeActive(){
   const c=jwtClaims();if(c.aal!=='aal2')return false;
@@ -951,7 +869,6 @@ function adminModeActive(){
 }
 let _mfa=null,_mfaPending=null;   // _mfa: {factorId, resolve} for the prompt in flight; _mfaPending: shared by concurrent callers
 async function requireAdminMode(){
-  if(!_session)return true;                       // old PIN route: unchanged until release B
   if(adminModeActive())return true;
   // A prompt may already be up for another concurrent caller (e.g. Promise.all of several
   // sbUpdate calls) — join it instead of opening a second one and orphaning the first.
@@ -991,12 +908,11 @@ async function submitMfaCode(){
 }
 function cancelMfa(){document.getElementById('mfaModal').style.display='none';if(_mfa){const r=_mfa.resolve;_mfa=null;r(false);}}
 async function openAdminTab(btn){
-  if(!_session){requireAdminPin(btn);return;}     // old PIN route (release B removes)
   if(await requireAdminMode())showView('admin',btn);
 }
 // players.email and players.pin are not readable with the public key (supabase/phase0b_hide_credentials.sql),
-// so every players request names its columns — `select=*` would be refused. PINs are checked by sbRpc('login') etc.
-const PLAYER_COLS='id,name,color,handicap,hcp_history,created_at,is_admin,approved,is_social,bag,dgu_number,archived_at,legacy_id,user_id';
+// so every players request names its columns — `select=*` would be refused.
+const PLAYER_COLS='id,name,color,handicap,hcp_history,created_at,is_admin,approved,is_social,bag,dgu_number,archived_at,user_id';
 const sbSel=t=>t==='players'?'select='+PLAYER_COLS:'';
 // Archived players (people who left) keep their history but are left out of every pick list.
 const activePlayers=()=>players.filter(p=>!p.archived_at);
@@ -1518,8 +1434,7 @@ function updateAdminUI(){const a=isAdmin();document.getElementById('adminTab').s
 function applyPendingUI(){updateSignOutBtn();document.getElementById('pendingPay').innerHTML=payHtml();const p=players.find(x=>x.id===activeId)||pendingPlayers.find(x=>x.id===activeId);const pending=p&&p.approved===false;document.getElementById('pendingBanner').style.display=pending?'block':'none';document.getElementById('tabLeaderboard').style.display=pending?'none':'';document.getElementById('tabHistory').style.display=pending?'none':'';document.getElementById('tabPlayers').style.display=pending?'none':'';if(pending){showView('log',document.querySelector('.nav-tab'));document.querySelector('.nav-tab').classList.remove('active');}const trackTab=document.getElementById('tabTrack');if(trackTab){const me=players.find(x=>x.id===activeId)||pendingPlayers.find(x=>x.id===activeId);const canTrack=me&&me.approved!==false&&!isSocial(me,seasonOf(today()));trackTab.style.display=canTrack?'':'none';}}
 
 // ── Login ─────────────────────────────────────────────────────────────────────
-let lockLoginPlayer=null;
-const LOCK_PANELS=['lockLoginPanel','lockPinPanel','lockSetPinPanel','lockSetupPanel','lockForgotPanel','lockNewPwPanel','lockCheckEmailPanel','lockUnlinkedPanel','lockSignupPanel'];
+const LOCK_PANELS=['lockLoginPanel','lockSetupPanel','lockForgotPanel','lockNewPwPanel','lockCheckEmailPanel','lockUnlinkedPanel','lockSignupPanel'];
 // Shows one lock-screen panel and hides the rest.
 // finish=true: "Finish signing up" — signed in with no player, so the Sign up form minus email and
 // password (the login already exists). Any other panel change turns it off.
@@ -1603,57 +1518,16 @@ function handleAuthRedirectError(){
 }
 async function signOut(){
   try{await authClient().auth.signOut();}catch(e){}
-  _session=null;sessionStorage.removeItem('sl_session_player');localStorage.removeItem('sl_active_player');
+  _session=null;localStorage.removeItem('sl_active_player');
   forceReload();
 }
-// Sign out shows for anyone signed in, either route, including an admin viewing as someone else.
-function updateSignOutBtn(){const b=document.getElementById('signOutBtn');if(b)b.style.display=_session||sessionStorage.getItem('sl_session_player')?'':'none';}
+// Sign out shows for anyone signed in, including an admin viewing as someone else.
+function updateSignOutBtn(){const b=document.getElementById('signOutBtn');if(b)b.style.display=_session?'':'none';}
 async function submitEmailChange(){
   const email=prompt('New email address');if(!email||!email.includes('@'))return;
   const {error}=await authClient().auth.updateUser({email:email.trim().toLowerCase()});
   if(error){alert('Error: '+error.message);return;}
   toast('Check the new address for a confirmation link');
-}
-async function submitEmailPin(){
-  const email=document.getElementById('pinEmail').value.trim().toLowerCase();
-  const pin=document.getElementById('loginPin').value.trim();
-  const err=document.getElementById('pinLoginError');
-  if(!email||!pin){err.textContent='Please enter your email and PIN.';err.style.display='block';return;}
-  err.style.display='none';
-  try{
-    // Checked server-side; unknown email and wrong PIN get the same answer on purpose.
-    const res=await sbRpc('login',{p_email:email,p_pin:pin});
-    if(res.ok&&res.needs_pin){
-      lockLoginPlayer={id:res.id,name:res.name,email};
-      document.getElementById('lockSetPinName').textContent=res.name;
-      document.getElementById('lockSetPinInput').value='';document.getElementById('lockSetPinConfirm').value='';document.getElementById('lockSetPinError').style.display='none';
-      document.getElementById('lockPinPanel').style.display='none';
-      document.getElementById('lockSetPinPanel').style.display='block';
-      setTimeout(()=>document.getElementById('lockSetPinInput').focus(),50);
-    } else if(res.ok){
-      await loginAs({id:res.id});
-    } else {
-      err.textContent=res.locked?'Too many wrong PINs. Try again in 15 minutes.':'Email or PIN incorrect.';err.style.display='block';
-      document.getElementById('loginPin').value='';document.getElementById('loginPin').focus();
-    }
-  }catch(e){err.textContent='Error: '+e.message;err.style.display='block';}
-}
-async function submitLockSetPin(){
-  const v1=document.getElementById('lockSetPinInput').value.trim();
-  const v2=document.getElementById('lockSetPinConfirm').value.trim();
-  const err=document.getElementById('lockSetPinError');
-  if(!v1||v1.length<4){err.textContent='PIN must be 4 digits.';err.style.display='block';return;}
-  if(v1!==v2){err.textContent='PINs do not match.';err.style.display='block';return;}
-  try{
-    const res=await sbRpc('set_first_pin',{p_id:lockLoginPlayer.id,p_email:lockLoginPlayer.email,p_pin:v1});
-    if(!res.ok){err.textContent=res.error;err.style.display='block';return;}
-    await loginAs(lockLoginPlayer);toast('PIN set ✓');
-  }catch(e){err.textContent='Error: '+e.message;err.style.display='block';}
-}
-async function loginAs(p){                       // old PIN route (removed in release B)
-  localStorage.setItem('sl_active_player',p.id);
-  sessionStorage.setItem('sl_session_player',p.id);
-  await init();                                   // init reveals the app once the player is resolved
 }
 
 // ── Sign-up ───────────────────────────────────────────────────────────────────
@@ -1721,7 +1595,6 @@ async function rejectPlayer(id){
 const AUDIT_LABELS={login:'Signed in',login_set_up:'Set up new login',signed_up:'Signed up',reset_requested:'Password reset requested',password_changed:'Password changed',email_changed:'Email changed',mfa_enrolled:'Two-factor set up',admin_mode_unlocked:'Admin mode unlocked',admin_granted:'Admin granted',admin_removed:'Admin removed',approved:'Approved',archived:'Archived',restored:'Restored',social_changed:'Social status changed',payment_recorded:'Payment recorded',payment_deleted:'Payment deleted',fine_deleted:'Fine deleted',league_entered:'Entered matchplay league',league_withdrawn:'Withdrew from matchplay league',league_paid:'League entry paid',league_unpaid:'League payment undone',league_entry_moved:'Moved in from the waiting list',match_outcome:'Match outcome recorded',match_edited:'Finished match changed',match_players_changed:'Playoff players changed'};
 async function renderAuditPanel(){
   const el=document.getElementById('auditPanel');if(!el)return;
-  if(!_session){el.innerHTML='<div class="empty">Sign in with the new email login to see the audit log.</div>';return;}
   const f=document.getElementById('auditFilter');
   if(f&&f.options.length<2)f.innerHTML='<option value="">All events</option>'+Object.entries(AUDIT_LABELS).map(([k,v])=>`<option value="${k}">${v}</option>`).join('');
   const q='order=at.desc&limit=200'+(f&&f.value?'&action=eq.'+f.value:'');
@@ -1733,20 +1606,11 @@ async function renderAuditPanel(){
 async function toggleAuditLog(){toggleAdminSection('auditPanel','achev-audit');if(document.getElementById('auditPanel').style.display!=='none')await renderAuditPanel();}
 async function renderMoveOverList(){
   const el=document.getElementById('moveOverList');if(!el)return;
-  if(!_session){el.innerHTML='<div class="empty">Sign in with the new email login to see this list.</div>';return;}
   let rows=[];try{rows=await sbRpc('admin_member_emails',{});}catch(e){el.innerHTML='<div class="empty">Needs admin mode.</div>';return;}
   const todo=rows.filter(r=>!r.linked);
-  el.innerHTML=todo.length?`<div style="font-size:0.8rem;color:rgba(255,255,255,0.45);margin-bottom:0.5rem">${todo.length} of ${rows.length} members still on the old PIN login. Release B can go ahead when this list is empty.</div>`+todo.map(r=>`<div style="display:flex;justify-content:space-between;padding:4px 0"><span>${escHtml(r.name)}</span><span style="font-family:'DM Mono',monospace;font-size:0.78rem;color:rgba(255,255,255,0.5)">${r.email?escHtml(r.email):'no email on file'}</span></div>`).join('')
-    :'<div class="empty">Everyone has moved to the new login ✓ — release B can go ahead.</div>';
+  el.innerHTML=todo.length?`<div style="font-size:0.8rem;color:rgba(255,255,255,0.45);margin-bottom:0.5rem">${todo.length} of ${rows.length} members haven't set up the email login yet.</div>`+todo.map(r=>`<div style="display:flex;justify-content:space-between;padding:4px 0"><span>${escHtml(r.name)}</span><span style="font-family:'DM Mono',monospace;font-size:0.78rem;color:rgba(255,255,255,0.5)">${r.email?escHtml(r.email):'no email on file'}</span></div>`).join('')
+    :'<div class="empty">Everyone has set up the email login ✓</div>';
 }
-
-// ── PIN ───────────────────────────────────────────────────────────────────────
-const PIN_KEY='sl_admin_pin';const DEFAULT_PIN='saturday';
-let pendingAdminBtn=null;
-function getPin(){return localStorage.getItem(PIN_KEY)||DEFAULT_PIN;}
-function requireAdminPin(btn){if(sessionStorage.getItem('admin_auth')==='1'){showView('admin',btn);return;}pendingAdminBtn=btn;document.getElementById('adminPinInput').value='';document.getElementById('adminPinError').style.display='none';document.getElementById('adminPinModal').style.display='flex';setTimeout(()=>document.getElementById('adminPinInput').focus(),50);}
-function submitAdminPin(){const entered=document.getElementById('adminPinInput').value;if(entered===getPin()){sessionStorage.setItem('admin_auth','1');closeModal('adminPinModal');showView('admin',pendingAdminBtn);}else{document.getElementById('adminPinError').style.display='block';document.getElementById('adminPinInput').value='';document.getElementById('adminPinInput').focus();}}
-function saveNewPin(){const v1=document.getElementById('newPinVal').value.trim();const v2=document.getElementById('newPinConfirm').value.trim();if(!v1){alert('Enter a PIN.');return;}if(v1!==v2){alert('PINs do not match.');return;}localStorage.setItem(PIN_KEY,v1);toast('Admin PIN updated ✓');closeModal('changePinModal');}
 
 // ── Navigation ────────────────────────────────────────────────────────────────
 function showView(id,btn){
@@ -5025,8 +4889,8 @@ function mlResultsHtml(t,recs){
 const mlSyncFields=rec=>({status:rec.decided?'complete':rec.started?'in_progress':'pending',result:rec.decided&&rec.winner?rec.winner:null});
 // [] back from an update means RLS filtered it: a failure, as in adminEntryWrite. Local state follows only a real save.
 async function mlPatch(m,b,prompt=true){const rows=await sbUpdate('tournament_matches',m.id,b,prompt);if(!rows||!rows.length)throw new Error('not saved');Object.assign(m,b);}
-// Who the database sees as "me" (private.current_player); the old PIN route goes by activeId.
-const mlMe=()=>_session?(players.find(p=>p.user_id===_session.user.id)?.id??null):activeId;
+// Who the database sees as "me" (private.current_player).
+const mlMe=()=>_session?(players.find(p=>p.user_id===_session.user.id)?.id??null):null;
 // EVERY change to a league match goes through here: a score, the tee or start hole, an admin outcome.
 // The change is tried on copies first (only this match and this score differ); mlGate refuses it
 // (nothing written) or names the playoff slots that follow from it. Permissions are checked before any
@@ -5115,7 +4979,7 @@ function mlSlotRepairs(t,recs=mlRecords(t)){
 async function mlHealAll(repair=false){
   for(const t of tournaments.filter(t=>t.format==='league'&&t.status!=='entry')){
     const fix=mlSlotRepairs(t);
-    const admin=fix.some(x=>!x.fill)&&isAdminAccount()&&(!_session||adminModeActive()||(repair&&await requireAdminMode()));
+    const admin=fix.some(x=>!x.fill)&&isAdminAccount()&&(adminModeActive()||(repair&&await requireAdminMode()));
     for(const x of fix)if(x.fill||admin)
       // Start-up never prompts: a refusal (another device got there first, or it needs admin mode) or [] skips
       // the slot, which stays flagged on the league page. Only the Repair button (repair=true) may prompt.
@@ -6558,65 +6422,20 @@ function chooseGpsDetailMode(mode){
 function showPicker(){
   const list=document.getElementById('pickerList');
   // Signed-in users have a database identity already: only an admin may look at other profiles, and
-  // for them it's a plain "view as" (no PIN) — the old PIN-route list still needs the PIN step below it.
-  if(_session&&!isAdminAccount()){list.innerHTML='<div style="color:rgba(255,255,255,0.4);font-size:0.85rem">You can only view your own profile.</div>';}
+  // for them it's a plain "view as".
+  if(!isAdminAccount()){list.innerHTML='<div style="color:rgba(255,255,255,0.4);font-size:0.85rem">You can only view your own profile.</div>';}
   else if(!activePlayers().length){list.innerHTML='<div style="color:rgba(255,255,255,0.4);font-size:0.85rem">No players yet.</div>';}
-  else{const pick=_session?'setPlayer':'requirePin';
-    list.innerHTML=activePlayers().map(p=>`<div onclick="${pick}(${p.id})" style="display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:10px;cursor:pointer;background:${p.id===activeId?'rgba(201,168,76,0.12)':'rgba(255,255,255,0.04)'};border:1px solid ${p.id===activeId?'rgba(201,168,76,0.4)':'rgba(255,255,255,0.08)'}"><div style="width:30px;height:30px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.72rem;font-weight:600;color:#fff">${ini(p.name)}</div><div style="flex:1"><div style="font-weight:500;font-size:0.88rem;display:flex;align-items:center;gap:6px">${p.name}${p.is_admin?'<span class="tag tag-admin">Admin</span>':''}${p.id===activeId?'<span class="tag tag-you">You</span>':''}</div><div style="font-size:0.7rem;color:rgba(255,255,255,0.36)">${currentHcp(p)!=null?'HCP '+currentHcp(p)+' · ':''}${allRounds.filter(r=>r.player_id===p.id).length} rounds</div></div></div>`).join('');}
+  else{
+    list.innerHTML=activePlayers().map(p=>`<div onclick="setPlayer(${p.id})" style="display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:10px;cursor:pointer;background:${p.id===activeId?'rgba(201,168,76,0.12)':'rgba(255,255,255,0.04)'};border:1px solid ${p.id===activeId?'rgba(201,168,76,0.4)':'rgba(255,255,255,0.08)'}"><div style="width:30px;height:30px;border-radius:50%;background:${clr(p)};display:flex;align-items:center;justify-content:center;font-size:0.72rem;font-weight:600;color:#fff">${ini(p.name)}</div><div style="flex:1"><div style="font-weight:500;font-size:0.88rem;display:flex;align-items:center;gap:6px">${p.name}${p.is_admin?'<span class="tag tag-admin">Admin</span>':''}${p.id===activeId?'<span class="tag tag-you">You</span>':''}</div><div style="font-size:0.7rem;color:rgba(255,255,255,0.36)">${currentHcp(p)!=null?'HCP '+currentHcp(p)+' · ':''}${allRounds.filter(r=>r.player_id===p.id).length} rounds</div></div></div>`).join('');}
   document.getElementById('pickerModal').style.display='flex';
-}
-let pendingPinId=null;
-async function requirePin(id){
-  const p=players.find(x=>x.id===id);if(!p)return;
-  pendingPinId=id;
-  document.getElementById('pinModalAvatar').textContent=ini(p.name);
-  document.getElementById('pinModalAvatar').style.background=clr(p);
-  document.getElementById('pinModalName').textContent=p.name;
-  let hasPin;try{hasPin=await sbRpc('has_pin',{p_id:id});}catch(e){alert('Error: '+e.message);return;}
-  document.getElementById('pinModalSub').textContent=hasPin?'Enter your PIN to continue':'First time? Set a PIN to secure your account';
-  document.getElementById('pinEnterSection').style.display=hasPin?'block':'none';
-  document.getElementById('pinSetSection').style.display=hasPin?'none':'block';
-  document.getElementById('pinInput').value='';document.getElementById('pinError').style.display='none';
-  document.getElementById('pinSetEmail').value='';document.getElementById('pinSetInput').value='';document.getElementById('pinSetConfirm').value='';document.getElementById('pinSetError').style.display='none';
-  closeModal('pickerModal');
-  document.getElementById('pinModal').style.display='flex';
-  setTimeout(()=>{const f=hasPin?document.getElementById('pinInput'):document.getElementById('pinSetEmail');if(f)f.focus();},50);
-}
-async function submitPin(){
-  const entered=document.getElementById('pinInput').value;const err=document.getElementById('pinError');
-  let res;try{res=await sbRpc('check_pin',{p_id:pendingPinId,p_pin:entered});}catch(e){err.textContent='Error: '+e.message;err.style.display='block';return;}
-  if(res.ok){closeModal('pinModal');setPlayer(pendingPinId);}
-  else{err.textContent=res.locked?'Too many wrong PINs. Try again in 15 minutes.':'Incorrect PIN.';err.style.display='block';document.getElementById('pinInput').value='';document.getElementById('pinInput').focus();}
-}
-async function saveFirstPin(){
-  const v1=document.getElementById('pinSetInput').value.trim();
-  const v2=document.getElementById('pinSetConfirm').value.trim();
-  const err=document.getElementById('pinSetError');
-  if(!v1||v1.length<4){err.textContent='PIN must be 4 digits.';err.style.display='block';return;}
-  if(v1!==v2){err.textContent='PINs do not match.';err.style.display='block';return;}
-  const email=document.getElementById('pinSetEmail').value.trim().toLowerCase();
-  if(!email){err.textContent='Enter your email.';err.style.display='block';return;}
-  try{
-    const res=await sbRpc('set_first_pin',{p_id:pendingPinId,p_email:email,p_pin:v1});
-    if(!res.ok){err.textContent=res.error;err.style.display='block';return;}
-    closeModal('pinModal');setPlayer(pendingPinId);toast('PIN set ✓');
-  }catch(e){err.textContent='Error: '+e.message;err.style.display='block';}
 }
 let editingEmailPlayerId=null;
 function openEditEmail(id){editingEmailPlayerId=id;const p=players.find(x=>x.id===id);if(!p)return;document.getElementById('editEmailTitle').textContent='Edit Email — '+p.name;document.getElementById('editEmailVal').value='';document.getElementById('editEmailVal').placeholder='Hidden, enter a new address to replace it';document.getElementById('editEmailModal').style.display='flex';setTimeout(()=>document.getElementById('editEmailVal').focus(),50);}
 async function savePlayerEmail(){const val=document.getElementById('editEmailVal').value.trim().toLowerCase();if(!val||!val.includes('@')){alert('Enter a valid email.');return;}const p=players.find(x=>x.id===editingEmailPlayerId);if(!p)return;setLoading(true,'Saving…');try{await sbUpdate('players',p.id,{email:val});p.email=val;toast('Email updated ✓');closeModal('editEmailModal');renderAdmin();}catch(e){alert('Error: '+e.message);}finally{setLoading(false);}}
-async function resetPlayerPin(id){
-  if(!confirm('Reset this player\'s PIN? They will be asked to set a new one next time they log in.'))return;
-  setLoading(true,'Resetting…');
-  try{
-    await sbRpc('admin_reset_pin',{p_id:id});
-    toast('PIN reset ✓');
-  }catch(e){alert('Error: '+e.message);}finally{setLoading(false);}
-}
 function setPlayer(id){
   // Reset GPS tracking if player changes mid-round
   if(GR&&id!==activeId){stopGpsWatch();if(GR.map)GR.map.remove();if(weatherInterval){clearInterval(weatherInterval);weatherInterval=null;}GR=null;toast('GPS round cleared (player changed)');}
-  const sessionId=_session?players.find(p=>p.user_id===_session.user.id)?.id:parseInt(sessionStorage.getItem('sl_session_player'));
+  const sessionId=_session&&players.find(p=>p.user_id===_session.user.id)?.id;
   if(sessionId&&id!==sessionId&&!isAdmin()){toast('You can only view your own profile.');return;}
   activeId=id;const p=players.find(x=>x.id===id);
   if(p){document.getElementById('playerName').textContent=p.name;const av=document.getElementById('playerAvatar');av.textContent=ini(p.name);av.style.background=clr(p);}
@@ -6877,7 +6696,7 @@ function toggleAdminSection(bodyId,chevId){const body=document.getElementById(bo
 function renderAdmin(){
   const panel=document.getElementById('adminHcpPanel');const ap=adminPlayer();
   if(!players.length){panel.innerHTML='<div class="empty">No players.</div>';return;}
-  panel.innerHTML=activePlayers().map(p=>{const hist=[...(p.hcp_history||[])].sort((a,b)=>b.date.localeCompare(a.date));return`<div style="margin-bottom:1.5rem;padding-bottom:1.5rem;border-bottom:1px solid rgba(255,255,255,0.06)"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.7rem;flex-wrap:wrap;gap:8px"><div style="display:flex;align-items:center;gap:10px"><div class="av" style="background:${clr(p)}">${ini(p.name)}</div><div><div style="font-weight:500">${p.name} ${p.is_admin?'<span class="tag tag-admin">Admin</span>':''}</div><div style="font-size:0.72rem;color:rgba(255,255,255,0.38)">Current: <strong style="color:var(--gold-l)">${currentHcp(p)!=null?currentHcp(p):'not set'}</strong> · DGU: <strong style="color:var(--gold-l)">${p.dgu_number||'—'}</strong></div></div></div><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn btn-warn btn-sm" onclick="openHcpEdit(${p.id})">+ Update Index</button><button class="btn btn-ghost btn-sm" onclick="openEditName(${p.id})">Edit Name</button><button class="btn btn-ghost btn-sm" onclick="openEditEmail(${p.id})">Edit Email</button><button class="btn btn-ghost btn-sm" onclick="openEditDgu(${p.id})">Edit DGU</button><button class="btn btn-ghost btn-sm" onclick="resetPlayerPin(${p.id})">Reset PIN</button><button class="btn btn-ghost btn-sm" onclick="makeAdmin(${p.id})">${p.is_admin?'Remove Admin':'Make Admin'}</button></div></div>${hist.length?`<table class="hcp-hist"><thead><tr><th>Effective Date</th><th>HCP Index</th><th>Note</th><th></th></tr></thead><tbody>${hist.map((e,i)=>`<tr class="${i===0?'current-hcp':''}"><td style="font-family:'DM Mono',monospace;font-size:0.8rem">${fd(e.date)}</td><td style="font-family:'DM Mono',monospace;font-weight:${i===0?600:400};color:${i===0?'var(--gold-l)':'inherit'}">${e.value}</td><td style="color:rgba(255,255,255,0.4);font-size:0.78rem">${e.note||'—'}</td><td><button class="btn btn-danger btn-sm" onclick="deleteHcpEntry(${p.id},'${e.date}',${e.value})">✕</button></td></tr>`).join('')}</tbody></table></div>`:'<div style="font-size:0.8rem;color:rgba(255,255,255,0.3);padding:6px 0">No history.</div>'}</div>`;}).join('');
+  panel.innerHTML=activePlayers().map(p=>{const hist=[...(p.hcp_history||[])].sort((a,b)=>b.date.localeCompare(a.date));return`<div style="margin-bottom:1.5rem;padding-bottom:1.5rem;border-bottom:1px solid rgba(255,255,255,0.06)"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.7rem;flex-wrap:wrap;gap:8px"><div style="display:flex;align-items:center;gap:10px"><div class="av" style="background:${clr(p)}">${ini(p.name)}</div><div><div style="font-weight:500">${p.name} ${p.is_admin?'<span class="tag tag-admin">Admin</span>':''}</div><div style="font-size:0.72rem;color:rgba(255,255,255,0.38)">Current: <strong style="color:var(--gold-l)">${currentHcp(p)!=null?currentHcp(p):'not set'}</strong> · DGU: <strong style="color:var(--gold-l)">${p.dgu_number||'—'}</strong></div></div></div><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn btn-warn btn-sm" onclick="openHcpEdit(${p.id})">+ Update Index</button><button class="btn btn-ghost btn-sm" onclick="openEditName(${p.id})">Edit Name</button><button class="btn btn-ghost btn-sm" onclick="openEditEmail(${p.id})">Edit Email</button><button class="btn btn-ghost btn-sm" onclick="openEditDgu(${p.id})">Edit DGU</button><button class="btn btn-ghost btn-sm" onclick="makeAdmin(${p.id})">${p.is_admin?'Remove Admin':'Make Admin'}</button></div></div>${hist.length?`<table class="hcp-hist"><thead><tr><th>Effective Date</th><th>HCP Index</th><th>Note</th><th></th></tr></thead><tbody>${hist.map((e,i)=>`<tr class="${i===0?'current-hcp':''}"><td style="font-family:'DM Mono',monospace;font-size:0.8rem">${fd(e.date)}</td><td style="font-family:'DM Mono',monospace;font-weight:${i===0?600:400};color:${i===0?'var(--gold-l)':'inherit'}">${e.value}</td><td style="color:rgba(255,255,255,0.4);font-size:0.78rem">${e.note||'—'}</td><td><button class="btn btn-danger btn-sm" onclick="deleteHcpEntry(${p.id},'${e.date}',${e.value})">✕</button></td></tr>`).join('')}</tbody></table></div>`:'<div style="font-size:0.8rem;color:rgba(255,255,255,0.3);padding:6px 0">No history.</div>'}</div>`;}).join('');
   const rsel=document.getElementById('adminRoundPlayer');rsel.innerHTML=`<option value="all">All players</option>`+players.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
   renderAdminRounds();
   renderAdminTees();
@@ -6945,30 +6764,6 @@ async function deleteRoundAdmin(){
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
-// Phase 1 renumbered players. A browser may still remember a player by the old timestamp id
-// (players.legacy_id): translate it and move that player's preference keys. A player who is
-// unknown or archived is signed out. Returns true when the session was cleared. Remove with
-// legacy_id in Phase 2.
-function reconcileStoredPlayer(){
-  const all=[...players,...pendingPlayers];
-  if(!all.length)return false; // data failed to load (no signal, or a version reload is under way): judge nothing
-
-  const resolve=v=>{const n=Number(v);return all.find(p=>p.id===n)||all.find(p=>p.legacy_id===n);};
-  for(const p of all){if(p.legacy_id==null||p.legacy_id===p.id)continue;
-    for(const k of ['sl_units_','sl_gps_detail_']){const v=localStorage.getItem(k+p.legacy_id);if(v!=null){localStorage.setItem(k+p.id,v);localStorage.removeItem(k+p.legacy_id);}}}
-  try{const g=JSON.parse(localStorage.getItem('sl_active_group')||'null');
-    if(g&&(g.players||[]).some(x=>!all.some(p=>p.id===x.id)))localStorage.removeItem('sl_active_group');}
-  catch(e){localStorage.removeItem('sl_active_group');}
-  let cleared=false;
-  for(const [store,key] of [[localStorage,'sl_active_player'],[sessionStorage,'sl_session_player']]){
-    const v=store.getItem(key);if(v==null)continue;
-    const p=resolve(v);
-    if(!p||p.archived_at){store.removeItem(key);if(key==='sl_session_player')cleared=true;}
-    else if(String(p.id)!==v)store.setItem(key,p.id);
-  }
-  if(cleared)localStorage.removeItem('sl_active_player');
-  return cleared;
-}
 // If someone is signed in, they must resolve to a linked player before anything renders —
 // otherwise the app would flash as "nobody" for a moment. Returns false (and shows the
 // unlinked-account panel) when the signed-in user has no matching player row.
@@ -6991,7 +6786,6 @@ async function init(){
   // A failed initial load must not render "nobody" — leave the lock screen up with a
   // message rather than guessing at a player from data we don't have.
   if(!dataOk){setLoading(false);showLockDbError();return;}
-  if(reconcileStoredPlayer()){location.reload();return;}
   if(!resolveSignedInPlayer())return;
   // Restore last selected player
   const savedId=localStorage.getItem('sl_active_player');
@@ -7037,10 +6831,12 @@ window.addEventListener('pageshow',checkForUpdate);   // also fires on iOS bfcac
 // Start-up. Nothing is shown as "nobody": the lock screen (or loading) stays up until the session,
 // the data and the player are all resolved, then the app appears once, already as you.
 async function boot(){
+  // Leftovers of the PIN login (ended in release B): a tab that still holds them starts at the login panel.
+  sessionStorage.removeItem('sl_session_player');sessionStorage.removeItem('admin_auth');localStorage.removeItem('sl_admin_pin');
   handleAuthRedirectError();
   const hadCode=new URLSearchParams(location.search).has('code');   // a confirmation or reset link
   let session=null;
-  try{session=(await authClient().auth.getSession()).data.session;}catch(e){/* login service unreachable: old route still works */}
+  try{session=(await authClient().auth.getSession()).data.session;}catch(e){/* login service unreachable: the login panel shows */}
   _session=session;
   if(_recoveryPending){setLoading(false);showLockPanel('lockNewPwPanel');return;}
   if(session){await startApp();return;}
@@ -7048,7 +6844,6 @@ async function boot(){
   // another browser or app (the Gmail app vs Safari, the home-screen app vs Safari) there is none, so
   // no session and no error either. Say so rather than show a plain login screen.
   if(hadCode){const u=new URL(location.href);u.searchParams.delete('code');history.replaceState(null,'',u.pathname+u.search+u.hash);}
-  if(sessionStorage.getItem('sl_session_player')){await init();return;}
   setLoading(false);showLockPanel('lockLoginPanel');
   if(hadCode)lockError('loginError','That link was opened in a different browser or app than the one that asked for it. If you were confirming your email, that part is done — sign in with your password here. If you were resetting your password, request a new link and open it in this same browser.');
 }

@@ -10,6 +10,8 @@ setTimeout(async function(){
   const echoInsert=(id)=>(u,b,m)=>m==='POST'&&!u.includes('/rpc/')?(Array.isArray(b)?b.map((r,i)=>({...r,id:id+i})):[{...b,id}]):[];
   window.toast=()=>{};window.setLoading=()=>{};window.confirm=()=>true;window.alert=m=>{window.__alert=m;};
   ['updateAdminUI','renderFineTypesList','closeModal','renderAdmin','renderFinesLb','renderSaturdayAdmin','renderSaturdayView','renderPendingApprovals'].forEach(f=>{if(typeof window[f]==='function')window[f]=()=>{};});
+  // Admin is the signed-in player with is_admin and a fresh second factor (admin mode).
+  const asAdmin=()=>{players[0].user_id='u-1';_session={user:{id:'u-1'},access_token:'x.'+btoa(JSON.stringify({aal:'aal2',amr:[{method:'totp',timestamp:Date.now()/1000}]}))+'.y'};};
   try{
     // ── Task 5: no invented ids ──
     const html=document.documentElement.outerHTML;
@@ -41,9 +43,9 @@ setTimeout(async function(){
     // Sign-up's "no invented id" coverage moved with it to Task 7 (phase2a.test.js): it no longer
     // POSTs to /players at all — it goes through Supabase Auth signUp, which assigns no id here.
     // ── Task 6: archive instead of delete ──
-    T('PLAYER_COLS reads archived_at and legacy_id',/(^|,)archived_at(,|$)/.test(PLAYER_COLS)&&/(^|,)legacy_id(,|$)/.test(PLAYER_COLS),PLAYER_COLS);
+    T('PLAYER_COLS reads archived_at',/(^|,)archived_at(,|$)/.test(PLAYER_COLS),PLAYER_COLS);
     players=[{id:1,name:'Ann',is_admin:true,color:0,hcp_history:[]},{id:2,name:'Bo',color:1,hcp_history:[]},{id:3,name:'Gone',color:2,hcp_history:[],archived_at:'2026-09-01T00:00:00Z'}];
-    activeId=1; // isAdmin() is "the active player has is_admin"
+    activeId=1;asAdmin();
     allRounds=[{id:1,player_id:3,date:'2026-06-01',tee_id:'57',holes:Array.from({length:18},(_,i)=>({hole:i+1,par:HOLE_PARS[i],score:HOLE_PARS[i]}))}];
     T('activePlayers() leaves archived out',activePlayers().map(p=>p.id).join()==='1,2',activePlayers().map(p=>p.id).join());
     stubFetch(()=>[{}]);
@@ -74,25 +76,6 @@ setTimeout(async function(){
     await rejectPlayer(9);
     const dels=calls.filter(c=>c.method==='DELETE').map(c=>c.url.replace(/^.*\/rest\/v1\//,''));
     T('rejectPlayer deletes the applicant\'s rows before the player',dels.length>1&&dels[dels.length-1].startsWith('players?id=eq.9')&&dels.slice(0,-1).every(u=>/player_id=eq\.9/.test(u)),JSON.stringify(dels));
-    // ── Task 7: old browser ids ──
-    players=[{id:1,name:'Ann',legacy_id:1774371644307},{id:2,name:'Bo',legacy_id:1774371644999,archived_at:'2026-09-01T00:00:00Z'}];pendingPlayers=[];
-    localStorage.clear();sessionStorage.clear();
-    localStorage.setItem('sl_active_player','1774371644307');sessionStorage.setItem('sl_session_player','1774371644307');
-    localStorage.setItem('sl_units_1774371644307','yards');localStorage.setItem('sl_gps_detail_1774371644307','full');
-    localStorage.setItem('sl_active_group',JSON.stringify({date:today(),players:[{id:1774371644307,teeId:'57'}]}));
-    let cleared=reconcileStoredPlayer();
-    T('old id translated in local and session storage',localStorage.getItem('sl_active_player')==='1'&&sessionStorage.getItem('sl_session_player')==='1'&&cleared===false);
-    T('preference keys moved to the new id',localStorage.getItem('sl_units_1')==='yards'&&localStorage.getItem('sl_gps_detail_1')==='full'&&localStorage.getItem('sl_units_1774371644307')===null);
-    T('saved Log Round group with old ids is discarded',localStorage.getItem('sl_active_group')===null);
-    localStorage.clear();sessionStorage.clear();sessionStorage.setItem('sl_session_player','999');
-    cleared=reconcileStoredPlayer();
-    T('unknown id clears the session',cleared===true&&sessionStorage.getItem('sl_session_player')===null);
-    localStorage.clear();sessionStorage.clear();sessionStorage.setItem('sl_session_player','2');localStorage.setItem('sl_active_player','2');
-    cleared=reconcileStoredPlayer();
-    T('archived player is signed out',cleared===true&&sessionStorage.getItem('sl_session_player')===null&&localStorage.getItem('sl_active_player')===null);
-    localStorage.clear();sessionStorage.clear();sessionStorage.setItem('sl_session_player','1');
-    T('current id is left alone',reconcileStoredPlayer()===false&&sessionStorage.getItem('sl_session_player')==='1');
-    T('init calls reconcileStoredPlayer',/reconcileStoredPlayer\(\)/.test(init.toString()));
     // ── Task 7b: version gate ──
     let reloaded=0;window.forceReload=()=>{reloaded++;};
     const realFetch=window.fetch;
@@ -110,15 +93,9 @@ setTimeout(async function(){
     T('other errors still throw without reloading',reloaded===0&&threw);
     window.fetch=realFetch;
     // ── Final review fixes ──
-    // A failed data load leaves players empty: that must not sign anyone out or drop their round group.
-    players=[];pendingPlayers=[];localStorage.clear();sessionStorage.clear();
-    sessionStorage.setItem('sl_session_player','5');localStorage.setItem('sl_active_player','5');
-    localStorage.setItem('sl_active_group',JSON.stringify({date:today(),players:[{id:5,teeId:'57'}]}));
-    T('failed load: reconcile leaves the session alone',reconcileStoredPlayer()===false&&sessionStorage.getItem('sl_session_player')==='5'&&localStorage.getItem('sl_active_player')==='5');
-    T('failed load: round in progress is kept',localStorage.getItem('sl_active_group')!==null);
     // An archived admin is not an admin: the last active admin cannot give up their rights.
     players=[{id:1,name:'Ann',is_admin:true,color:0,hcp_history:[]},{id:2,name:'Old',is_admin:true,archived_at:'2026-09-01T00:00:00Z',color:1,hcp_history:[]}];
-    activeId=1;window.__alert=null;stubFetch(()=>[{}]);
+    activeId=1;asAdmin();window.__alert=null;stubFetch(()=>[{}]);
     await makeAdmin(1);
     T('last active admin cannot remove own rights while only an archived admin remains',/at least one admin/i.test(window.__alert||'')&&!calls.some(c=>c.method==='PATCH'),String(window.__alert));
     T('adminPlayer() never returns an archived admin',adminPlayer().id===1,JSON.stringify(adminPlayer()));

@@ -107,8 +107,9 @@ setTimeout(async function(){
     activeId=1;seasonEntries=[];renderProfile();
     T('My Profile shows the entry status',/Enter Winter 2027/.test(document.getElementById('profileBody').innerHTML));
     // ── Task 5: admin entries ──
-    today=()=>'2026-10-10';_session=null;activeId=1;
+    today=()=>'2026-10-10';activeId=1;
     players=[P(1,'Ann',{is_admin:true}),P(2,'<b>Bo</b>'),P(3,'Cy'),P(4,'Di',{is_social:true})];
+    players[0].user_id='u-1';_session={user:{id:'u-1'},access_token:'x.'+btoa(JSON.stringify({aal:'aal2',amr:[{method:'totp',timestamp:Date.now()/1000}]}))+'.y'};
     seasonEntries=[{id:21,season:'Winter 2027',player_id:2,paid_at:null,amount:null},{id:22,season:'Winter 2027',player_id:1,paid_at:'2026-10-05T10:00:00Z',amount:175}];
     renderAdminEntries();const adm=()=>document.getElementById('adminEntriesBody').innerHTML;
     T('title names the entry season',document.getElementById('adminEntriesTitle').textContent==='Winter 2027 entries');
@@ -149,11 +150,9 @@ setTimeout(async function(){
     // ── Task 6: sign out in the header ──
     const so=()=>document.getElementById('signOutBtn');
     T('header has a Sign out button wired to signOut',!!so()&&so().closest('header')&&/signOut\(\)/.test(so().getAttribute('onclick')));
-    _session=null;sessionStorage.removeItem('sl_session_player');updateSignOutBtn();
+    _session=null;updateSignOutBtn();
     T('hidden when nobody is signed in',so().style.display==='none');
-    sessionStorage.setItem('sl_session_player','1');updateSignOutBtn();
-    T('shown on the old PIN route',so().style.display!=='none');
-    sessionStorage.removeItem('sl_session_player');_session={access_token:'h.e30.s',user:{id:'u-9'}};updateSignOutBtn();
+    _session={access_token:'h.e30.s',user:{id:'u-9'}};updateSignOutBtn();
     T('shown on the new login',so().style.display!=='none');
     players=[P(1,'Ann',{user_id:'u-1'}),P(2,'Bo')];_session={access_token:'h.e30.s',user:{id:'u-1'}};activeId=2;updateSignOutBtn();
     T('shown while an admin views as someone else',so().style.display!=='none');

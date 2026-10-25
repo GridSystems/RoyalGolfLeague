@@ -14,9 +14,12 @@ setTimeout(async function(){
     const b=live?(getHook&&getHook(url))||liveGet(url):respond(url,body,method);const st=b&&b.__status||200;return{ok:st<400,status:st,json:async()=>b,text:async()=>JSON.stringify(b)};};
   const reset=fn=>{calls.length=0;gets.length=0;respond=fn||(()=>[]);};
   window.toast=()=>{};window.setLoading=()=>{};window.confirm=()=>true;window.alert=m=>{window.__alert=m;};
-  tees=[..._TEES_SEED];_session=null;today=()=>'2027-05-10';
+  // Signed in as whoever activeId is, in admin mode (each P() player's user_id is its id). Release B removed
+  // the PIN route these tests used to run on, where "me" was activeId; this keeps that meaning.
+  const signedIn=()=>{_session={get user(){return{id:activeId};},access_token:'x.'+btoa(JSON.stringify({aal:'aal2',amr:[{method:'totp',timestamp:Date.now()/1000}]}))+'.y'};};
+  tees=[..._TEES_SEED];signedIn();today=()=>'2027-05-10';
   // A player with one handicap index; a league match between a and b (group unless x says otherwise).
-  const P=(id,name,idx=18,x={})=>({id,name,color:id%10,hcp_history:[{date:'2026-01-01',value:idx,note:''}],approved:true,is_social:false,...x});
+  const P=(id,name,idx=18,x={})=>({id,name,color:id%10,hcp_history:[{date:'2026-01-01',value:idx,note:''}],approved:true,is_social:false,user_id:id,...x});
   const M=(id,a,b,x={})=>({id,tournament_id:900,round:1,match_num:1,stage:'group',bracket:null,team_a_p1_id:a,team_b_p1_id:b,team_a_p2_id:null,team_b_p2_id:null,
     status:'pending',result:null,start_hole:1,outcome:'played',played_on:null,tee_id:null,_teeId:'57',...x});
   // Score rows for a match: rows of [hole, grossA, grossB].
@@ -559,7 +562,7 @@ setTimeout(async function(){
        reset((u,b,m)=>m==='PATCH'?{__status:403,code:'42501',message:'Only an admin in admin mode can change who plays in a match.'}:[]);
        await mlHealAll();window.requireAdminMode=keep;
        T('heal, signed-in admin without admin mode, fills refused 42501: no prompt, each slot tried once and skipped',prompts===0&&calls.filter(c=>c.method==='PATCH').length===8&&tournamentMatches.filter(m=>m.stage==='semi').every(m=>m.team_a_p1_id==null));
-       _session=null;renderTournament();
+       signedIn();renderTournament();
        T('…the skipped slots stay flagged on the league page',/out of step with the results: Winners semi-final 1/.test(tc()));}
       // 2: a correction that decides the match mid-card ends the card
       {league();level();stub();activeId=2;const m2=gm().find(m=>m.team_a_p1_id===2||m.team_b_p1_id===2);
@@ -589,9 +592,9 @@ setTimeout(async function(){
        const loadStub=()=>reset((u,b,m)=>m==='PATCH'?[{...b}]:m!=='GET'?[]:u.includes('/players?')?keep.p:u.includes('/tournaments?')?keep.t
          :u.includes('/tournament_players?')?keep.tp:u.includes('/tees?')?_TEES_SEED:[]);
        loadStub();getHook=u=>u.includes('tournament_scores')?{__status:500}:null;
-       await loadData();getHook=null;_session=null;activeId=1;calls.length=0;
+       await loadData();getHook=null;signedIn();activeId=1;calls.length=0;
        await mlHealAll();
-       T('C1: scores failed to load at start-up: a PIN-route admin\'s heal writes nothing, the started semi keeps its players',tournamentScores.length===0&&calls.length===0&&s1.team_a_p1_id===1&&s1.team_b_p1_id===5);
+       T('C1: scores failed to load at start-up: an admin\'s heal writes nothing, the started semi keeps its players',tournamentScores.length===0&&calls.length===0&&s1.team_a_p1_id===1&&s1.team_b_p1_id===5);
        renderTournament();T('C1: …and the league page raises no out-of-step warning from the missing data',!/out of step/.test(tc()));
        tournamentScores=keep.s;Object.assign(semi(2,1),{team_a_p1_id:null,team_b_p1_id:null});loadStub();
        await loadData();calls.length=0;await mlHealAll();

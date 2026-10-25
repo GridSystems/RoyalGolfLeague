@@ -28,7 +28,6 @@ setTimeout(async function(){
   window.toast=()=>{};window.setLoading=()=>{};window.alert=m=>{window.__alert=m;};window.confirm=()=>true;
   try{
     // ── Task 6: token, version, load fix ──
-    T('APP_VERSION is 3',APP_VERSION===3,String(APP_VERSION));
     _session=sessionFor('u-2');reset(()=>[]);await sbGet('rounds');
     T('signed-in requests send the session token',calls[0].headers.Authorization==='Bearer '+_session.access_token,JSON.stringify(calls[0].headers));
     _session=null;reset(()=>[]);await sbGet('rounds');
@@ -48,20 +47,6 @@ setTimeout(async function(){
     const dbFailRespond=u=>u.includes('/players?')?{__status:500}:[];
     const origShowLockPanel=showLockPanel;
 
-    // old PIN route, players fetch fails: no render, lock screen stays up, message shown
-    localStorage.clear();sessionStorage.clear();
-    sessionStorage.setItem('sl_session_player','2');
-    authState.session=null;
-    reset(dbFailRespond);
-    document.getElementById('lockScreen').style.display='flex';
-    document.getElementById('loginError').style.display='none';document.getElementById('loginError').textContent='';
-    const renderedFail1=[];window.renderGrid=()=>{renderedFail1.push(true);};
-    await boot();
-    window.renderGrid=origRenderGrid;
-    T('old PIN route: failed load does not render',renderedFail1.length===0,JSON.stringify(renderedFail1));
-    T('old PIN route: failed load keeps the lock screen up',document.getElementById('lockScreen').style.display!=='none',document.getElementById('lockScreen').style.display);
-    T('old PIN route: failed load shows a database message',document.getElementById('loginError').style.display==='block'&&/database/i.test(document.getElementById('loginError').textContent),document.getElementById('loginError').textContent);
-
     // new login, players fetch fails: database message, not the unlinked panel
     localStorage.clear();sessionStorage.clear();
     authState.session=sessionFor('u-3');
@@ -73,6 +58,7 @@ setTimeout(async function(){
     await boot();
     window.showLockPanel=origShowLockPanel;window.renderGrid=origRenderGrid;
     T('new login: failed load does not render',renderedFail2.length===0,JSON.stringify(renderedFail2));
+    T('new login: failed load keeps the lock screen up',document.getElementById('lockScreen').style.display!=='none',document.getElementById('lockScreen').style.display);
     T('new login: failed load shows the database message, not the unlinked panel',!panelCalls1.includes('lockUnlinkedPanel')&&panelCalls1.includes('lockLoginPanel'),JSON.stringify(panelCalls1));
     T('new login: failed load database message visible',document.getElementById('loginError').style.display==='block'&&/database/i.test(document.getElementById('loginError').textContent));
 
@@ -87,18 +73,6 @@ setTimeout(async function(){
     T('new login: unresolved player still shows the unlinked panel',panelCalls2.includes('lockUnlinkedPanel'),JSON.stringify(panelCalls2));
     T('new login: unresolved player keeps the lock screen up',document.getElementById('lockScreen').style.display!=='none');
 
-    // old PIN route happy path: renders once as the remembered player
-    localStorage.clear();sessionStorage.clear();
-    sessionStorage.setItem('sl_session_player','2');localStorage.setItem('sl_active_player','2');
-    authState.session=null;
-    reset(u=>u.includes('/players?')?[{id:2,name:'Bo',user_id:'u-2',color:0,hcp_history:[],approved:true}]:[]);
-    document.getElementById('lockScreen').style.display='flex';
-    const renderedHappy=[];window.renderGrid=()=>{renderedHappy.push(document.getElementById('playerName').textContent);};
-    await boot();
-    window.renderGrid=origRenderGrid;
-    T('old PIN route happy path renders once as the remembered player',renderedHappy.length>0&&renderedHappy.every(n=>n==='Bo'),JSON.stringify(renderedHappy));
-    T('old PIN route happy path hides the lock screen',document.getElementById('lockScreen').style.display==='none');
-    T('old PIN route happy path sets the active player',activeId===2,String(activeId));
     // ── Task 7: login flows ──
     const field=(id,v)=>{document.getElementById(id).value=v;};
     const shown=id=>document.getElementById(id).style.display!=='none';
@@ -314,12 +288,6 @@ setTimeout(async function(){
     T('expanding it fetches and shows entries',document.getElementById('auditPanel').style.display!=='none'&&/Approved/.test(document.getElementById('auditPanel').textContent));
     await toggleAuditLog();
     T('collapsing it hides it again',document.getElementById('auditPanel').style.display==='none');
-    _session=null;reset(()=>({__status:401,code:'42501',message:'permission denied for table audit_log'}));
-    await renderAuditPanel();
-    T('on the old PIN login the audit log says to use the new login',/new (email )?login/i.test(document.getElementById('auditPanel').textContent)&&!calls.some(c=>c.url.includes('/audit_log')));
-    await renderMoveOverList();
-    T('on the old PIN login the move-over list says to use the new login',/new (email )?login/i.test(document.getElementById('moveOverList').textContent));
-
     // ── Final review ──
     // Finding 7: resetTournament gets admin mode before any delete (a pre-admin-mode DELETE
     // silently removes nothing, then the PATCH would prompt and reset the status anyway).
