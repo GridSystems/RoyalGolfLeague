@@ -24,6 +24,7 @@ setTimeout(async function(){
     if(attr.length||vals.length)bad.push('escaped twice: '+[...attr,...vals].slice(0,3).join(', '));
     const txt=root?root.innerText:'';
     if(twice(txt))bad.push('visible text escaped twice: '+txt.match(/.{0,20}&(lt|gt|amp|quot|#39);.{0,10}/)[0]);
+    if(/\bNaN\b/.test(txt))bad.push('"NaN" shown');
     if(want==='full'&&!txt.includes("O'Neil"))bad.push("O'Neil not shown");
     if(want==='first'&&!txt.includes('Bo<img'))bad.push('"Bo<img" not shown');
     T(name,!bad.length,bad.join('; '));
@@ -34,6 +35,7 @@ setTimeout(async function(){
 
   // ── stubs: nothing leaves the page ──
   window.toast=()=>{};window.setLoading=()=>{};window.confirm=()=>false;window.alert=()=>{};window.prompt=()=>null;
+  const realGet=sbGet,realUpdate=sbUpdate,realInsert=sbInsert;   // the real ones, for the jsonb shaping checks
   window.sbUpdate=async(t,id,b)=>[{id,...b}];window.sbInsert=async(t,b)=>[b];window.sbDelete=async(t,id)=>[{id}];window.sbDeleteWhere=async()=>{};
   const TD='2026-10-24';today=()=>TD;
   window.sbGet=async t=>t==='audit_log'?[{at:TD+'T10:00:00Z',actor_player_id:1,target_player_id:2,action:X,details:{[X]:X}}]
@@ -172,6 +174,28 @@ setTimeout(async function(){
     {GR={selectedClub:null};const holder=document.createElement('div');document.body.appendChild(holder);
       holder.innerHTML=renderClubPicker({bag:[X]});holder.querySelector('.club-btn').click();
       T('a club name round-trips through the picker',GR.selectedClub===X,String(GR.selectedClub));holder.remove();GR=null;}
+    // ── jsonb "numbers" a member writes themselves: shaped where API rows enter (sbGet/sbInsert/sbUpdate) ──
+    {const S='<img src=x onerror="window.__xss=3">';
+      const rawR={...R(90,2,TD,0),holes:HOLE_PARS.map((par,i)=>({hole:i===8?S:i+1,score:i<3?S:i<6?'5':i<9?4:null,par:i===0?S:par,hcp:i===1?'x':HOLE_HCP[i],...(i===6?{pickup:'yes'}:{}),...(i===7?{stopped:S}:{})})),marker_holes:[{hole:1,score:S,par:4,hcp:4}]};
+      const rawP={...P(2),hcp_history:[{date:'2026-01-01',value:S,note:X},{date:'2026-06-01',value:'14.2'}],bag:[X,7]};
+      const calls=[];window.fetch=async(url,o={})=>{calls.push(o.method||'GET');const body=JSON.stringify(String(url).includes('/rounds')?[rawR]:[rawP]);return{ok:true,status:200,json:async()=>JSON.parse(body),text:async()=>body};};
+      const [r]=await realGet('rounds'),[p]=await realGet('players'),[u]=await realUpdate('rounds',90,{notes:'x'}),[ins]=await realInsert('players',{name:'x'});
+      const h=r.holes;
+      T('shape: markup in score/par/hole/hcp becomes null',h[0].score===null&&h[0].par===null&&h[8].hole===null&&h[1].hcp===null,JSON.stringify(h.slice(0,2)));
+      T('shape: numeric strings become numbers, nulls stay null',h[3].score===5&&h[6].score===4&&h[10].score===null&&h[2].par===5,JSON.stringify([h[3],h[10]]));
+      T('shape: flags are booleans, no keys added',h[6].pickup===false&&h[7].stopped===false&&!('pickup' in h[0])&&!('stopped' in h[0]),JSON.stringify([h[0],h[6],h[7]]));
+      T('shape: marker_holes too',r.marker_holes[0].score===null&&r.marker_holes[0].hole===1,JSON.stringify(r.marker_holes));
+      T('shape: hcp_history value number-or-null, date and note strings',p.hcp_history[0].value===null&&p.hcp_history[1].value===14.2&&p.hcp_history[0].note===X&&typeof p.hcp_history[1].date==='string'&&!('note' in p.hcp_history[1]),JSON.stringify(p.hcp_history));
+      T('shape: bag entries are strings',p.bag[0]===X&&p.bag[1]==='7',JSON.stringify(p.bag));
+      T('shape: sbUpdate and sbInsert rows are shaped too',u.holes[0].score===null&&ins.hcp_history[0].value===null&&calls.join()==='GET,GET,PATCH,POST',calls.join());
+      players=players.map(x=>x.id===2?p:x);allRounds=[r,...allRounds];activeId=2;
+      await step('jsonb: Today',()=>$('view-leaderboard'),'full',()=>{showView('leaderboard',null);showLb('today',null);});
+      await step('jsonb: Eclectic',()=>$('lb-dreamcard'),'first',()=>{showLb('dreamcard',null);const e=$('dreamYear');if(e)e.value='Winter 2027';renderDreamCard();});
+      await step('jsonb: My Rounds',()=>$('view-history'),'first',()=>showView('history',null));
+      await step('jsonb: My Profile',()=>$('view-profile'),'full',()=>showView('profile',null));
+      await step('jsonb: Admin',()=>$('view-admin'),'full',async()=>{showView('admin',null);await tick(100);});
+      await step('jsonb: admin round edit',()=>$('editRoundModal'),'full',()=>openEditRound(90));
+      closeModal('editRoundModal');activeId=1;}
     await check('final sweep',document.body,null);
   }catch(e){out.push('FAIL EXCEPTION :: '+e.stack);}
   await new Promise(r=>setTimeout(r,150));

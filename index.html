@@ -922,9 +922,22 @@ const PLAYER_COLS='id,name,color,handicap,hcp_history,created_at,is_admin,approv
 const sbSel=t=>t==='players'?'select='+PLAYER_COLS:'';
 // Archived players (people who left) keep their history but are left out of every pick list.
 const activePlayers=()=>players.filter(p=>!p.archived_at);
-async function sbGet(t,p=''){const go=()=>fetch(`${SUPABASE_URL}/rest/v1/${t}?${[sbSel(t),p].filter(Boolean).join('&')}`,{headers:hdr()});return (await sbCheck(await go(),go)).json();}
+// Members write these jsonb fields themselves and the database doesn't type them, so a "score" could be
+// markup. Every API row is shaped here on the way in: numbers become finite numbers or null, flags booleans,
+// dates/notes strings. Only keys already present are touched. (Typed columns need nothing; admin-only jsonb —
+// tees.dist, tournaments.deadlines, saturday_events.tee_times — is left as it is.)
+const sbNum=v=>v==null?v:typeof v==='number'?(isFinite(v)?v:null):typeof v==='string'&&v.trim()!==''&&isFinite(+v)?+v:null;
+const sbHoles=hs=>Array.isArray(hs)?hs.map(h=>{if(!h||typeof h!=='object')return null;const o={...h};
+  for(const k of['hole','score','par','hcp'])if(k in o)o[k]=sbNum(o[k]);for(const k of['pickup','stopped'])if(k in o)o[k]=o[k]===true;return o;}):null;
+const SB_SHAPE={
+  rounds:r=>{if('holes' in r)r.holes=sbHoles(r.holes)||[];if('marker_holes' in r)r.marker_holes=sbHoles(r.marker_holes);},
+  players:p=>{if('hcp_history' in p)p.hcp_history=Array.isArray(p.hcp_history)?p.hcp_history.filter(e=>e&&typeof e==='object').map(e=>{const o={...e};
+      if('date' in o)o.date=String(o.date??'');if('value' in o)o.value=sbNum(o.value);if(o.note!=null)o.note=String(o.note);return o;}):[];
+    if('bag' in p)p.bag=Array.isArray(p.bag)?p.bag.map(String):null;}};
+function sbShape(t,rows){const f=SB_SHAPE[t];if(f&&Array.isArray(rows))rows.forEach(r=>{if(r&&typeof r==='object')f(r);});return rows;}
+async function sbGet(t,p=''){const go=()=>fetch(`${SUPABASE_URL}/rest/v1/${t}?${[sbSel(t),p].filter(Boolean).join('&')}`,{headers:hdr()});return sbShape(t,await (await sbCheck(await go(),go)).json());}
 // onConflict ('col,col'): an upsert on that unique key — a row already there is updated, not duplicated.
-async function sbInsert(t,b,onConflict){const go=()=>fetch(`${SUPABASE_URL}/rest/v1/${t}?${[sbSel(t),onConflict&&'on_conflict='+onConflict].filter(Boolean).join('&')}`,{method:'POST',headers:hdr({'Prefer':(onConflict?'resolution=merge-duplicates,':'')+'return=representation'}),body:JSON.stringify(b)});return (await sbCheck(await go(),go)).json();}
+async function sbInsert(t,b,onConflict){const go=()=>fetch(`${SUPABASE_URL}/rest/v1/${t}?${[sbSel(t),onConflict&&'on_conflict='+onConflict].filter(Boolean).join('&')}`,{method:'POST',headers:hdr({'Prefer':(onConflict?'resolution=merge-duplicates,':'')+'return=representation'}),body:JSON.stringify(b)});return sbShape(t,await (await sbCheck(await go(),go)).json());}
 // PostgREST returns zero rows, not an error, when an UPDATE/DELETE policy's USING filters rows out —
 // so an admin who isn't in admin mode gets [] back rather than a refusal, and we retry through the
 // prompt on that too. If the prompt is cancelled we throw rather than return the empty result, so a
@@ -939,8 +952,8 @@ async function retryEmptyInAdminMode(rows,go){
 // a refusal just throws, and [] comes back as it is.
 async function sbUpdate(t,id,b,prompt=true){
   const go=()=>fetch(`${SUPABASE_URL}/rest/v1/${t}?id=eq.${id}&${sbSel(t)}`,{method:'PATCH',headers:hdr({'Prefer':'return=representation'}),body:JSON.stringify(b)});
-  if(!prompt)return (await sbCheck(await go(),null)).json();
-  return retryEmptyInAdminMode(await (await sbCheck(await go(),go)).json(),go);
+  if(!prompt)return sbShape(t,await (await sbCheck(await go(),null)).json());
+  return sbShape(t,await retryEmptyInAdminMode(await (await sbCheck(await go(),go)).json(),go));
 }
 async function sbRpc(fn,args){const go=()=>fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`,{method:'POST',headers:hdr(),body:JSON.stringify(args)});const r=await sbCheck(await go(),go);const t=await r.text();return t?JSON.parse(t):null;}
 // select=id: every table grants SELECT on id, but players' column-level grants stop there — asking

@@ -398,7 +398,9 @@ A second tournament format beside the one-day team event: `tournaments.format='l
   audit details, clubs, server error text) is escaped at render time, never on load or save. `ini()` already
   returns escaped initials. **Never pass user text through an inline `on*` handler** — HTML escaping doesn't
   protect a JS string there; pass the id (or an index, or a `data-` attribute read back from `dataset`) and
-  look the text up. `course-mapper.html` has its own copy of `escHtml`. `tests/xss.test.js` seeds a payload
+  look the text up. `course-mapper.html` has its own copy of `escHtml`. Member-written jsonb the app treats as numbers
+  (`rounds.holes`/`marker_holes`, `players.hcp_history`, `players.bag`) is shaped by `sbShape` as rows enter
+  through `sbGet`/`sbInsert`/`sbUpdate` — a new member-writable jsonb field goes into `SB_SHAPE`. `tests/xss.test.js` seeds a payload
   into every user-text field and renders every view; it must stay green.
 - **Lock-screen panels are `<form>`s** (`onsubmit="return lockSubmit(fn)"`, submit button, no Enter
   handlers) and PIN inputs are `autocomplete="one-time-code"`. The panels stay in the DOM while
