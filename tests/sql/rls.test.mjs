@@ -1,9 +1,12 @@
 import test from 'node:test'; import assert from 'node:assert/strict';
 import { productionDb, as, persona, run, sqlFile } from './testbed.mjs';
 const REAL = () => sqlFile('phase2a_auth.sql').replace('SELECT true AS rehearsal', 'SELECT false AS rehearsal');
+const B1 = () => sqlFile('phase2b_enforce.sql').replace('SELECT true AS rehearsal', 'SELECT false AS rehearsal');
 
-async function world() {
+// b1: also apply release B1 (phase2b_enforce.sql), which closes the public key.
+async function world(b1 = false) {
   const db = await productionDb(); assert.equal(await run(db, REAL()), null);
+  if (b1) assert.equal(await run(db, B1()), null);
   await db.exec('RESET ROLE');
   await db.query(`UPDATE public.players SET approved=false WHERE id=5`);                      // a pending player
   await db.query(`INSERT INTO public.saturday_signups(player_id, date) VALUES (2, '2026-11-07'), (3, '2026-11-07')`); // pre-existing signups to probe draw-field protection
@@ -69,9 +72,12 @@ const MATRIX = [
   ['admin',      'add a player with a group',    `INSERT INTO public.saturday_signups(player_id,date,group_num,tee_time) VALUES (3,'2026-12-05',7,'08:00')`, 1],
 ];
 
-for (const [who, what, sql, want] of MATRIX) {
-  test(`${who}: ${what} → ${want}`, async () => {
-    const { db, P } = await world();
+// The matrix runs twice: on release A, and with B1 applied. B1 only shuts out anon; every other
+// row keeps its expectation, which is the proof that logged-in users see no change.
+for (const b1 of [false, true]) for (const [who, what, sql, A] of MATRIX) {
+  const want = b1 && who === 'anon' ? 'denied' : A;
+  test(`${b1 ? '[B1] ' : ''}${who}: ${what} → ${want}`, async () => {
+    const { db, P } = await world(b1);
     await as(db, P[who]);
     const got = await tryQ(db, sql);
     if (want === '>0') assert.ok(typeof got === 'number' && got > 0, `got ${got}`);
