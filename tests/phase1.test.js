@@ -84,7 +84,7 @@ setTimeout(async function(){
     let threw=false;try{await sbGet('rounds');}catch(e){threw=true;}
     T('requests carry the app version header',seenHeaders&&seenHeaders['x-app-version']===String(APP_VERSION)&&APP_VERSION>=2,JSON.stringify(seenHeaders));
     T('a 426 answer reloads the app and stops the action',reloaded===1&&threw,`reloaded=${reloaded} threw=${threw}`);
-    reloaded=0;threw=false;try{await sbRpc('has_pin',{p_id:1});}catch(e){threw=true;}
+    reloaded=0;threw=false;try{await sbRpc('admin_member_emails',{});}catch(e){threw=true;}
     T('rpc calls are gated the same way',reloaded===1&&threw);
     reloaded=0;threw=false;try{await sbUpdate('rounds',1,{notes:'x'});}catch(e){threw=true;}
     T('updates are gated the same way',reloaded===1&&threw);

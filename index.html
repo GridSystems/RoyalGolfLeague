@@ -836,7 +836,7 @@ async function sbCheck(r,retry){
   if(r.ok)return r;
   const text=await r.text();
   // Refused by a permission rule: an admin who isn't in admin mode is asked for their code, then we retry once.
-  if(retry&&_session&&isAdminAccount()&&!adminModeActive()&&/42501|row-level security|admin mode/i.test(text)){
+  if(retry&&isAdminAccount()&&!adminModeActive()&&/42501|row-level security|admin mode/i.test(text)){
     if(await requireAdminMode())return sbCheck(await retry(),null);
   }
   throw new Error(text);
@@ -849,7 +849,9 @@ async function sbCheck(r,retry){
 let _auth=null,_session=null,_recoveryPending=false;
 function authClient(){
   if(!_auth){_auth=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{flowType:'pkce',detectSessionInUrl:true,persistSession:true,autoRefreshToken:true}});
-    _auth.auth.onAuthStateChange((event,session)=>{_session=session;if(event==='PASSWORD_RECOVERY'){_recoveryPending=true;showLockPanel('lockNewPwPanel');}});}
+    _auth.auth.onAuthStateChange((event,session)=>{_session=session;if(event==='PASSWORD_RECOVERY'){_recoveryPending=true;showLockPanel('lockNewPwPanel');}
+      // The session lapsed (e.g. an expired refresh token): start over at the login panel rather than run with no identity.
+      if(event==='SIGNED_OUT')forceReload();});}
   return _auth;
 }
 function hdr(extra){return{...H,...(_session?{Authorization:'Bearer '+_session.access_token}:{}),...(extra||{})};}
@@ -925,7 +927,7 @@ async function sbInsert(t,b,onConflict){const go=()=>fetch(`${SUPABASE_URL}/rest
 // caller can't mistake a blocked write for a successful no-op; a retry that's genuinely still empty
 // (the id just doesn't match anything) is returned unchanged.
 async function retryEmptyInAdminMode(rows,go){
-  if(rows.length||!_session||!isAdminAccount()||adminModeActive())return rows;
+  if(rows.length||!isAdminAccount()||adminModeActive())return rows;
   if(!await requireAdminMode())throw new Error('Admin mode is needed for that.');
   return (await sbCheck(await go(),null)).json();
 }
@@ -6764,11 +6766,11 @@ async function deleteRoundAdmin(){
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
-// If someone is signed in, they must resolve to a linked player before anything renders —
+// init() only runs signed in (every caller goes through startApp). The signed-in user must resolve
+// to a linked player before anything renders —
 // otherwise the app would flash as "nobody" for a moment. Returns false (and shows the
 // unlinked-account panel) when the signed-in user has no matching player row.
 function resolveSignedInPlayer(){
-  if(!_session)return true;
   const me=players.find(p=>p.user_id===_session.user.id)||pendingPlayers.find(p=>p.user_id===_session.user.id);
   if(!me){setLoading(false);showLockPanel('lockUnlinkedPanel');return false;}
   localStorage.setItem('sl_active_player',me.id);

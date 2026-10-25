@@ -64,6 +64,23 @@ setTimeout(async function(){
     await renderMoveOverList();
     const mo=document.getElementById('moveOverList').textContent;
     T('move-over copy',/1 of \d+ members haven't set up the email login yet/.test(mo)&&!mo.includes('PIN'),mo);
+
+    // players requests always name their columns, and never the credential ones (ported from phase0).
+    const HIDDEN=/(^|[,=])(email|pin|pin_failures|pin_locked_until)(,|&|$)/;
+    const cols=u=>decodeURIComponent(u.split('select=')[1]||'');
+    _session=null;players=[];
+    reset();await sbGet('players','order=created_at.asc');
+    T('sbGet players names its columns, none hidden',/[?&]select=/.test(calls[0].url)&&!HIDDEN.test(cols(calls[0].url)),calls[0].url);
+    reset(()=>[{id:1}]);await sbUpdate('players',1,{name:'X'});
+    T('sbUpdate players names its columns, none hidden',/[?&]select=/.test(calls[0].url)&&!HIDDEN.test(cols(calls[0].url)),calls[0].url);
+    reset(()=>[{id:1}]);await sbInsert('players',{name:'X'});
+    T('sbInsert players names its columns, none hidden',/[?&]select=/.test(calls[0].url)&&!HIDDEN.test(cols(calls[0].url)),calls[0].url);
+
+    // A session that lapses while the app runs (an expired refresh token) starts over at the login panel.
+    const keepReload=forceReload;let reloads=0;window.forceReload=()=>{reloads++;};
+    authState.cb('SIGNED_OUT',null);
+    window.forceReload=keepReload;
+    T('a lapsed session reloads to the login panel',reloads===1&&_session===null,String(reloads));
     // ── end ──
   }catch(e){out.push('FAIL EXCEPTION :: '+e.stack);}
   await new Promise(r=>setTimeout(r,150));
