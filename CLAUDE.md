@@ -393,6 +393,13 @@ A second tournament format beside the one-day team event: `tournaments.format='l
 ## Key design decisions (don't change without reason)
 
 - **Single HTML file** — deliberate. No build complexity. Easy to deploy and share.
+- **User text goes into HTML only through `escHtml`** (2026-10-25, stored-XSS fix) — anything from the
+  database or an input (names, DGU numbers, notes, reasons, tee/fine-type/tournament names, tee times,
+  audit details, clubs, server error text) is escaped at render time, never on load or save. `ini()` already
+  returns escaped initials. **Never pass user text through an inline `on*` handler** — HTML escaping doesn't
+  protect a JS string there; pass the id (or an index, or a `data-` attribute read back from `dataset`) and
+  look the text up. `course-mapper.html` has its own copy of `escHtml`. `tests/xss.test.js` seeds a payload
+  into every user-text field and renders every view; it must stay green.
 - **Lock-screen panels are `<form>`s** (`onsubmit="return lockSubmit(fn)"`, submit button, no Enter
   handlers) and PIN inputs are `autocomplete="one-time-code"`. The panels stay in the DOM while
   signed in; before 2026-09-30 they weren't forms, and NordPass filled the hidden fields and
