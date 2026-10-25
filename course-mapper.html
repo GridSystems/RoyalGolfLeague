@@ -267,15 +267,17 @@ const SB_H    = {'Content-Type':'application/json','apikey':SB_KEY,'x-app-versio
 // Same origin as index.html, so this client shares the app's stored login. The token is fetched per request: getSession() refreshes it.
 let _sb=null;
 async function sbHeaders(extra){
-  _sb=_sb||window.supabase.createClient(SB_URL,SB_KEY,{auth:{flowType:'pkce',persistSession:true,autoRefreshToken:true}});
+  _sb=_sb||window.supabase.createClient(SB_URL,SB_KEY,{auth:{flowType:'pkce',detectSessionInUrl:false,persistSession:true,autoRefreshToken:true}});
   const {data}=await _sb.auth.getSession();
   if(!data||!data.session)throw new Error('Sign in to the Saturday League app on this device first');
   return {...SB_H,'Authorization':'Bearer '+data.session.access_token,...extra};
 }
-// 42501 / 401: the database refused the write because admin mode (a TOTP code in the last 12 hours) isn't active.
+// 42501: the database refused the write because admin mode (a TOTP code in the last 12 hours) isn't active. Any other 401 is a bad or expired login.
 async function sbFail(r){
   const t=await r.text();
-  return new Error(r.status===401||t.includes('42501')?'Unlock admin mode in the app (Admin tab), then try again':t);
+  if(t.includes('42501'))return new Error('Unlock admin mode in the app (Admin tab), then try again');
+  if(r.status===401)return new Error('Sign in to the Saturday League app on this device first');
+  return new Error(t);
 }
 async function sbSurveyGet(){
   const r=await fetch(`${SB_URL}/rest/v1/survey_points?select=*&order=recorded_at.asc`,{headers:await sbHeaders()});
@@ -2836,7 +2838,7 @@ async function pushAllPolygons(){
       await sbUpsertGreenPolygon(h,verts);
       lines.push(`<span style="color:#27ae60">H${h}:✓</span>`);
     }catch(e){
-      lines.push(`<span style="color:#e74c3c">H${h}:✗</span>`);
+      lines.push(`<span style="color:#e74c3c" title="${e.message.replace(/"/g,'')}">H${h}:✗ ${e.message}</span>`);
       console.error('pushAllPolygons hole',h,e);
     }
     logEl.innerHTML=lines.join(' ');
@@ -3058,7 +3060,7 @@ async function finishSampling() {
   } catch(e) {
     console.error('Failed to save survey point:', e);
     const bar = document.querySelector('.sv-gps-row');
-    if (bar) { bar.innerHTML = '<span class="sv-gps-coords" style="color:#e74c3c">⚠ Save failed</span>'; setTimeout(() => renderSurveyPanel(), 2000); }
+    if (bar) { bar.innerHTML = '<span class="sv-gps-coords" style="color:#e74c3c">⚠ Save failed — ' + e.message + '</span>'; setTimeout(() => renderSurveyPanel(), 4000); }
   }
 }
 
@@ -3069,6 +3071,7 @@ async function deleteSurveyPoint(id) {
     renderSurveyPanel();
   } catch (e) {
     console.error('Failed to delete survey point:', e);
+    alert('Delete failed — ' + e.message);
   }
 }
 
@@ -3091,6 +3094,7 @@ async function loadSurveyPoints() {
   } catch (e) {
     console.warn('Could not load survey points from Supabase:', e);
     surveyPoints = [];
+    alert('Could not load survey points — ' + e.message);
   }
 }
 
