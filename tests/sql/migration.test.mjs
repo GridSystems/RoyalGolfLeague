@@ -26,20 +26,29 @@ test('real run: ids are 1..N and the report says all checks passed', async () =>
   const gmax = Number((await one(db, `SELECT max(id) m FROM public.gps_shots`)).m);
   const report = (await db.query(`SELECT string_agg(line, E'\\n' ORDER BY ord) r FROM phase1_backup.report`)).rows[0].r;
   assert.match(report, new RegExp(`gps_shots: .* next id ${gmax + 1}\\b`));
-  assert.match(report, /players: 30 rows .* next id 31\b/);
+  const np = SNAPSHOT.players.length;
+  assert.match(report, new RegExp(`players: ${np} rows .* next id ${np + 1}\\b`));
 });
 
+// The live data was cleaned by the real Phase 1 run, so it has no orphans left: plant one of each
+// kind the migration plans for, on top of the snapshot.
 test('real run: orphans resolved as decided, money unchanged', async () => {
   const db = await freshDb();
+  const gone = 999999, tid = SNAPSHOT.tournaments[0].id, pid = SNAPSHOT.players[0].id;
+  await db.query(`INSERT INTO public.fines(id, player_id, fine_type_id, date, amount, issued_by) VALUES (1799999999001, $1, $2, '2026-06-06', 20, $3)`, [gone, SNAPSHOT.fine_types[0].id, pid]);
+  await db.query(`INSERT INTO public.fines(id, player_id, fine_type_id, round_id, date, amount, issued_by) VALUES (1799999999002, $1, $2, 1799999999999, '2026-06-06', 10, $1)`, [pid, SNAPSHOT.fine_types[0].id]);
+  await db.query(`INSERT INTO public.saturday_signups(id, player_id, date) VALUES (1799999999003, $1, '2026-06-06')`, [gone]);
+  await db.query(`INSERT INTO public.tournament_players(id, tournament_id, player_id, team) VALUES (1799999999004, $1, $2, 'a')`, [tid, gone]);
   const dkk = async () => (await one(db, `SELECT sum(amount)::numeric s, count(*)::int n FROM public.fines`));
-  const before = await dkk(); await run(db, REAL()); const after = await dkk();
+  const before = await dkk(); assert.equal(await run(db, REAL()), null); const after = await dkk();
   assert.equal(String(after.s), String(before.s)); assert.equal(after.n, before.n);
-  const fm = await one(db, `SELECT id, archived_at IS NOT NULL AS archived, legacy_id FROM public.players WHERE name='Former member'`);
-  assert.ok(fm && fm.archived && fm.legacy_id === null);
-  assert.equal((await one(db, `SELECT count(*)::int n FROM public.fines WHERE player_id=$1`, [fm.id])).n, 5);
+  const fm = await one(db, `SELECT p.id, p.name, p.archived_at IS NOT NULL AS archived, p.legacy_id FROM public.players p
+    JOIN public.fines f ON f.player_id = p.id WHERE f.amount = 20 AND f.date = '2026-06-06'`);
+  assert.ok(fm && fm.name === 'Former member' && fm.archived && fm.legacy_id === null);
+  assert.equal((await one(db, `SELECT count(*)::int n FROM public.fines WHERE player_id=$1`, [fm.id])).n, 1);
   assert.equal((await one(db, `SELECT count(*)::int n FROM public.fines f WHERE round_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM public.rounds r WHERE r.id=f.round_id)`)).n, 0);
-  assert.equal((await one(db, `SELECT count(*)::int n FROM public.saturday_signups`)).n, SNAPSHOT.saturday_signups.length - 3);
-  assert.equal((await one(db, `SELECT count(*)::int n FROM public.tournament_players`)).n, SNAPSHOT.tournament_players.length - 2);
+  assert.equal((await one(db, `SELECT count(*)::int n FROM public.saturday_signups`)).n, SNAPSHOT.saturday_signups.length);
+  assert.equal((await one(db, `SELECT count(*)::int n FROM public.tournament_players`)).n, SNAPSHOT.tournament_players.length);
 });
 
 test('real run: every player keeps their rounds (matched by legacy_id)', async () => {

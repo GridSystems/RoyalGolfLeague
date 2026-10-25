@@ -1,5 +1,5 @@
 import test from 'node:test'; import assert from 'node:assert/strict';
-import { productionDb, as, persona, run, sqlFile } from './testbed.mjs';
+import { productionDb, loadLateColumns, as, persona, run, sqlFile } from './testbed.mjs';
 const REAL = f => sqlFile(f).replace('SELECT true AS rehearsal', 'SELECT false AS rehearsal');
 const one = async (db, q, p) => (await db.query(q, p)).rows[0];
 // 'denied' = refused by RLS or a trigger (42501); any other error shows its own SQLSTATE.
@@ -12,6 +12,7 @@ async function world() {
   assert.equal(await run(db, REAL('phase2a_auth.sql')), null);
   assert.equal(await run(db, REAL('matchplay_league.sql')), null);
   await su(db);
+  await loadLateColumns(db);   // the live league columns (format, entered_at, …)
   await db.query(`UPDATE public.players SET approved=false WHERE id=5`);
   const id = async (q, p) => (await one(db, q + ' RETURNING id', p)).id;
   const L = await id(`INSERT INTO public.tournaments(name,date,tee_id,format,status,buy_in,deadlines) VALUES ('Matchplay 2027','2027-04-01','57','league','drawn',200,'{"group_1":"2027-05-15"}')`);

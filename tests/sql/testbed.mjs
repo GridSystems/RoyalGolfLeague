@@ -8,24 +8,40 @@ export const TABLES = ['players', 'rounds', 'fine_types', 'fines', 'fine_payment
 export const SNAPSHOT = JSON.parse(fs.readFileSync(path.join(os.tmpdir(), 'rgc-phase1', 'snapshot.json'), 'utf8'));
 export const sqlFile = f => fs.readFileSync(path.join(repo, 'supabase', f), 'utf8');
 
+// The snapshot is live-shaped: it carries columns that later migrations add (players.archived_at,
+// the league columns, …), which schema.sql doesn't have yet. freshDb loads the columns the table has
+// and remembers the rest; loadLateColumns fills them in once a migration has created them.
+const late = new WeakMap();   // db → { table: [snapshot columns not loaded yet] }
+const columnsOf = async (db, t) => new Set((await db.query(
+  `SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name=$1`, [t])).rows.map(r => r.column_name));
+const LOADED = [...TABLES, 'tees'];   // tees isn't in TABLES: Phase 1 tests iterate TABLES and assert id renumbering, and tees' ids are text codes
 export async function freshDb() {
   const db = new PGlite();
   await db.exec(fs.readFileSync(path.join(import.meta.dirname, 'schema.sql'), 'utf8'));
   await db.exec(sqlFile('phase0a_pin_functions.sql'));
-  for (const t of TABLES) {
-    const rows = SNAPSHOT[t]; if (!rows.length) continue;
+  const pending = {}; late.set(db, pending);
+  for (const t of LOADED) {
+    const rows = SNAPSHOT[t]; if (!rows || !rows.length) continue;
     // Only the snapshot's own columns, so hidden ones (pin, pin_failures, …) take their defaults.
-    const cols = Object.keys(rows[0]).map(c => `"${c}"`).join(', ');
+    const have = await columnsOf(db, t), all = Object.keys(rows[0]);
+    pending[t] = all.filter(c => !have.has(c));
+    const cols = all.filter(c => have.has(c)).map(c => `"${c}"`).join(', ');
     await db.query(`INSERT INTO public.${t} (${cols}) SELECT ${cols} FROM jsonb_populate_recordset(null::public.${t}, $1)`, [JSON.stringify(rows)]);
   }
-  // tees isn't in TABLES: Phase 1 tests iterate TABLES and assert id renumbering, and tees'
-  // ids are text codes (not renumbered), so it's loaded separately here.
-  const tees = SNAPSHOT.tees;
-  if (tees && tees.length) {
-    const cols = Object.keys(tees[0]).map(c => `"${c}"`).join(', ');
-    await db.query(`INSERT INTO public.tees (${cols}) SELECT ${cols} FROM jsonb_populate_recordset(null::public.tees, $1)`, [JSON.stringify(tees)]);
-  }
   return db;
+}
+// Fill in the snapshot columns freshDb skipped that exist now (rows matched by id: the live ids are
+// already 1..N in creation order, so Phase 1's renumbering leaves them where they were).
+export async function loadLateColumns(db) {
+  const pending = late.get(db) || {};
+  for (const [t, wanted] of Object.entries(pending)) {
+    const have = await columnsOf(db, t), now = wanted.filter(c => have.has(c));
+    if (!now.length) continue;
+    pending[t] = wanted.filter(c => !have.has(c));
+    const r = await db.query(`UPDATE public.${t} x SET ${now.map(c => `"${c}" = s."${c}"`).join(', ')}
+      FROM jsonb_populate_recordset(null::public.${t}, $1) s WHERE x.id = s.id`, [JSON.stringify(SNAPSHOT[t])]);
+    if (r.affectedRows !== SNAPSHOT[t].length) throw new Error(`late columns of ${t}: ${r.affectedRows} of ${SNAPSHOT[t].length} rows matched by id`);
+  }
 }
 // Rows of a table as JSON strings, ordered by id — for before/after equality.
 export async function dump(db, t) {
@@ -55,6 +71,7 @@ export async function productionDb() {
   await db.exec(sqlFile('phase0b_hide_credentials.sql'));
   const err = await run(db, sqlFile('phase1_ids.sql').replace('SELECT true AS rehearsal', 'SELECT false AS rehearsal'));
   if (err) throw new Error('phase 1 failed in testbed: ' + err);
+  await loadLateColumns(db);   // archived_at, legacy_id: the live values, e.g. the archived Former member
   await db.exec(fs.readFileSync(path.join(import.meta.dirname, 'auth_stub.sql'), 'utf8'));
   return db;
 }
