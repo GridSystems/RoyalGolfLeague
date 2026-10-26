@@ -71,6 +71,7 @@ export async function productionDb() {
   await db.exec(sqlFile('phase0b_hide_credentials.sql'));
   const err = await run(db, sqlFile('phase1_ids.sql').replace('SELECT true AS rehearsal', 'SELECT false AS rehearsal'));
   if (err) throw new Error('phase 1 failed in testbed: ' + err);
+  await db.exec('ALTER TABLE public.rounds ALTER COLUMN date TYPE date USING date::date');   // live type; schema.sql still has text
   await loadLateColumns(db);   // archived_at, legacy_id: the live values, e.g. the archived Former member
   await db.exec(fs.readFileSync(path.join(import.meta.dirname, 'auth_stub.sql'), 'utf8'));
   return db;

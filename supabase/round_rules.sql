@@ -4,6 +4,7 @@
 --   An earlier day: a player's own round only, up to 7 days back — "forgot to log last Saturday".
 --   Anything else, and moving a round to another player or date: an admin in admin mode.
 --   A round with no scores may still be deleted by any member (no-show; noshow_round_delete.sql).
+-- rounds.date may be text or date (production has date): everything here compares it as YYYY-MM-DD text.
 -- Rules live here, not in the app: a request sent from curl or devtools meets the same ones.
 -- Audit (a trigger, so it catches every write whoever sends it):
 --   round_edited    a change to a round dated before today, or moving any round to another player
@@ -29,11 +30,11 @@ GRANT EXECUTE ON FUNCTION private.club_day(int), private.round_writable(bigint, 
 DROP POLICY IF EXISTS p2_rounds_write ON public.rounds;
 DROP POLICY IF EXISTS p2_rounds_upd ON public.rounds;
 DROP POLICY IF EXISTS p2_rounds_del ON public.rounds;
-CREATE POLICY p2_rounds_write ON public.rounds FOR INSERT TO authenticated WITH CHECK (private.round_writable(player_id, date));
+CREATE POLICY p2_rounds_write ON public.rounds FOR INSERT TO authenticated WITH CHECK (private.round_writable(player_id, date::text));
 CREATE POLICY p2_rounds_upd ON public.rounds FOR UPDATE TO authenticated
-  USING (private.round_writable(player_id, date)) WITH CHECK (private.round_writable(player_id, date));
+  USING (private.round_writable(player_id, date::text)) WITH CHECK (private.round_writable(player_id, date::text));
 CREATE POLICY p2_rounds_del ON public.rounds FOR DELETE TO authenticated USING (private.is_admin()
-  OR (player_id = private.current_player() AND private.round_writable(player_id, date))
+  OR (player_id = private.current_player() AND private.round_writable(player_id, date::text))
   OR (private.is_member() AND NOT jsonb_path_exists(holes, '$[*] ? (@.score != null)')));
 
 -- Whose round and which day it was: admin mode only, today included (the policies alone would let a
@@ -63,7 +64,7 @@ CREATE OR REPLACE FUNCTION private.audit_rounds() RETURNS trigger LANGUAGE plpgs
 DECLARE today text := private.club_day(); other text;
 BEGIN
   IF TG_OP = 'INSERT' THEN
-    IF NEW.date < today THEN
+    IF NEW.date::text < today THEN
       PERFORM private.audit('round_backdated', NEW.player_id, jsonb_build_object('round', NEW.id, 'date', NEW.date));
     END IF;
     RETURN NEW;
@@ -74,7 +75,7 @@ BEGIN
     RETURN OLD;
   END IF;
   IF NEW IS NOT DISTINCT FROM OLD THEN RETURN NEW; END IF;
-  IF OLD.date < today OR NEW.date IS DISTINCT FROM OLD.date OR NEW.player_id IS DISTINCT FROM OLD.player_id THEN
+  IF OLD.date::text < today OR NEW.date IS DISTINCT FROM OLD.date OR NEW.player_id IS DISTINCT FROM OLD.player_id THEN
     SELECT string_agg(n.key, ', ' ORDER BY n.key) INTO other FROM jsonb_each(to_jsonb(NEW)) n
      WHERE n.value IS DISTINCT FROM to_jsonb(OLD) -> n.key AND n.key NOT IN ('holes', 'marker_holes', 'player_id', 'date');
     PERFORM private.audit('round_edited', NEW.player_id, jsonb_strip_nulls(jsonb_build_object('round', NEW.id, 'date', OLD.date,

@@ -46,7 +46,7 @@ archived_at  timestamptz (null = active; set by "Remove player")
 id           bigint (database-assigned)
 player_id    bigint (FK → players.id)
 course       text
-date         text (YYYY-MM-DD)
+date         date (live; tests/sql/schema.sql has text — testbed converts it)
 tee_id       text
 tee_name     text
 tee_color    text
