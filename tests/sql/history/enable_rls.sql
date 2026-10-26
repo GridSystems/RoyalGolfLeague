@@ -1,4 +1,10 @@
--- Royal Golf Club — enable RLS with permissive policies
+-- ⚠ HISTORY — DO NOT RUN. Moved out of supabase/ on 2026-10-26 (security review SEC-06).
+-- It ran once in production, before logins existed. Run today, its allow-all rule would OR with
+-- every p2_* rule and give every member full read/write on every table. It is kept only so
+-- tests/sql/testbed.mjs can rebuild production's history. supabase/check_permissions.sql catches it.
+-- Silencing a Security Advisor warning is never a reason to run it.
+--
+-- Royal Golf Club — enable RLS with permissive policies (original header follows)
 -- Run once in Supabase SQL Editor (project qvjybtcbymexheqrjkai).
 -- Safe to re-run (drops+recreates the policy each time).
 --

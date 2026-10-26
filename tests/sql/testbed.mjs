@@ -61,7 +61,7 @@ export const LEGACY_POLICIES = { players: named('players'), rounds: named('round
 // The database as production has it today: snapshot → RLS allow-all → Phase 0 column grants → Phase 1.
 export async function productionDb() {
   const db = await freshDb();
-  await db.exec(sqlFile('enable_rls.sql'));
+  await db.exec(fs.readFileSync(path.join(import.meta.dirname, 'history', 'enable_rls.sql'), 'utf8'));   // history, not a migration
   // Old dashboard-made policies production still carries (found by the 2026-09-24 rehearsal),
   // modelled as the dashboard template makes them: allow-all TO public.
   for (const [t, names] of Object.entries(LEGACY_POLICIES)) for (const [name, cmd] of names) {

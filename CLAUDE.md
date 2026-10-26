@@ -102,6 +102,11 @@ gets an explicit `GRANT EXECUTE … TO authenticated`. **Creating a table?** Cre
 dashboard runs as `supabase_admin` and still gets Supabase's default grants), enable RLS, add
 `p2_*` policies, then re-run `supabase/grants.sql`. It grants to `authenticated` only, never
 `anon`, runs in one transaction and refuses (naming the tables) while any public table has RLS off.
+**After any database change, run `supabase/check_permissions.sql`** (read-only): it checks the live
+grants and policies and lists every problem — RLS off, rules open to anon or allow-all `true`, anon
+access, readable emails, audit writes, the `rounds` rules. Never answer a Security Advisor warning with
+an allow-all policy: the old `enable_rls.sql` did exactly that and now lives in `tests/sql/history/`
+as test history only (security review SEC-06).
 
 ---
 
@@ -260,7 +265,7 @@ Per-player best nett score per hole across the season. Ranked by total nett. "My
    gets a "Didn't turn up?" button, and Save offers to remove them instead of refusing.
    `heRemovePlayer` deletes their round — the `p2_rounds_del` policy lets any member delete a
    round with no scores (`supabase/noshow_round_delete.sql`). A round with a score still needs
-   its owner or an admin.
+   its owner (up to 7 days back, see 10) or an admin.
 9. **Stopped playing:** the "A player stopped playing…" link under the hole card marks every hole
    after that player's last played one (play order) `{score:null, stopped:true}` in `holes` — no
    DB change. The flow skips them, their row shows "Stopped after N · Undo", Today shows
@@ -269,6 +274,16 @@ Per-player best nett score per hole across the season. Ranked by total nett. "My
    pickups. On an unplayed hole the database owns `stopped` unless this phone changed it since its
    last good write (`HE.stopDirty`); `hePatchRound` runs one at a time per round, so a stale patch
    can't land last. Rounds store no start hole: a manual resume infers it (`inferStartHole`).
+10. **Who may write a round** (`supabase/round_rules.sql`, security review SEC-05; days are Copenhagen
+   days, `private.club_day()`): today's rounds — any member (group scoring); an earlier day — a
+   player's own round only, up to 7 days back (insert, edit, delete); anything else, and moving a
+   round to another player or date (`protect_round_fields`) — admin mode. Unscored rounds stay
+   deletable by any member (no-show). `startGroupEntry` checks the same rules before creating any
+   round, so a group isn't half-created; keep the two in step (`tests/round-rules.test.js`,
+   `tests/sql/round_rules.test.mjs`). **Audit** (trigger `audit_rounds`, catches writes from outside
+   the app too): `round_edited` (a change to a round dated before today, or a move — details list
+   the changed holes old→new), `round_backdated` (inserted with a past date), `round_deleted` (a
+   deleted round with scores). Today's live scoring isn't logged.
 
 **GPS off-course guard:** `COURSE_BOUNDS` is the course plus ~1 km; five consecutive fixes
 outside it stop the GPS watch. Fixes vaguer than `GPS_OOB_MAX_ACC_M` (100 m) never count.

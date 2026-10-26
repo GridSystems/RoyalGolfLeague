@@ -1615,7 +1615,7 @@ async function rejectPlayer(id){
 }
 
 // ── Audit log & move-over list ─────────────────────────────────────────────────
-const AUDIT_LABELS={login:'Signed in',login_set_up:'Set up new login',signed_up:'Signed up',reset_requested:'Password reset requested',password_changed:'Password changed',email_changed:'Email changed',mfa_enrolled:'Two-factor set up',admin_mode_unlocked:'Admin mode unlocked',admin_granted:'Admin granted',admin_removed:'Admin removed',approved:'Approved',archived:'Archived',restored:'Restored',social_changed:'Social status changed',payment_recorded:'Payment recorded',payment_deleted:'Payment deleted',fine_deleted:'Fine deleted',league_entered:'Entered matchplay league',league_withdrawn:'Withdrew from matchplay league',league_paid:'League entry paid',league_unpaid:'League payment undone',league_entry_moved:'Moved in from the waiting list',match_outcome:'Match outcome recorded',match_edited:'Finished match changed',match_players_changed:'Playoff players changed'};
+const AUDIT_LABELS={login:'Signed in',login_set_up:'Set up new login',signed_up:'Signed up',reset_requested:'Password reset requested',password_changed:'Password changed',email_changed:'Email changed',mfa_enrolled:'Two-factor set up',admin_mode_unlocked:'Admin mode unlocked',admin_granted:'Admin granted',admin_removed:'Admin removed',approved:'Approved',archived:'Archived',restored:'Restored',social_changed:'Social status changed',payment_recorded:'Payment recorded',payment_deleted:'Payment deleted',fine_deleted:'Fine deleted',league_entered:'Entered matchplay league',league_withdrawn:'Withdrew from matchplay league',league_paid:'League entry paid',league_unpaid:'League payment undone',league_entry_moved:'Moved in from the waiting list',match_outcome:'Match outcome recorded',match_edited:'Finished match changed',match_players_changed:'Playoff players changed',round_edited:'Round changed',round_backdated:'Past round added',round_deleted:'Scored round deleted'};
 async function renderAuditPanel(){
   const el=document.getElementById('auditPanel');if(!el)return;
   const f=document.getElementById('auditFilter');
@@ -5723,6 +5723,13 @@ function toggleGroupPlayer(id){
 async function startGroupEntry(){
   if(!groupPlayerIds.length){alert('Select at least one player.');return;}
   const date=document.getElementById('roundDate').value;if(!date){alert('Enter a date.');return;}
+  // supabase/round_rules.sql: an earlier day is your own round only, up to 7 days back; anything else
+  // needs admin mode. Say so before creating anyone's round, not half way through the group.
+  const td=today(),me=players.find(p=>_session&&p.user_id===_session.user.id)?.id;
+  const why=date>td?'A round can\'t be logged for a future date.'
+    :date<new Date(Date.parse(td+'T12:00:00Z')-7*864e5).toISOString().slice(0,10)?'Rounds more than 7 days old are added by an admin.'
+    :date<td&&groupPlayerIds.some(id=>id!==me)?'For an earlier day you can only log your own round. An admin can add the others.':'';
+  if(why&&!(isAdmin()&&await requireAdminMode().catch(()=>false))){alert(why);return;}
   // Resolve starting hole
   let startHole;
   if(selectedStartHole==='other'){
